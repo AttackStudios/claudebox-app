@@ -33,6 +33,11 @@ export const CHALLENGES = [
   // Wibit
   { id: 'wibit-survive', game: 'wibit',           emoji: '🌊', title: 'Last One Splashing', hint: 'Win a Wipeout round.',                  stars: 180 },
 
+  // Rivals
+  { id: 'rivals-elim',   game: 'rivals',          emoji: '🎯', title: 'First Blood',        hint: 'Get your first elimination in Rivals.', stars: 80 },
+  { id: 'rivals-win',    game: 'rivals',          emoji: '🏆', title: 'Duel Champion',      hint: 'Win a Rivals duel (first to 5).',       stars: 200 },
+  { id: 'rivals-slide',  game: 'rivals',          emoji: '🛷', title: 'Slick Moves',        hint: 'Slide by sprinting and then crouching.', stars: 40 },
+
   // Restaurant Simulator 2
   { id: 'rs-serve',      game: 'restaurant-sim-2',emoji: '🍔', title: 'Order Up!',          hint: 'Serve your first dish.',                stars: 70 },
 

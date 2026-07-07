@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Rivals — ClaudeBox</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/rivals/css/rivals.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- loading veil -->
+<div id="loading">
+  <div class="load-card">
+    <div class="load-logo">🎯</div>
+    <h1>Rivals</h1>
+    <p id="load-status">Racking the weapons…</p>
+  </div>
+</div>
+
+<!-- ==================== HUD ==================== -->
+<div id="hud" class="hidden">
+  <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+  <div id="hitmarker">✕</div>
+  <div id="dmg-arc"></div>
+
+  <!-- lobby queue banner (top center, like the original) -->
+  <div id="queue-banner" class="hidden">
+    <span class="qb-ico">🔍</span>
+    <span class="qb-text">Searching for players…<b id="qb-mode">1v1</b></span>
+    <span id="qb-time">0:00</span>
+    <button id="qb-cancel">✕</button>
+  </div>
+
+  <!-- lobby helper -->
+  <div id="lobby-tip" class="hidden">Click to look around · <b>E</b> — open Duels · shooting range on the right</div>
+
+  <!-- match top bar -->
+  <div id="match-top" class="hidden">
+    <div class="team-chip" id="chip-a"><span class="tc-avatars" id="chip-a-av"></span><b id="score-a">0</b></div>
+    <div id="round-clock">1:30</div>
+    <div class="team-chip enemy" id="chip-b"><b id="score-b">0</b><span class="tc-avatars" id="chip-b-av"></span></div>
+  </div>
+  <div id="freeze-count" class="hidden">3</div>
+  <div id="round-banner" class="hidden"></div>
+
+  <!-- kill feed -->
+  <div id="killfeed"></div>
+
+  <!-- bottom left: health -->
+  <div id="health-wrap" class="hidden"><div id="health-bar"></div><span id="health-num">100</span></div>
+
+  <!-- bottom right: ammo + loadout -->
+  <div id="ammo-wrap" class="hidden">
+    <div id="ammo-big"><b id="ammo-mag">20</b><span id="ammo-res">100</span></div>
+    <div id="weapon-name">Assault Rifle</div>
+    <div id="loadout"></div>
+  </div>
+  <div id="reload-hint" class="hidden">Reloading…</div>
+
+  <div id="rv-toasts"></div>
+</div>
+
+<!-- ==================== overlays ==================== -->
+<!-- mode select (E in lobby) -->
+<div id="modes" class="overlay hidden">
+  <div class="panel">
+    <h2>⚔️ Choose your queue</h2>
+    <div class="mode-grid">
+      <button class="mode-card" data-mode="beginner"><span class="mc-emoji">🎓</span><b>Beginner</b><small>1v1 vs an easy bot — instant</small></button>
+      <button class="mode-card" data-mode="duo"><span class="mc-emoji">⚔️</span><b>1v1</b><small>Duel a player · bot fills in</small></button>
+      <button class="mode-card" data-mode="squad"><span class="mc-emoji">👥</span><b>2v2</b><small>Team duel · bots fill in</small></button>
+    </div>
+    <button class="panel-close" id="modes-close">Close</button>
+  </div>
+</div>
+
+<!-- map vote -->
+<div id="vote" class="overlay hidden">
+  <div class="vote-head">Vote for the map</div>
+  <div class="vote-cards">
+    <button class="vote-card" data-map="random"><div class="vc-art">🔀</div><b>Random</b><span class="vc-pct" id="pct-random"></span></button>
+    <button class="vote-card" data-map="arena"><div class="vc-art arena"></div><b>Arena</b><span class="vc-pct" id="pct-arena"></span></button>
+    <button class="vote-card" data-map="battleground"><div class="vc-art bg"></div><b>Battleground</b><span class="vc-pct" id="pct-battleground"></span></button>
+  </div>
+  <div class="vote-timer" id="vote-timer"></div>
+</div>
+
+<!-- teleporting screen -->
+<div id="teleport" class="overlay solid hidden">
+  <div class="tp-dots"><i></i><i></i><i></i></div>
+  <h2>TELEPORTING</h2>
+  <p id="tp-tip"></p>
+</div>
+
+<!-- victory / podium -->
+<div id="podium" class="overlay hidden">
+  <div class="podium-card">
+    <div id="podium-title" class="win">VICTORY</div>
+    <div id="podium-sub"></div>
+    <div id="podium-stats"></div>
+    <div class="podium-btns">
+      <button id="pd-rematch">Rematch</button>
+      <button id="pd-again">Play Again</button>
+      <button id="pd-leave">Leave</button>
+    </div>
+  </div>
+</div>
+
+<div id="panels"></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/rivals/js/main.js"></script>
+</body>
+</html>

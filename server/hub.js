@@ -69,6 +69,15 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'rivals',
+    title: 'Rivals',
+    tagline: 'Lock in. First to five wins the duel.',
+    art: '/icons/game-rivals.png',
+    url: '/games/rivals',
+    tags: ['FPS', 'PvP', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'playground',
     title: 'Playground',
     tagline: 'Play levels built in ClaudeBox Studio.',
@@ -247,6 +256,8 @@ let obPlayersSync = null;
 import('./obby/state.js').then((m) => { obPlayersSync = m.state.players; }).catch(() => {});
 let wbPlayersSync = null;
 import('./wibit/state.js').then((m) => { wbPlayersSync = m.state.players; }).catch(() => {});
+let rvPlayersSync = null;
+import('./rivals/state.js').then((m) => { rvPlayersSync = m.state.players; }).catch(() => {});
 
 function presenceOf(nameLower) {
   for (const p of state.players.values()) {
@@ -270,6 +281,11 @@ function presenceOf(nameLower) {
   if (wbPlayersSync) {
     for (const p of wbPlayersSync.values()) {
       if (p.joined && p.nameLower === nameLower) return 'game:wibit';
+    }
+  }
+  if (rvPlayersSync) {
+    for (const p of rvPlayersSync.values()) {
+      if (p.joined && p.nameLower === nameLower) return 'game:rivals';
     }
   }
   const seen = lastHubSeen.get(nameLower);

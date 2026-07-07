@@ -27,6 +27,8 @@ import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
 import { toObbyCourse, toWibitWorld } from '../shared/studio/adapters.js';
 import { state as wbState, genId as wbGenId, publicPlayer as wbPublicPlayer, clock as wbClock } from './wibit/state.js';
 import { handleMessage as wbHandle, onDisconnect as wbDisconnect, makeBroadcaster as wbBroadcaster, tickRound as wbTickRound, getRoundInfo as wbRoundInfo } from './wibit/protocol.js';
+import { state as rvState, genId as rvGenId } from './rivals/state.js';
+import { handleMessage as rvHandle, onDisconnect as rvDisconnect, tickRivals, snapshotRivals } from './rivals/protocol.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8787;
@@ -63,6 +65,7 @@ app.get('/games/backpacking', (req, res) => {
 app.get('/games/restaurant-sim-2', (req, res) => res.sendFile(path.join(ROOT, 'public', 'restaurant-sim-2', 'index.html')));
 app.get('/games/obby', (req, res) => res.sendFile(path.join(ROOT, 'public', 'obby', 'index.html')));
 app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wibit', 'index.html')));
+app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.use('/api', hubRouter());
@@ -77,6 +80,7 @@ const bpWss = new WebSocketServer({ noServer: true });
 const rsWss = new WebSocketServer({ noServer: true });
 const obWss = new WebSocketServer({ noServer: true });
 const wbWss = new WebSocketServer({ noServer: true });
+const rvWss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://x');
   if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -84,6 +88,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/rs2-ws') rsWss.handleUpgrade(req, socket, head, (ws) => rsWss.emit('connection', ws, req));
   else if (pathname === '/obby-ws') obWss.handleUpgrade(req, socket, head, (ws) => obWss.emit('connection', ws, req));
   else if (pathname === '/wibit-ws') wbWss.handleUpgrade(req, socket, head, (ws) => wbWss.emit('connection', ws, req));
+  else if (pathname === '/rivals-ws') rvWss.handleUpgrade(req, socket, head, (ws) => rvWss.emit('connection', ws, req));
   else socket.destroy();
 });
 
@@ -322,3 +327,24 @@ setInterval(() => {
   ]);
   wbBroadcast({ t: 'snapshot', players, clock: wbClock(), round: wbRoundInfo() });
 }, 1000 / 14);
+
+// ====================== Rivals (FPS duels) ======================
+rvWss.on('connection', (ws) => {
+  const p = {
+    id: rvGenId('rv'), ws, joined: false, matchId: null,
+    name: '', nameLower: '', avatar: null,
+    pos: { x: 0, y: 0, z: 0 }, ry: 0, anim: 'idle',
+  };
+  rvState.players.set(p.id, p);
+  const ctx = { send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
+  ws.on('message', (raw) => {
+    if (raw.length > 4096) return;
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    try { rvHandle(p, msg, ctx); } catch (err) { console.error('[rivals]', msg?.t, err); }
+  });
+  ws.on('close', () => rvDisconnect(p, ctx));
+  ws.on('error', () => {});
+});
+setInterval(tickRivals, 1000 / 20);       // match state machine + bots + grenades
+setInterval(snapshotRivals, 1000 / 15);   // position snapshots
