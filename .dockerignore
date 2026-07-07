@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.DS_Store
+*.log
+.claude
+# start the cloud instance with a clean database; a persistent disk (if the
+# host provides one) will hold live data going forward
+data

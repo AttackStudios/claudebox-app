@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1d2419">
+<title>Backpacking — ClaudeBox</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/backpacking/css/bp.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- loading veil -->
+<div id="loading">
+  <div class="load-card">
+    <div class="load-logo">🏕️</div>
+    <h1>Backpacking</h1>
+    <p id="load-status">Packing the van…</p>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="action-stack"></div>
+
+  <!-- mobile movement cluster (left, FF layout) -->
+  <div id="move-cluster" class="hidden">
+    <div id="joystick-zone">
+      <div id="joystick-base"><div id="joystick-knob"></div></div>
+    </div>
+    <button id="btn-b" class="move-btn">🏃<span>Sprint</span></button>
+    <button id="btn-a" class="move-btn">⬆️<span>Jump</span></button>
+  </div>
+
+  <button id="hud-settings-btn" class="round-btn top-right" title="Settings">⚙️</button>
+
+  <!-- hotbar -->
+  <div id="hotbar"></div>
+
+  <!-- minimap -->
+  <div id="minimap">
+    <canvas id="minimap-canvas" width="148" height="148"></canvas>
+    <div id="region-name">Lodge</div>
+  </div>
+
+  <!-- speedometer -->
+  <div id="speedo" class="hidden">
+    <div id="speedo-dial">
+      <div id="speedo-needle"></div>
+      <div id="speedo-text">0</div>
+    </div>
+  </div>
+
+  <!-- chat -->
+  <div id="chat-log"></div>
+  <div id="chat-input-row" class="hidden">
+    <input id="chat-input" maxlength="160" placeholder="Say something..." autocomplete="off">
+    <button id="chat-send">➤</button>
+  </div>
+
+  <div id="bp-toasts"></div>
+  <div id="death-veil" class="hidden"><span>💀</span></div>
+</div>
+
+<!-- backpack -->
+<div id="backpack" class="hidden">
+  <div class="backpack-card">
+    <button id="backpack-close" class="close-x">✕</button>
+    <h2>🎒 Backpack</h2>
+    <div id="backpack-tabs"></div>
+    <div id="backpack-grid"></div>
+  </div>
+</div>
+
+<!-- full map -->
+<div id="fullmap" class="hidden">
+  <div class="fullmap-card">
+    <button id="fullmap-close" class="close-x">✕</button>
+    <h2>🗺️ Trail Map</h2>
+    <canvas id="fullmap-canvas" width="560" height="560"></canvas>
+  </div>
+</div>
+
+<div id="panels"></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/backpacking/js/main.js"></script>
+</body>
+</html>

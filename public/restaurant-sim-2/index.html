@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#2a1e16">
+<title>Restaurant Simulator 2 — ClaudeBox</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/restaurant-sim-2/css/rs2.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="loading">
+  <div class="load-card">
+    <div class="load-logo">👨‍🍳</div>
+    <h1>Restaurant Simulator 2</h1>
+    <p id="load-status">Preheating the ovens…</p>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <!-- cash + rating -->
+  <div id="topbar">
+    <div id="cash-chip">💵 <b id="cash-amount">0</b></div>
+    <div id="rating-chip">⭐ <b id="rating-amount">3.0</b></div>
+  </div>
+
+  <!-- order tickets rail -->
+  <div id="tickets"></div>
+
+  <div id="action-stack"></div>
+
+  <!-- mobile cluster (BP layout: left) -->
+  <div id="move-cluster" class="hidden">
+    <div id="joystick-zone">
+      <div id="joystick-base"><div id="joystick-knob"></div></div>
+    </div>
+    <button id="btn-b" class="move-btn">🏃<span>Sprint</span></button>
+    <button id="btn-a" class="move-btn">⬆️<span>Jump</span></button>
+  </div>
+
+  <button id="hud-settings-btn" class="round-btn top-right" title="Settings">⚙️</button>
+
+  <div id="chat-log"></div>
+  <div id="chat-input-row" class="hidden">
+    <input id="chat-input" maxlength="160" placeholder="Say something..." autocomplete="off">
+    <button id="chat-send">➤</button>
+  </div>
+
+  <div id="rs2-toasts"></div>
+</div>
+
+<div id="panels"></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/restaurant-sim-2/js/main.js"></script>
+</body>
+</html>

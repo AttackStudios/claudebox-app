@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Feather Friends">
+<meta name="theme-color" content="#38b6e8">
+<title>Feather Friends</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- ====================== MAIN MENU ====================== -->
+<div id="menu" class="overlay">
+  <div class="menu-sky"></div>
+  <div class="menu-panel cloud-panel">
+    <h1 class="game-title">Feather Friends</h1>
+
+    <div class="menu-columns">
+      <div class="menu-left">
+        <label class="field-label" for="menu-name">Your name</label>
+        <input id="menu-name" maxlength="20" placeholder="Birb" autocomplete="off">
+
+        <div class="field-label">Start as</div>
+        <div id="menu-stages" class="stage-row">
+          <button class="stage-card" data-stage="egg"><span class="stage-emoji">🥚</span>Egg</button>
+          <button class="stage-card" data-stage="baby"><span class="stage-emoji">🐤</span>Baby</button>
+          <button class="stage-card selected" data-stage="adult"><span class="stage-emoji">🐦</span>Adult</button>
+        </div>
+
+        <div class="field-label">Breed</div>
+        <div id="menu-set-tabs" class="set-tabs"></div>
+        <div id="menu-breeds" class="breed-grid"></div>
+      </div>
+
+      <div class="menu-right">
+        <canvas id="menu-preview" width="340" height="300"></canvas>
+        <div id="menu-colors" class="color-rows"></div>
+        <div class="field-label">Nametag</div>
+        <div id="menu-nametag" class="nametag-row"></div>
+        <button id="menu-play" class="big-btn">Play! 🪶</button>
+      </div>
+    </div>
+  </div>
+  <button id="menu-settings-btn" class="round-btn top-right" title="Settings">⚙️</button>
+</div>
+
+<!-- ====================== IN-GAME HUD ====================== -->
+<div id="hud" class="hidden">
+  <!-- feather currency, top-left -->
+  <div id="feather-counter"><span class="fc-icon">🪶</span><span id="feather-count">0</span></div>
+
+  <!-- left action stack (context quick-actions) -->
+  <div id="action-stack"></div>
+
+  <!-- bottom menu bar (panel launchers) -->
+  <div id="menu-bar"></div>
+
+  <!-- mobile movement cluster, bottom right -->
+  <div id="move-cluster" class="hidden">
+    <div id="joystick-zone">
+      <div id="joystick-base"><div id="joystick-knob"></div></div>
+    </div>
+    <button id="btn-fly" class="move-btn">🪽<span>Fly</span></button>
+    <button id="btn-jump" class="move-btn">⬆️<span>Jump</span></button>
+    <button id="btn-descend" class="move-btn hidden">⬇️<span>Down</span></button>
+  </div>
+
+  <button id="hud-settings-btn" class="round-btn top-right" title="Settings">⚙️</button>
+
+  <!-- chat -->
+  <div id="chat-log"></div>
+  <div id="chat-input-row" class="hidden">
+    <input id="chat-input" maxlength="160" placeholder="Say something..." autocomplete="off">
+    <button id="chat-send">➤</button>
+  </div>
+
+  <div id="toasts"></div>
+</div>
+
+<!-- panels (settings / flock / nest / customize) get injected here -->
+<div id="panels"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

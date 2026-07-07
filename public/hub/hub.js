@@ -1,0 +1,837 @@
+// ClaudeBox home — login, tabs, social, the games library, a 3D avatar
+// studio, and a synthesized sound layer. Talks to the same platform API as
+// before (/api/login, /social, /games, /avatar, /friends/*, /rename, /played).
+
+import * as THREE from 'three';
+import { drawAvatarHead } from './avatarModel.js';
+import { preloadAvatars, makeAvatar, CLOTHING } from '/shared/avatar3d.js';
+import { sfx } from './sounds.js';
+import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS } from '/shared/rewards.js';
+
+const USER_KEY = 'claudebox.user';
+const SETTINGS_KEY = 'claudebox.settings';
+const $ = (id) => document.getElementById(id);
+
+// ---------------- per-device settings ----------------
+const settings = (() => {
+  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false };
+  try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
+  catch { return d; }
+})();
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+// derive a readable "ink" colour + glow for any accent
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function applyAccent() {
+  const a = settings.accent;
+  const [r, g, b] = hexToRgb(a);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const root = document.documentElement.style;
+  root.setProperty('--accent', a);
+  root.setProperty('--accent-2', `rgb(${Math.min(255, r + 45)},${Math.min(255, g + 45)},${Math.min(255, b + 45)})`);
+  root.setProperty('--accent-glow', `rgba(${r},${g},${b},.45)`);
+  root.setProperty('--accent-ink', lum > 0.62 ? '#06232e' : '#eafaff');
+}
+function applyMotion() { document.body.classList.toggle('reduce-motion', settings.reduceMotion); }
+applyAccent();
+applyMotion();
+sfx.setEnabled(settings.sound);
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+const stateHub = { me: null, games: [], friends: [], online: [] };
+
+// ---------------- sound plumbing ----------------
+// Unlock the audio context on the very first gesture (browser autoplay policy)…
+['pointerdown', 'keydown'].forEach((ev) =>
+  window.addEventListener(ev, () => { sfx.unlock(); if (settings.ambient) sfx.setAmbient(true); }, { once: true }));
+// …and whisper on hover over anything interactive.
+let lastHover = null;
+document.addEventListener('pointerover', (e) => {
+  const el = e.target.closest?.('.game-tile,.tab,.chip,.friend-circle,.opt-btn,.icon-btn,.hero-cta,#me-chip,#hero,.person-row button,.skin-swatch');
+  if (el && el !== lastHover) { lastHover = el; if (settings.sound) sfx.hover(); }
+  else if (!el) lastHover = null;
+});
+
+// ---------------- toast ----------------
+function toast(text, icon = '✨') {
+  const el = document.createElement('div');
+  el.className = 'hub-toast';
+  el.innerHTML = `<span>${icon}</span><span>${text}</span>`;
+  $('hub-toasts').appendChild(el);
+  sfx.toast();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 320); }, 3000);
+}
+
+async function api(path, body) {
+  const res = await fetch('/api' + path, body
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    : undefined);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'request failed');
+  return data;
+}
+
+// ---------------- login ----------------
+async function ensureLogin() {
+  const saved = localStorage.getItem(USER_KEY);
+  if (saved) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { const { profile } = await api('/login', { name: saved }); stateHub.me = profile; return; }
+      catch { await new Promise((r) => setTimeout(r, 600)); }
+    }
+  }
+  $('login').classList.remove('hidden');
+  await new Promise((resolve) => {
+    const go = async () => {
+      const name = $('login-input').value.trim().slice(0, 20);
+      if (!name) return;
+      try {
+        const { profile } = await api('/login', { name });
+        stateHub.me = profile;
+        localStorage.setItem(USER_KEY, profile.name);
+        sfx.welcome();
+        const card = $('login').querySelector('.login-card');
+        card.style.transition = 'transform .4s var(--spring), opacity .4s';
+        card.style.transform = 'scale(1.05)'; card.style.opacity = '0';
+        setTimeout(() => { $('login').classList.add('hidden'); resolve(); }, 380);
+      } catch (e) { toast(e.message, '⚠️'); }
+    };
+    $('login-btn').addEventListener('click', go);
+    $('login-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    $('login-input').focus();
+  });
+}
+
+// ---------------- tabs (sliding pill) ----------------
+const pill = document.querySelector('#tabs .pill');
+function movePill() {
+  const sel = document.querySelector('.tab.selected');
+  if (!sel) return;
+  pill.style.width = sel.offsetWidth + 'px';
+  pill.style.transform = `translateX(${sel.offsetLeft}px)`;
+}
+function selectTab(name, withSound = true) {
+  const btn = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (!btn || btn.classList.contains('selected')) return;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('selected', t === btn));
+  document.querySelectorAll('.tab-page').forEach((p) => p.classList.add('hidden'));
+  const page = $('tab-' + name);
+  page.classList.remove('hidden');
+  page.style.animation = 'none'; void page.offsetWidth; page.style.animation = '';
+  movePill();
+  if (withSound) sfx.select();
+  if (name === 'avatar') avatarEditor.start(); else avatarEditor.stop();
+}
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => selectTab(tab.dataset.tab));
+$('me-chip').addEventListener('click', () => selectTab('avatar'));
+$('wallet-chip').addEventListener('click', () => selectTab('rewards'));
+window.addEventListener('resize', movePill);
+// keyboard: 1-4 jump to tabs
+window.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  const map = { 1: 'home', 2: 'rewards', 3: 'avatar', 4: 'connect', 5: 'settings' };
+  if (map[e.key]) selectTab(map[e.key]);
+});
+
+// ---------------- thumbnails ----------------
+function thumbInto(canvas, avatar) { drawAvatarHead(canvas.getContext('2d'), avatar, canvas.width); }
+
+// ---------------- per-game theming (client-side flourish) ----------------
+const GAME_THEME = {
+  'feather-friends': { emoji: '🐦', from: '#1fa87a', to: '#0c5566', accent: '#34d6a8' },
+  'backpacking':     { emoji: '🏕️', from: '#e0913c', to: '#6e3417', accent: '#ffbb52' },
+  'restaurant-sim-2':{ emoji: '🍔', from: '#e0503c', to: '#6e1626', accent: '#ff7a5c' },
+  'obby':            { emoji: '🧗', from: '#7c5cff', to: '#241566', accent: '#a58bff' },
+  'wibit':           { emoji: '🌊', from: '#2ec5e0', to: '#144a70', accent: '#5be0ff' },
+  'playground':      { emoji: '🎡', from: '#ff5ca8', to: '#661650', accent: '#ff8fd0' },
+  'studio':          { emoji: '🛠️', from: '#5c72ff', to: '#161f66', accent: '#8ba3ff' },
+};
+const themeOf = (id) => GAME_THEME[id] || { emoji: '🎮', from: '#3a3f4d', to: '#181a20', accent: '#8b93a5' };
+
+// ---------------- home: friends ----------------
+const STATUS_LABEL = { hub: 'online', offline: 'offline' };
+function statusText(s) { return s?.startsWith('game') ? 'in a game' : (STATUS_LABEL[s] || 'offline'); }
+
+function renderFriends() {
+  const row = $('friends-row');
+  row.innerHTML = '';
+  $('friend-count').textContent = stateHub.friends.length ? `${stateHub.friends.length} total` : '';
+  // an "add friend" launcher always sits first
+  const add = document.createElement('button');
+  add.className = 'friend-circle add-circle';
+  add.innerHTML = `<span class="fc-ring"><span class="plus">+</span></span><span class="fname">Add</span><span class="fstatus">friend</span>`;
+  add.addEventListener('click', () => selectTab('connect'));
+  row.appendChild(add);
+
+  const sorted = [...stateHub.friends].sort((a, b) => (a.status === 'offline') - (b.status === 'offline'));
+  for (const f of sorted) {
+    const el = document.createElement('button');
+    const cls = f.status === 'hub' ? 'status-hub' : f.status.startsWith('game') ? 'status-game' : '';
+    el.className = 'friend-circle ' + cls;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    thumbInto(cv, f.avatar);
+    el.innerHTML = `<span class="fc-ring"></span><span class="fname">${escapeHtml(f.name)}</span><span class="fstatus">${statusText(f.status)}</span>`;
+    if (f.nameColor === 'rainbow') el.querySelector('.fname').classList.add('name-rainbow');
+    else if (f.nameColor) el.querySelector('.fname').style.color = f.nameColor;
+    const ring = el.querySelector('.fc-ring');
+    ring.appendChild(cv);
+    const dot = document.createElement('span'); dot.className = 'fc-dot'; ring.appendChild(dot);
+    if (f.status.startsWith('game')) el.addEventListener('click', () => launchGame('feather-friends'));
+    row.appendChild(el);
+  }
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// ---------------- home: game tiles ----------------
+function playerCountFor(gameId) {
+  return stateHub.friends.concat(stateHub.online).filter((p) => p.status === `game:${gameId}`).length;
+}
+function fmtNum(n) {
+  n = n || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return '' + n;
+}
+const likedGames = () => stateHub.me?.likedGames || [];
+
+async function likeGame(gameId) {
+  const liked = !likedGames().includes(gameId);
+  try {
+    const d = await api('/game/like', { name: stateHub.me.name, gameId, like: liked });
+    if (!d.ok) return;
+    stateHub.me.likedGames = liked ? [...likedGames(), gameId] : likedGames().filter((g) => g !== gameId);
+    const g = stateHub.games.find((x) => x.id === gameId); if (g) g.likes = d.likes;
+    (liked ? sfx.success : sfx.tap)();
+    renderGames();
+  } catch (e) { toast(e.message, '⚠️'); }
+}
+
+function gameTile(game) {
+  const t = themeOf(game.id);
+  const open = game.playable && !game.maintenance;
+  const tile = document.createElement('button');
+  tile.className = 'game-tile' + (open ? '' : ' soon');
+  tile.style.setProperty('--tile-accent', t.accent);
+  tile.style.setProperty('--tile-glow', t.accent + '66');
+
+  const art = document.createElement('div');
+  art.className = 'art';
+  const grad = `linear-gradient(150deg, ${t.from}, ${t.to})`;
+  if (game.art) art.style.background = `url("${game.art}") center/cover, ${grad}`;
+  else { art.classList.add('gradient'); art.style.background = grad; art.textContent = t.emoji; }
+  tile.append(art);
+  tile.insertAdjacentHTML('beforeend', '<div class="scrim"></div>');
+
+  const players = open ? playerCountFor(game.id) : 0;
+  // top-left status: live players, else total plays (Roblox "visits"), else soon/updating
+  if (game.maintenance) tile.insertAdjacentHTML('beforeend', `<div class="soon-badge">🔧 Updating…</div>`);
+  else if (!game.playable) tile.insertAdjacentHTML('beforeend', `<div class="soon-badge">🔒 Soon</div>`);
+  else if (players > 0) tile.insertAdjacentHTML('beforeend', `<div class="players-badge"><span class="live-dot"></span>${players} playing</div>`);
+  else if (game.plays > 0) tile.insertAdjacentHTML('beforeend', `<div class="plays-badge">▶ ${fmtNum(game.plays)}</div>`);
+  else if (open) tile.insertAdjacentHTML('beforeend', `<div class="plays-badge new">✦ New</div>`);
+
+  // top-right: like button
+  if (open) {
+    const isLiked = likedGames().includes(game.id);
+    const like = document.createElement('div');
+    like.className = 'tile-like' + (isLiked ? ' liked' : '');
+    like.innerHTML = `<span class="tl-thumb">👍</span><span class="tl-n">${fmtNum(game.likes || 0)}</span>`;
+    like.title = isLiked ? 'Unlike' : 'Like';
+    like.addEventListener('click', (e) => { e.stopPropagation(); likeGame(game.id); });
+    tile.append(like);
+  }
+
+  const label = document.createElement('div');
+  label.className = 'tile-label';
+  const tags = (game.tags || []).slice(0, 3).map((x) => `<span>${escapeHtml(x)}</span>`).join('');
+  label.innerHTML = `<div class="tt">${escapeHtml(game.title)}</div><span class="tg">${escapeHtml(game.tagline || '')}</span><div class="tile-tags">${tags}</div>`;
+  tile.append(label);
+  if (open) { tile.insertAdjacentHTML('beforeend', '<div class="tile-play">▶</div>'); tile.addEventListener('click', () => launchGame(game.id)); }
+  return tile;
+}
+
+// "Popular right now" shelf — playable games ranked by plays.
+function renderPopular() {
+  const host = $('popular-row'); if (!host) return;
+  const pop = stateHub.games.filter((g) => g.playable && !g.maintenance)
+    .sort((a, b) => (b.plays - a.plays) || (b.likes - a.likes)).slice(0, 8);
+  host.innerHTML = '';
+  for (const g of pop) host.appendChild(gameTile(g));
+}
+
+// "Charts" — a ranked top-list like Roblox's charts.
+function renderCharts() {
+  const host = $('charts'); if (!host) return;
+  const ranked = stateHub.games.filter((g) => g.playable)
+    .sort((a, b) => (b.plays - a.plays) || (b.likes - a.likes)).slice(0, 7);
+  host.innerHTML = '';
+  ranked.forEach((g, i) => {
+    const t = themeOf(g.id);
+    const row = document.createElement('button');
+    row.className = 'chart-row';
+    row.style.setProperty('--tile-accent', t.accent);
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
+    const art = g.art ? `url('${g.art}') center/cover` : `linear-gradient(150deg, ${t.from}, ${t.to})`;
+    const players = playerCountFor(g.id);
+    row.innerHTML =
+      `<span class="chart-rank ${i < 3 ? 'medal' : ''}">${medal}</span>` +
+      `<span class="chart-thumb" style="background:${art}"></span>` +
+      `<span class="chart-info"><span class="chart-title">${escapeHtml(g.title)}</span>` +
+      `<span class="chart-tag">${escapeHtml((g.tags || [])[0] || 'Game')}${players > 0 ? ` · <span class="ch-live">🟢 ${players} playing</span>` : ''}</span></span>` +
+      `<span class="chart-stats"><b>▶ ${fmtNum(g.plays)}</b><span>👍 ${fmtNum(g.likes)}</span></span>` +
+      `<span class="chart-go">▶</span>`;
+    row.addEventListener('click', () => launchGame(g.id));
+    host.appendChild(row);
+  });
+}
+
+// ---------------- search + categories ----------------
+let activeCat = 'All';
+let searchText = '';
+function allCategories() {
+  const set = new Set();
+  for (const g of stateHub.games) if (g.playable) (g.tags || []).forEach((t) => set.add(t));
+  return ['All', ...[...set].sort()];
+}
+function renderChips() {
+  const host = $('cat-chips');
+  host.innerHTML = '';
+  for (const c of allCategories()) {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (c === activeCat ? ' on' : '');
+    chip.textContent = c;
+    chip.addEventListener('click', () => { activeCat = c; sfx.tap(); renderChips(); renderGames(); });
+    host.appendChild(chip);
+  }
+}
+$('game-search').addEventListener('input', (e) => { searchText = e.target.value.trim().toLowerCase(); renderGames(); });
+
+function matchesFilter(g) {
+  if (activeCat !== 'All' && !(g.tags || []).includes(activeCat)) return false;
+  if (searchText) {
+    const hay = `${g.title} ${g.tagline} ${(g.tags || []).join(' ')}`.toLowerCase();
+    if (!hay.includes(searchText)) return false;
+  }
+  return true;
+}
+
+function renderGames() {
+  const playable = stateHub.games.filter((g) => g.playable);
+  const soon = stateHub.games.filter((g) => !g.playable);
+  $('games-count').textContent = `${playable.length} to play`;
+
+  const gr = $('games-row'); gr.innerHTML = '';
+  const shown = playable.filter(matchesFilter);
+  $('no-results').classList.toggle('hidden', shown.length > 0);
+  for (const g of shown) gr.appendChild(gameTile(g));
+
+  // continue / jump-back-in
+  const cont = $('continue-row'); cont.innerHTML = '';
+  const recents = (stateHub.me.recentGames || []).map((id) => stateHub.games.find((g) => g.id === id)).filter((g) => g && g.playable);
+  $('continue-block').classList.toggle('hidden', recents.length === 0);
+  for (const g of recents.slice(0, 6)) cont.appendChild(gameTile(g));
+
+  // coming soon
+  const sr = $('soon-row'); sr.innerHTML = '';
+  $('soon-block').classList.toggle('hidden', soon.length === 0);
+  for (const g of soon) sr.appendChild(gameTile(g));
+
+  renderPopular();
+  renderCharts();
+  renderHero();
+}
+
+// ---------------- hero (rotating featured) ----------------
+let heroList = [], heroIdx = 0, heroTimer = null;
+function renderHero() {
+  const recents = (stateHub.me.recentGames || []).map((id) => stateHub.games.find((g) => g.id === id)).filter((g) => g && g.playable);
+  const playable = stateHub.games.filter((g) => g.playable && !g.maintenance);
+  // feature your most-recent first, then everything else, de-duplicated
+  const seen = new Set();
+  heroList = [...recents, ...playable].filter((g) => g && !seen.has(g.id) && seen.add(g.id)).slice(0, 5);
+  const hero = $('hero');
+  if (!heroList.length) { hero.classList.add('hidden'); return; }
+  hero.classList.remove('hidden');
+  if (heroIdx >= heroList.length) heroIdx = 0;
+  paintHero();
+  const dots = $('hero-dots'); dots.innerHTML = '';
+  heroList.forEach((_, i) => {
+    const d = document.createElement('i'); if (i === heroIdx) d.classList.add('on');
+    d.addEventListener('click', (e) => { e.stopPropagation(); heroIdx = i; paintHero(); restartHeroTimer(); });
+    dots.appendChild(d);
+  });
+  restartHeroTimer();
+}
+function paintHero() {
+  const g = heroList[heroIdx]; if (!g) return;
+  const t = themeOf(g.id);
+  const hero = $('hero');
+  hero.style.setProperty('--tile-accent', t.accent);
+  const bg = hero.querySelector('.hero-bg');
+  const grad = `linear-gradient(150deg, ${t.from}, ${t.to})`;
+  bg.style.background = g.art ? `url("${g.art}") center/cover, ${grad}` : grad;
+  const recent = (stateHub.me.recentGames || [])[0] === g.id;
+  $('hero-eyebrow-text').textContent = recent ? 'Continue playing' : 'Featured';
+  $('hero-title').textContent = g.title;
+  $('hero-tagline').textContent = g.tagline || '';
+  [...$('hero-dots').children].forEach((d, i) => d.classList.toggle('on', i === heroIdx));
+}
+function restartHeroTimer() {
+  clearInterval(heroTimer);
+  if (settings.reduceMotion || heroList.length < 2) return;
+  heroTimer = setInterval(() => { heroIdx = (heroIdx + 1) % heroList.length; paintHero(); }, 7000);
+}
+$('hero').addEventListener('click', () => { const g = heroList[heroIdx]; if (g) launchGame(g.id); });
+
+function launchGame(gameId) {
+  const game = stateHub.games.find((g) => g.id === gameId);
+  if (!game?.playable || game.maintenance) return;
+  sfx.launch();
+  api('/played', { name: stateHub.me.name, gameId }).catch(() => {});
+  try {
+    const key = 'featherfriends.lastProfile';
+    const prof = JSON.parse(localStorage.getItem(key) || '{}');
+    prof.name = stateHub.me.name;
+    localStorage.setItem(key, JSON.stringify(prof));
+  } catch {}
+  // brief moment for the launch flourish to breathe
+  document.body.style.transition = 'opacity .32s var(--ease)';
+  document.body.style.opacity = '0.35';
+  setTimeout(() => { location.href = game.url; }, 300);
+}
+
+// ---------------- skeleton loaders ----------------
+function showSkeletons() {
+  const gr = $('games-row');
+  gr.innerHTML = Array.from({ length: 6 }, () => '<div class="skeleton sk-tile"></div>').join('');
+  const fr = $('friends-row');
+  fr.innerHTML = Array.from({ length: 5 }, () => '<div class="friend-circle"><span class="skeleton sk-circle"></span></div>').join('');
+}
+
+// ---------------- connect tab ----------------
+function personRow(person, isFriend) {
+  const row = document.createElement('div');
+  row.className = 'person-row';
+  const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, person.avatar);
+  const nm = document.createElement('span'); nm.className = 'pname'; nm.textContent = person.name;
+  const st = document.createElement('span');
+  st.className = 'pstatus ' + (person.status === 'hub' ? 'hub' : person.status.startsWith('game') ? 'game' : '');
+  st.textContent = statusText(person.status);
+  row.append(cv, nm, st);
+  applyNameCosmetic(nm, person.nameColor, person.title);
+  if (person.status.startsWith('game')) {
+    const join = document.createElement('button'); join.className = 'join'; join.textContent = 'Join';
+    join.addEventListener('click', () => launchGame(person.status.split(':')[1] || 'feather-friends'));
+    row.appendChild(join);
+  }
+  const btn = document.createElement('button');
+  btn.textContent = isFriend ? 'Remove' : 'Add';
+  btn.addEventListener('click', async () => {
+    try {
+      await api(isFriend ? '/friends/remove' : '/friends/add', { name: stateHub.me.name, friend: person.name });
+      if (isFriend) { sfx.back(); toast(`Removed ${person.name}`, '👋'); }
+      else { sfx.success(); toast(`You and ${person.name} are friends!`, '🎉'); }
+      refreshSocial();
+    } catch (e) { toast(e.message, '⚠️'); }
+  });
+  row.appendChild(btn);
+  return row;
+}
+function renderConnect() {
+  const fl = $('friend-list'); fl.innerHTML = '';
+  if (!stateHub.friends.length) fl.innerHTML = '<div class="empty-note">Nobody yet. Add someone above!</div>';
+  for (const f of stateHub.friends) fl.appendChild(personRow(f, true));
+  const ol = $('online-list'); ol.innerHTML = '';
+  if (!stateHub.online.length) ol.innerHTML = '<div class="empty-note">Nobody else is online right now.</div>';
+  for (const p of stateHub.online) ol.appendChild(personRow(p, false));
+}
+$('add-btn').addEventListener('click', async () => {
+  const friend = $('add-input').value.trim();
+  if (!friend) return;
+  try {
+    await api('/friends/add', { name: stateHub.me.name, friend });
+    sfx.success();
+    toast(`You and ${friend} are friends!`, '🎉');
+    $('add-input').value = '';
+    refreshSocial();
+  } catch (e) { toast(e.message, '⚠️'); }
+});
+$('add-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('add-btn').click(); });
+
+// ---------------- avatar editor ----------------
+const cloth = (cat) => CLOTHING[cat].map((i) => [i.id, `${i.emoji} ${i.label}`]);
+const OPTIONS = {
+  body: { label: 'Body type', values: [['boy', '🧍 Boy'], ['girl', '🧍‍♀️ Girl']] },
+  shirtColor: { label: 'Shirt colour', colorOnly: true },
+  pantsColor: { label: 'Pants colour', colorOnly: true },
+  suit: { label: 'Swimsuit', values: cloth('suits'), color: 'suitColor' },
+  hat: { label: 'Hat', values: cloth('hats'), color: 'hatColor' },
+  back: { label: 'Back', values: cloth('backs'), color: 'backColor' },
+  face2: { label: 'Face', values: cloth('faces'), color: 'faceColor' },
+};
+const SKIN_TONES = ['#f5d3b3', '#e8b48a', '#c98e62', '#9a6844', '#6e4a30', '#54382a'];
+
+const avatarEditor = (() => {
+  let renderer = null, scene, cam, ctrl = null, running = false, ready = false;
+  const clock = new THREE.Clock();
+
+  function rebuild() {
+    if (!scene || !ready) return;
+    if (ctrl) { scene.remove(ctrl.group); ctrl.dispose?.(); }
+    ctrl = makeAvatar(stateHub.me.avatar);
+    ctrl.setAnim('idle');
+    scene.add(ctrl.group);
+  }
+  async function init() {
+    // Build the controls first so the editor is usable even if WebGL is
+    // unavailable on this device.
+    buildOptionsUI();
+    const canvas = $('avatar-canvas');
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    } catch (e) { return; }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    scene = new THREE.Scene();
+    cam = new THREE.PerspectiveCamera(34, 1, 0.1, 30);
+    cam.position.set(0, 1.15, 4.4); cam.lookAt(0, 0.95, 0);
+    scene.add(new THREE.AmbientLight('#aab4c4', 1.5));
+    const key = new THREE.DirectionalLight('#fff4dc', 2.0); key.position.set(2, 4, 3); scene.add(key);
+    const rim = new THREE.DirectionalLight(settings.accent, 0.9); rim.position.set(-3, 2, -2); scene.add(rim);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 0.1, 40), new THREE.MeshLambertMaterial({ color: '#26282f' }));
+    disc.position.y = -0.05; scene.add(disc);
+    await preloadAvatars(['boy', 'girl']);
+    ready = true; rebuild();
+  }
+  function frame(now) {
+    if (!running) return;
+    requestAnimationFrame(frame);
+    const canvas = renderer.domElement, w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.floor(w * renderer.getPixelRatio())) {
+      renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+    }
+    const dt = clock.getDelta();
+    if (ctrl) { ctrl.update(dt); ctrl.group.rotation.y = settings.reduceMotion ? 0 : Math.sin(now / 1000 * 0.4) * 0.6; }
+    renderer.render(scene, cam);
+  }
+  function buildOptionsUI() {
+    const host = $('avatar-options'); host.innerHTML = '';
+    const av = stateHub.me.avatar;
+    const skinGroup = document.createElement('div');
+    skinGroup.className = 'opt-group'; skinGroup.innerHTML = '<h3>Skin</h3>';
+    const skinRow = document.createElement('div'); skinRow.className = 'opt-row';
+    for (const tone of SKIN_TONES) {
+      const sw = document.createElement('button');
+      sw.className = 'skin-swatch' + (av.skin === tone ? ' selected' : '');
+      sw.style.background = tone;
+      sw.addEventListener('click', () => { av.skin = tone; sfx.tap(); skinRow.querySelectorAll('.skin-swatch').forEach((s) => s.classList.toggle('selected', s === sw)); rebuild(); });
+      skinRow.appendChild(sw);
+    }
+    const customSkin = document.createElement('input');
+    customSkin.type = 'color'; customSkin.value = av.skin;
+    customSkin.addEventListener('input', () => { av.skin = customSkin.value; rebuild(); });
+    skinRow.appendChild(customSkin); skinGroup.appendChild(skinRow); host.appendChild(skinGroup);
+
+    for (const [key, opt] of Object.entries(OPTIONS)) {
+      const group = document.createElement('div'); group.className = 'opt-group'; group.innerHTML = `<h3>${opt.label}</h3>`;
+      const row = document.createElement('div'); row.className = 'opt-row';
+      if (opt.colorOnly) {
+        const ci = document.createElement('input'); ci.type = 'color'; ci.value = av[key] || '#888888';
+        ci.addEventListener('input', () => { av[key] = ci.value; rebuild(); });
+        row.appendChild(ci); group.appendChild(row); host.appendChild(group); continue;
+      }
+      for (const [value, label] of opt.values) {
+        const btn = document.createElement('button');
+        btn.className = 'opt-btn' + ((av[key] || 'none') === value ? ' selected' : '');
+        btn.textContent = label;
+        btn.addEventListener('click', () => { av[key] = value; sfx.tap(); row.querySelectorAll('.opt-btn').forEach((b) => b.classList.toggle('selected', b === btn)); rebuild(); });
+        row.appendChild(btn);
+      }
+      if (opt.color) {
+        const colorInput = document.createElement('input'); colorInput.type = 'color'; colorInput.value = av[opt.color];
+        colorInput.addEventListener('input', () => { av[opt.color] = colorInput.value; rebuild(); });
+        row.appendChild(colorInput);
+      }
+      group.appendChild(row); host.appendChild(group);
+    }
+    const saveBtn = document.createElement('button');
+    saveBtn.id = 'avatar-save'; saveBtn.textContent = '💾 Save avatar';
+    saveBtn.addEventListener('click', async () => {
+      try {
+        const { avatar } = await api('/avatar', { name: stateHub.me.name, avatar: stateHub.me.avatar });
+        stateHub.me.avatar = avatar; thumbInto($('me-thumb'), avatar);
+        sfx.success(); toast('Avatar saved!', '✨');
+      } catch (e) { toast(e.message, '⚠️'); }
+    });
+    host.appendChild(saveBtn);
+  }
+  return {
+    async start() {
+      if (!stateHub.me) return; // profile not loaded yet
+      if (!renderer && !ready) await init();
+      if (renderer && !running) { running = true; clock.getDelta(); requestAnimationFrame(frame); }
+    },
+    stop() { running = false; },
+  };
+})();
+
+// ---------------- rewards: wallet, challenges, shop ----------------
+const wallet = () => stateHub.me?.wallet || { stars: 0, cubes: 0, challenges: {}, owned: [], title: '', nameColor: '' };
+let convAmount = 1;
+
+// apply an owned name colour + title badge to a name element
+function applyNameCosmetic(nameEl, nameColor, title) {
+  if (!nameEl) return;
+  nameEl.classList.remove('name-rainbow');
+  nameEl.style.color = '';
+  if (nameColor === 'rainbow') nameEl.classList.add('name-rainbow');
+  else if (nameColor) nameEl.style.color = nameColor;
+  // title badge: a sibling right after the name
+  const next = nameEl.nextElementSibling;
+  if (next && next.classList.contains('title-badge')) next.remove();
+  if (title) {
+    const b = document.createElement('span');
+    b.className = 'title-badge';
+    b.textContent = title;
+    nameEl.after(b);
+  }
+}
+
+function updateWalletChip(flash) {
+  const w = wallet();
+  const s = $('wc-stars'), c = $('wc-cubes');
+  if (s) s.textContent = w.stars;
+  if (c) c.textContent = w.cubes;
+  if (flash) { [s, c].forEach((el) => { el?.classList.remove('flash'); void el?.offsetWidth; el?.classList.add('flash'); }); }
+  // cosmetics on the top-right chip name
+  applyNameCosmetic($('me-name'), w.nameColor, w.title);
+}
+
+const gameTitleOf = (id) => stateHub.games.find((g) => g.id === id)?.title || id;
+
+function renderChallenges() {
+  const host = $('challenge-list');
+  if (!host) return;
+  const w = wallet();
+  const done = w.challenges || {};
+  const total = CHALLENGES.length;
+  const doneCount = CHALLENGES.filter((c) => done[c.id]).length;
+  $('challenge-progress').textContent = `${doneCount}/${total} complete`;
+  // group by game, in games order
+  const byGame = new Map();
+  for (const c of CHALLENGES) { if (!byGame.has(c.game)) byGame.set(c.game, []); byGame.get(c.game).push(c); }
+  host.innerHTML = '';
+  for (const [game, list] of byGame) {
+    const dc = list.filter((c) => done[c.id]).length;
+    const group = document.createElement('div');
+    group.className = 'chal-group';
+    group.innerHTML = `<div class="chal-game-head">${gameTitleOf(game)} <span class="cgh-count">${dc}/${list.length}</span></div><div class="chal-grid"></div>`;
+    const grid = group.querySelector('.chal-grid');
+    for (const c of list) {
+      const isDone = !!done[c.id];
+      const card = document.createElement('div');
+      card.className = 'chal-card' + (isDone ? ' done' : '');
+      card.innerHTML =
+        `<span class="chal-emoji">${c.emoji}</span>` +
+        `<div class="chal-body"><div class="ct"></div><div class="ch"></div></div>` +
+        `<div class="chal-reward">${isDone ? '<span class="cr-done">✓ Done</span>' : `<span class="cr-stars">+${c.stars} ⭐</span>`}</div>`;
+      card.querySelector('.ct').textContent = c.title;
+      card.querySelector('.ch').textContent = c.hint;
+      grid.appendChild(card);
+    }
+    host.appendChild(group);
+  }
+}
+
+function renderShop() {
+  const host = $('shop-grid');
+  if (!host) return;
+  const w = wallet();
+  host.innerHTML = '';
+  for (const item of SHOP) {
+    const owned = w.owned.includes(item.id);
+    const equipped = (item.kind === 'title' && w.title === item.value) || (item.kind === 'color' && w.nameColor === item.value);
+    const card = document.createElement('div');
+    card.className = 'shop-card';
+    // a little live preview of what it does
+    let preview = '';
+    if (item.kind === 'title') preview = `<span class="title-badge">${item.value}</span>`;
+    else if (item.value === 'rainbow') preview = `<span class="name-rainbow">Aa</span>`;
+    else preview = `<span style="color:${item.value}">Aa</span>`;
+    card.innerHTML =
+      `<div class="se">${item.emoji}</div>` +
+      `<div class="sl">${item.label}</div>` +
+      `<div class="shop-preview">${preview}</div>`;
+    const btn = document.createElement('button');
+    btn.className = 'shop-btn' + (equipped ? ' equipped' : owned ? ' owned' : '');
+    btn.textContent = equipped ? '✓ Equipped' : owned ? 'Equip' : `${item.price} 🔷`;
+    btn.addEventListener('click', () => {
+      if (equipped) return;
+      if (owned) equipItem(item);
+      else buyItem(item);
+    });
+    card.appendChild(btn);
+    host.appendChild(card);
+  }
+}
+
+function updateConvertPreview() {
+  const w = wallet();
+  convAmount = Math.max(1, convAmount);
+  $('conv-amount').textContent = convAmount;
+  const cost = convAmount * CUBE_RATE;
+  $('conv-cost').textContent = `${cost} ⭐`;
+  const btn = $('conv-do');
+  btn.disabled = w.stars < cost;
+  btn.textContent = w.stars < cost ? 'Not enough Stars' : `Convert to ${convAmount} 🔷`;
+}
+
+function syncRewards(flash) {
+  const w = wallet();
+  $('bal-stars').textContent = w.stars;
+  $('bal-cubes').textContent = w.cubes;
+  updateWalletChip(flash);
+  updateConvertPreview();
+  renderChallenges();
+  renderShop();
+}
+
+async function walletPost(path, body) {
+  try {
+    const data = await api(path, body);
+    if (data && data.wallet) { stateHub.me.wallet = data.wallet; syncRewards(true); }
+    return data;
+  } catch (e) { toast(e.message, '⚠️'); return null; }
+}
+
+async function buyItem(item) {
+  const data = await walletPost('/shop/buy', { name: stateHub.me.name, item: item.id });
+  if (data?.ok) { sfx.success(); toast(`Got "${item.label}"!`, item.emoji); }
+}
+async function equipItem(item) {
+  const body = { name: stateHub.me.name };
+  if (item.kind === 'title') body.title = item.id;
+  if (item.kind === 'color') body.nameColor = item.id;
+  const data = await walletPost('/shop/equip', body);
+  if (data?.ok) { sfx.tap(); toast(`Equipped ${item.label}`, '✨'); refreshSocial(); }
+}
+
+function initRewardsTab() {
+  // localize labels to the configured currency names
+  $('lbl-stars').textContent = POINTS.name;
+  $('lbl-cubes').textContent = CURRENCY.name;
+  $('convert-title').textContent = `Convert ${POINTS.name} → ${CURRENCY.name}`;
+  $('send-title').textContent = `Send ${CURRENCY.name} to a friend`;
+  $('wallet-tag').textContent = `Complete challenges in games to earn ${POINTS.name}, then convert them into ${CURRENCY.name} to spend in the shop — or send some to a friend.`;
+
+  $('conv-minus').addEventListener('click', () => { convAmount = Math.max(1, convAmount - 1); sfx.tap(); updateConvertPreview(); });
+  $('conv-plus').addEventListener('click', () => { const max = Math.floor(wallet().stars / CUBE_RATE) || 1; convAmount = Math.min(Math.max(1, max), convAmount + 1); sfx.tap(); updateConvertPreview(); });
+  $('conv-do').addEventListener('click', async () => {
+    const data = await walletPost('/currency/convert', { name: stateHub.me.name, cubes: convAmount });
+    if (data?.ok) { sfx.success(); toast(`Converted to ${data.minted} ${CURRENCY.name}!`, '🔷'); convAmount = 1; updateConvertPreview(); }
+  });
+  $('send-do').addEventListener('click', async () => {
+    const to = $('send-to').value.trim();
+    const amount = Math.floor(Number($('send-amount').value) || 0);
+    if (!to || amount < 1) { toast('Enter a name and amount', '⚠️'); return; }
+    const data = await walletPost('/currency/send', { name: stateHub.me.name, to, amount });
+    if (data?.ok) { sfx.success(); toast(`Sent ${data.sent} ${CURRENCY.name} to ${data.to}!`, '🎁'); $('send-to').value = ''; $('send-amount').value = 1; }
+  });
+}
+
+// ---------------- sound toggle button ----------------
+function syncSoundBtn() {
+  const b = $('sound-toggle');
+  b.textContent = settings.sound ? '🔊' : '🔇';
+  b.classList.toggle('muted', !settings.sound);
+}
+$('sound-toggle').addEventListener('click', () => {
+  settings.sound = !settings.sound;
+  sfx.setEnabled(settings.sound);
+  saveSettings(); syncSoundBtn();
+  if (settings.sound) sfx.toggleOn(); // plays only if just enabled
+  const si = $('sound-input'); if (si) si.checked = settings.sound;
+  if (!settings.sound) sfx.setAmbient(false);
+  else if (settings.ambient) sfx.setAmbient(true);
+});
+
+// ---------------- settings tab ----------------
+function initSettingsTab() {
+  $('settings-name').textContent = stateHub.me.name;
+  $('accent-input').value = settings.accent;
+  $('motion-input').checked = settings.reduceMotion;
+  $('sound-input').checked = settings.sound;
+  $('ambient-input').checked = settings.ambient;
+  syncSoundBtn();
+
+  $('accent-input').addEventListener('input', () => { settings.accent = $('accent-input').value; applyAccent(); saveSettings(); });
+  $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
+  $('sound-input').addEventListener('change', () => {
+    settings.sound = $('sound-input').checked; sfx.setEnabled(settings.sound); saveSettings(); syncSoundBtn();
+    if (settings.sound) sfx.toggleOn(); else sfx.setAmbient(false);
+    if (settings.sound && settings.ambient) sfx.setAmbient(true);
+  });
+  $('ambient-input').addEventListener('change', () => {
+    settings.ambient = $('ambient-input').checked; saveSettings();
+    sfx.setAmbient(settings.ambient && settings.sound);
+    (settings.ambient ? sfx.toggleOn : sfx.toggleOff)();
+  });
+
+  $('rename-btn').addEventListener('click', async () => {
+    const newName = $('rename-input').value.trim().slice(0, 20);
+    if (!newName) return;
+    try {
+      const { name } = await api('/rename', { name: stateHub.me.name, newName });
+      stateHub.me.name = name; localStorage.setItem(USER_KEY, name);
+      try { const key = 'featherfriends.lastProfile'; const prof = JSON.parse(localStorage.getItem(key) || '{}'); prof.name = name; localStorage.setItem(key, JSON.stringify(prof)); } catch {}
+      $('me-name').textContent = name; $('settings-name').textContent = name; $('rename-input').value = '';
+      sfx.success(); toast(`You're now ${name}!`, '✨'); refreshSocial();
+    } catch (e) { toast(e.message, '⚠️'); }
+  });
+  $('rename-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('rename-btn').click(); });
+  $('signout-btn').addEventListener('click', () => { localStorage.removeItem(USER_KEY); location.reload(); });
+  $('update-btn').addEventListener('click', async () => {
+    try {
+      const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k)));
+      const regs = await navigator.serviceWorker?.getRegistrations?.() || []; await Promise.all(regs.map((r) => r.unregister()));
+    } catch {}
+    toast('Refreshing…', '🔄'); setTimeout(() => location.reload(), 600);
+  });
+}
+
+// ---------------- social polling ----------------
+async function refreshSocial() {
+  try {
+    const data = await api('/social/' + encodeURIComponent(stateHub.me.name));
+    stateHub.me.recentGames = data.me.recentGames;
+    if (data.me.likedGames) stateHub.me.likedGames = data.me.likedGames;
+    stateHub.friends = data.friends;
+    stateHub.online = data.online;
+    // wallet may have changed while you were in a game — flash if it grew
+    const prev = wallet();
+    const grew = data.me.wallet && (data.me.wallet.stars !== prev.stars || data.me.wallet.cubes !== prev.cubes);
+    if (data.me.wallet) stateHub.me.wallet = data.me.wallet;
+    renderFriends(); renderGames(); renderConnect(); syncRewards(grew);
+  } catch {}
+}
+
+// ---------------- boot ----------------
+(async () => {
+  showSkeletons();
+  await ensureLogin();
+  $('me-name').textContent = stateHub.me.name;
+  thumbInto($('me-thumb'), stateHub.me.avatar);
+  initSettingsTab();
+  movePill();
+  const { games } = await api('/games');
+  stateHub.games = games;
+  renderChips();
+  renderGames();
+  initRewardsTab();
+  syncRewards();
+  await refreshSocial();
+  movePill();
+  // if the user jumped to Avatar during load, build it now that we're ready
+  if (document.querySelector('.tab.selected')?.dataset.tab === 'avatar') avatarEditor.start();
+  setInterval(refreshSocial, 10000);
+})();

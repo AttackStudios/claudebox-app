@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2e3138"/>
+      <stop offset="1" stop-color="#16171b"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#45c4f2"/>
+      <stop offset="1" stop-color="#2b9ed2"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8fe0ff"/>
+      <stop offset="1" stop-color="#5fc8f0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- soft glow under the box -->
+  <ellipse cx="256" cy="424" rx="170" ry="34" fill="#0c0d10"/>
+  <ellipse cx="256" cy="418" rx="150" ry="26" fill="#1f2730"/>
+
+  <!-- the box: isometric cube -->
+  <!-- top face -->
+  <polygon points="256,96 392,164 256,232 120,164" fill="url(#top)"/>
+  <!-- left (front) face -->
+  <polygon points="120,164 256,232 256,408 120,340" fill="url(#front)"/>
+  <!-- right face (darker) -->
+  <polygon points="392,164 256,232 256,408 392,340" fill="#1f6e96"/>
+
+  <!-- box lid seam -->
+  <polyline points="135,196 256,256 377,196" fill="none" stroke="#0e3c52" stroke-width="10" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- face on the front-left panel -->
+  <circle cx="166" cy="280" r="15" fill="#0e2433"/>
+  <circle cx="226" cy="308" r="15" fill="#0e2433"/>
+  <circle cx="171" cy="275" r="5" fill="#bfeaff"/>
+  <circle cx="231" cy="303" r="5" fill="#bfeaff"/>
+  <path d="M168 330 q28 30 56 14" fill="none" stroke="#0e2433" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- d-pad sticker on right face -->
+  <g fill="#15506e">
+    <rect x="296" y="282" width="18" height="54" rx="6" transform="skewY(26) translate(0,-160)"/>
+    <rect x="278" y="300" width="54" height="18" rx="6" transform="skewY(26) translate(0,-160)"/>
+  </g>
+
+  <!-- sparkles -->
+  <g fill="#ffd24a">
+    <path d="M404 92 l8 20 20 8 -20 8 -8 20 -8 -20 -20 -8 20 -8 z"/>
+    <path d="M112 92 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5 z" opacity="0.8"/>
+    <path d="M428 250 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5 z" opacity="0.7"/>
+  </g>
+</svg>

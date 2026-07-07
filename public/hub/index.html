@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ClaudeBox">
+<meta name="theme-color" content="#0a0b0f">
+<title>ClaudeBox</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/hub/hub.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+
+<div id="aurora"><i></i><i></i><i></i></div>
+<div id="grain"></div>
+
+<header id="topbar">
+  <div class="brand"><span class="logo">🎮</span><span>Claude<b>Box</b></span></div>
+  <nav id="tabs">
+    <span class="pill"></span>
+    <button class="tab selected" data-tab="home"><span class="ti">🏠</span><span class="tl">Home</span></button>
+    <button class="tab" data-tab="rewards"><span class="ti">🏆</span><span class="tl">Rewards</span></button>
+    <button class="tab" data-tab="avatar"><span class="ti">🧍</span><span class="tl">Avatar</span></button>
+    <button class="tab" data-tab="connect"><span class="ti">🤝</span><span class="tl">Friends</span></button>
+    <button class="tab" data-tab="settings"><span class="ti">⚙️</span><span class="tl">Settings</span></button>
+  </nav>
+  <div class="top-right">
+    <button id="wallet-chip" title="Your Stars & Bits">
+      <span class="wc-part"><span class="wc-emoji">⭐</span><span id="wc-stars">0</span></span>
+      <span class="wc-sep"></span>
+      <span class="wc-part"><span class="wc-emoji">🔷</span><span id="wc-cubes">0</span></span>
+    </button>
+    <button id="sound-toggle" class="icon-btn" title="Sound" aria-label="Toggle sound">🔊</button>
+    <div id="me-chip" title="Edit your avatar">
+      <canvas id="me-thumb" width="68" height="68"></canvas>
+      <span id="me-name">…</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- ================= HOME ================= -->
+  <section id="tab-home" class="tab-page">
+    <div id="hero" class="hidden">
+      <div class="hero-bg"></div>
+      <div class="hero-tint"></div>
+      <div class="hero-body">
+        <span class="hero-eyebrow">✦ <span id="hero-eyebrow-text">Featured</span></span>
+        <h1 id="hero-title">…</h1>
+        <p id="hero-tagline"></p>
+        <button class="hero-cta" id="hero-cta">▶ Play now</button>
+      </div>
+      <div class="hero-dots" id="hero-dots"></div>
+    </div>
+
+    <div class="row-head"><span class="row-title">Friends</span><span class="row-sub" id="friend-count"></span></div>
+    <div id="friends-row" class="circle-row"></div>
+
+    <div id="continue-block" class="hidden">
+      <div class="row-head"><span class="row-title">Jump back in</span></div>
+      <div id="continue-row" class="tile-row"></div>
+    </div>
+
+    <div class="row-head"><span class="row-title">🔥 Popular right now</span><span class="row-sub">Most played on ClaudeBox</span></div>
+    <div id="popular-row" class="tile-row"></div>
+
+    <div class="row-head"><span class="row-title">📊 Charts</span><span class="row-sub">Top games by plays</span></div>
+    <div id="charts" class="charts"></div>
+
+    <div class="row-head"><span class="row-title">All games</span><span class="row-sub" id="games-count"></span></div>
+    <div class="browse-bar">
+      <div class="search-wrap">
+        <span class="si">🔍</span>
+        <input id="game-search" placeholder="Search games…" autocomplete="off">
+      </div>
+      <div class="chips" id="cat-chips"></div>
+    </div>
+    <div id="games-row" class="tile-grid"></div>
+    <div id="no-results" class="empty-note hidden">No games match that. Try another search.</div>
+
+    <div id="soon-block" class="hidden">
+      <div class="row-head"><span class="row-title">Coming soon</span></div>
+      <div id="soon-row" class="tile-row"></div>
+    </div>
+  </section>
+
+  <!-- ================= REWARDS ================= -->
+  <section id="tab-rewards" class="tab-page hidden">
+    <div id="wallet-hero">
+      <div class="wallet-balances">
+        <div class="bal bal-stars">
+          <span class="bal-emoji">⭐</span>
+          <div><b id="bal-stars">0</b><small id="lbl-stars">Stars</small></div>
+        </div>
+        <div class="bal bal-cubes">
+          <span class="bal-emoji">🔷</span>
+          <div><b id="bal-cubes">0</b><small id="lbl-cubes">Bits</small></div>
+        </div>
+      </div>
+      <p class="wallet-tag" id="wallet-tag">Complete challenges in games to earn Stars, then convert them into Bits to spend.</p>
+      <div class="wallet-actions">
+        <div class="wallet-card">
+          <h3 id="convert-title">Convert Stars → Bits</h3>
+          <div class="stepper">
+            <button class="step-btn" id="conv-minus">–</button>
+            <div class="step-val"><b id="conv-amount">1</b><small id="conv-cost">10 ⭐</small></div>
+            <button class="step-btn" id="conv-plus">+</button>
+          </div>
+          <button class="primary-btn wide" id="conv-do">Convert</button>
+        </div>
+        <div class="wallet-card">
+          <h3 id="send-title">Send Bits to a friend</h3>
+          <input id="send-to" maxlength="20" placeholder="Their name…" autocomplete="off">
+          <div class="send-row">
+            <input id="send-amount" type="number" min="1" value="1" inputmode="numeric">
+            <button class="primary-btn" id="send-do">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-head"><span class="row-title">Challenges</span><span class="row-sub" id="challenge-progress"></span></div>
+    <div id="challenge-list"></div>
+
+    <div class="row-head"><span class="row-title">Shop</span><span class="row-sub">Spend Bits on cosmetics</span></div>
+    <div id="shop-grid"></div>
+  </section>
+
+  <!-- ================= AVATAR ================= -->
+  <section id="tab-avatar" class="tab-page hidden">
+    <div id="avatar-layout">
+      <div id="avatar-stage">
+        <div class="stage-glow"></div>
+        <canvas id="avatar-canvas"></canvas>
+      </div>
+      <div id="avatar-options"></div>
+    </div>
+  </section>
+
+  <!-- ================= CONNECT ================= -->
+  <section id="tab-connect" class="tab-page hidden">
+    <div class="card-grid">
+      <div class="connect-card">
+        <h2>Add a friend</h2>
+        <div class="add-row">
+          <input id="add-input" maxlength="20" placeholder="Friend's name…">
+          <button id="add-btn">Add</button>
+        </div>
+        <p class="settings-hint">Anyone on your WiFi who's picked a name in ClaudeBox can be added.</p>
+      </div>
+      <div class="connect-card">
+        <h2>Your friends</h2>
+        <div id="friend-list"></div>
+      </div>
+      <div class="connect-card">
+        <h2>Online right now</h2>
+        <div id="online-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section id="tab-settings" class="tab-page hidden">
+    <div class="card-grid">
+      <div class="connect-card">
+        <h2>Account</h2>
+        <div class="settings-row"><span>Signed in as</span><b id="settings-name"></b></div>
+        <div class="add-row" style="margin-top:10px">
+          <input id="rename-input" maxlength="20" placeholder="New username…">
+          <button id="rename-btn">Change</button>
+        </div>
+        <p class="settings-hint">Renames you everywhere — your friends, your Feather Friends bird, nest and flock all come with you.</p>
+        <button id="signout-btn" class="danger-btn">🚪 Sign out on this device</button>
+      </div>
+      <div class="connect-card">
+        <h2>Sound &amp; appearance</h2>
+        <div class="settings-row"><span>🔊 Interface sounds</span>
+          <label class="switch"><input type="checkbox" id="sound-input"><span class="track"></span></label></div>
+        <div class="settings-row"><span>🎵 Ambient music</span>
+          <label class="switch"><input type="checkbox" id="ambient-input"><span class="track"></span></label></div>
+        <div class="settings-row"><span>🎨 Accent colour</span><input type="color" id="accent-input"></div>
+        <div class="settings-row"><span>💫 Reduce motion</span>
+          <label class="switch"><input type="checkbox" id="motion-input"><span class="track"></span></label></div>
+      </div>
+      <div class="connect-card">
+        <h2>App</h2>
+        <div class="settings-row"><span>Stuck on an old version?</span><button id="update-btn" class="small-btn">🔄 Refresh files</button></div>
+        <p class="settings-hint">ClaudeBox lives on your WiFi at this address — add it to your home screen for the full app experience.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- login -->
+<div id="login" class="login-overlay hidden">
+  <div class="login-card">
+    <div class="login-logo">🎮</div>
+    <h1>Welcome to Claude<b>Box</b></h1>
+    <p>Pick a name — it's your identity in every game.</p>
+    <input id="login-input" maxlength="20" placeholder="Your name" autocomplete="off">
+    <button id="login-btn">Let's go →</button>
+  </div>
+</div>
+
+<div id="hub-toasts"></div>
+
+<script type="module" src="/hub/hub.js"></script>
+</body>
+</html>

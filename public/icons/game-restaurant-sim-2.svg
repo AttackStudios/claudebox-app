@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a2e1a"/>
+      <stop offset="1" stop-color="#2a1a10"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect x="40" y="200" width="432" height="252" rx="14" fill="#e8dcc8"/>
+  <rect x="40" y="180" width="432" height="40" rx="14" fill="#8a5a38"/>
+  <g>
+    <rect x="64" y="236" width="120" height="60" rx="8" fill="#c0564a"/>
+    <rect x="196" y="236" width="120" height="60" rx="8" fill="#f4ecd8"/>
+    <rect x="328" y="236" width="120" height="60" rx="8" fill="#c0564a"/>
+    <rect x="64" y="300" width="120" height="60" rx="8" fill="#f4ecd8"/>
+    <rect x="196" y="300" width="120" height="60" rx="8" fill="#c0564a"/>
+    <rect x="328" y="300" width="120" height="60" rx="8" fill="#f4ecd8"/>
+  </g>
+  <rect x="92" y="120" width="328" height="86" rx="16" fill="#3a2c22" stroke="#e8b94a" stroke-width="8"/>
+  <text x="256" y="178" font-family="Trebuchet MS, sans-serif" font-size="44" font-weight="bold" fill="#ffe9b8" text-anchor="middle">RESTAURANT</text>
+  <circle cx="256" cy="400" r="78" fill="#f4f2ec"/>
+  <circle cx="256" cy="400" r="64" fill="#fff"/>
+  <circle cx="244" cy="392" r="26" fill="#d8a05a"/>
+  <circle cx="244" cy="386" r="24" fill="#6e4430"/>
+  <ellipse cx="244" cy="380" rx="24" ry="8" fill="#e8b94a"/>
+  <circle cx="284" cy="412" r="14" fill="#5fae50"/>
+  <circle cx="296" cy="398" r="8" fill="#c0282e"/>
+  <g transform="rotate(20 380 120)">
+    <rect x="372" y="60" width="16" height="90" rx="8" fill="#c8ccd0"/>
+    <rect x="366" y="44" width="28" height="30" rx="8" fill="#c8ccd0"/>
+  </g>
+  <text x="430" y="110" font-size="60">👨‍🍳</text>
+</svg>

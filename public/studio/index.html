@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#11151c">
+<title>ClaudeBox Studio</title>
+<link rel="stylesheet" href="/studio/css/studio.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<!-- top bar -->
+<div id="topbar">
+  <span class="brand">🧰 ClaudeBox Studio</span>
+  <input id="level-name" placeholder="Level name" maxlength="60">
+  <label class="lbl">Slot
+    <select id="slot">
+      <option value="playground">Playground</option>
+      <option value="sandbox">Sandbox</option>
+      <option value="wibit">wibit</option>
+      <option value="obby">obby</option>
+      <option value="backpacking">backpacking</option>
+      <option value="restaurant-sim-2">restaurant-sim-2</option>
+    </select>
+  </label>
+  <button id="btn-save">💾 Save (live)</button>
+  <button id="btn-load">📂 Load</button>
+  <button id="btn-export">⬇ Export</button>
+  <button id="btn-import">⬆ Import</button>
+  <button id="btn-play" class="primary">▶ Play</button>
+  <button id="btn-help">?</button>
+</div>
+
+<!-- left palette -->
+<div id="palette">
+  <h3>Add part</h3>
+  <div id="palette-list"></div>
+  <h3>Spawn</h3>
+  <button id="btn-spawn">📍 Set spawn at selection</button>
+  <h3>Edit</h3>
+  <button id="btn-dupe">⧉ Duplicate</button>
+  <button id="btn-del">🗑 Delete</button>
+  <label class="chk"><input type="checkbox" id="snap"> Grid snap</label>
+</div>
+
+<!-- right inspector -->
+<div id="inspector">
+  <h3>Properties</h3>
+  <div id="insp-empty" class="muted">Click a part to edit it.</div>
+  <div id="insp-body" class="hidden"></div>
+</div>
+
+<!-- play hud -->
+<div id="playhud" class="hidden">
+  <div id="play-banner">Play mode — WASD move · Space jump · Esc back to Edit</div>
+  <div id="play-toasts"></div>
+</div>
+
+<div id="status"></div>
+
+<!-- help -->
+<div id="help" class="hidden">
+  <div class="help-card">
+    <h2>ClaudeBox Studio</h2>
+    <ul>
+      <li><b>Add</b> parts from the left. Click a part to select it.</li>
+      <li><b>Move</b>: drag a selected part on the ground. <b>Raise/lower</b>: Q / E (or the Y field). <b>Rotate</b>: [ / ].</li>
+      <li><b>Orbit</b> camera: right-drag (or drag empty space). <b>Zoom</b>: wheel.</li>
+      <li><b>Behaviors</b> (triggers) attach to a part in the inspector: trampoline, launch, kill, checkpoint, finish, teleport, speed, message, spin, move.</li>
+      <li><b>Save (live)</b> writes the level to the chosen slot. <b>Play</b> tests it right here.</li>
+      <li>The <b>Playground</b> game tile plays the "playground" slot.</li>
+    </ul>
+    <button id="help-close" class="primary">Got it</button>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept="application/json" class="hidden">
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/studio/js/studio.js"></script>
+</body>
+</html>

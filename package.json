@@ -1,0 +1,16 @@
+{
+  "name": "featherfriends",
+  "version": "1.0.0",
+  "description": "Feather Friends - a cozy multiplayer bird game for your local network",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "three": "^0.184.0",
+    "ws": "^8.21.0"
+  }
+}

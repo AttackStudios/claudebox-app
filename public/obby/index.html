@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e1626">
+<title>Obby — ClaudeBox</title>
+<link rel="stylesheet" href="/obby/css/obby.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="loading">
+  <div class="load-card">
+    <div class="load-logo">🧗</div>
+    <h1>Obby</h1>
+    <p id="load-status">Building the tower…</p>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <!-- stage banner -->
+  <div id="stage-banner">Stage <span id="stage-num">0</span></div>
+  <div id="role-badge" class="hidden"></div>
+  <div id="fly-pill" class="hidden">✈️ Flying — <b>;unfly</b> to stop</div>
+
+  <!-- troll button (shown near a player for staff) -->
+  <button id="troll-btn" class="hidden">😈 Troll <span id="troll-target"></span></button>
+
+  <!-- troll menu -->
+  <div id="troll-menu" class="hidden">
+    <div class="tm-card">
+      <div class="tm-head">Troll <span id="tm-name"></span> <button id="tm-close">✕</button></div>
+      <div id="tm-grid"></div>
+    </div>
+  </div>
+
+  <!-- mobile controls -->
+  <div id="move-cluster" class="hidden">
+    <div id="joystick-zone"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
+    <button id="btn-jump" class="move-btn">⬆️</button>
+  </div>
+
+  <button id="reset-btn" class="round-btn" title="Back to last checkpoint">↺</button>
+
+  <div id="chat-log"></div>
+  <div id="chat-input-row" class="hidden">
+    <input id="chat-input" maxlength="160" placeholder="Say something… (staff: ;help)" autocomplete="off">
+    <button id="chat-send">➤</button>
+  </div>
+
+  <div id="ob-toasts"></div>
+  <div id="death-veil" class="hidden"><span>💀</span><p>You fell!</p></div>
+  <div id="win-veil" class="hidden"><span>🏆</span><p>You beat the Obby!</p></div>
+</div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/obby/js/main.js"></script>
+</body>
+</html>
