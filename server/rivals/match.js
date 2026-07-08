@@ -8,7 +8,8 @@ import { MOVE, ROUND, WEAPONS, TIPS } from '../../shared/rivals/config.js';
 import { MAPS, VOTE_OPTIONS } from '../../shared/rivals/maps.js';
 
 // ---------------- geometry helpers ----------------
-export function boxesOf(mapId) { return (MAPS[mapId] || MAPS.arena).boxes; }
+// only SOLID boxes collide/block shots — glow boxes are decorative neon trim
+export function boxesOf(mapId) { return (MAPS[mapId] || MAPS.arena).boxes.filter((b) => !b.glow); }
 
 // slab-method ray vs AABB list. Returns nearest hit dist or Infinity.
 export function rayMapDist(boxes, ox, oy, oz, dx, dy, dz, maxDist) {

@@ -15,11 +15,14 @@ function ramp(x, y0, z, dir, steps, w, color) {
   return out;
 }
 
-// ================= ARENA — big white tiled 1v1 box =============
-const AR_W = '#e8eaee', AR_W2 = '#d5d9df', AR_ACC = '#c8cdd6';
+// ================= ARENA — bright white box with team-colour trim =====
+const AR_W = '#eef1f6', AR_W2 = '#d9dee6', AR_ACC = '#c6ccd6';
+const TEAM_A = '#2fa4ff', TEAM_B = '#ff7a34';   // blue side vs orange side
 export const ARENA = {
-  id: 'arena', name: 'Arena', sky: '#bfd9ee', fog: 0.009,
-  ground: { color: '#eef0f4', size: 96 },
+  id: 'arena', name: 'Arena',
+  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#e8f1f8'], fog: 0.008,
+  ground: { color: '#e9edf3', size: 96, tex: ['#e9edf3', 'rgba(110,125,150,0.30)', 'rgba(140,190,255,0.18)'] },
+  emblem: '#2fa4ff',
   boxes: [
     // outer walls
     B(0, 4.5, -23, 70, 9, 1, AR_W), B(0, 4.5, 23, 70, 9, 1, AR_W),
@@ -41,6 +44,17 @@ export const ARENA = {
     B(-8, 0.9, -5, 2, 1.8, 2, AR_ACC), B(8, 0.9, 5, 2, 1.8, 2, AR_ACC),
     B(-27, 0.9, 16, 3, 1.8, 2, AR_ACC), B(27, 0.9, -16, 3, 1.8, 2, AR_ACC),
     B(0, 1.4, -18.5, 5, 2.8, 1.5, AR_W2), B(0, 1.4, 18.5, 5, 2.8, 1.5, AR_W2),
+    // ---- decorative emissive trim (glow → not solid) ----
+    // wall-top neon, team-coloured per side (blue west, orange east)
+    B(-17.5, 9.05, -23, 34, 0.32, 0.5, TEAM_A, { glow: true }), B(17.5, 9.05, -23, 34, 0.32, 0.5, TEAM_B, { glow: true }),
+    B(-17.5, 9.05, 23, 34, 0.32, 0.5, TEAM_A, { glow: true }), B(17.5, 9.05, 23, 34, 0.32, 0.5, TEAM_B, { glow: true }),
+    B(-35, 9.05, 0, 0.5, 0.32, 46, TEAM_A, { glow: true }), B(35, 9.05, 0, 0.5, 0.32, 46, TEAM_B, { glow: true }),
+    // glowing corner posts
+    B(-35, 9.3, -23, 1.1, 0.7, 1.1, TEAM_A, { glow: true }), B(-35, 9.3, 23, 1.1, 0.7, 1.1, TEAM_A, { glow: true }),
+    B(35, 9.3, -23, 1.1, 0.7, 1.1, TEAM_B, { glow: true }), B(35, 9.3, 23, 1.1, 0.7, 1.1, TEAM_B, { glow: true }),
+    // platform inner-edge light lines + monolith crown
+    B(-21, 3.06, 0, 0.3, 0.16, 14, TEAM_A, { glow: true }), B(21, 3.06, 0, 0.3, 0.16, 14, TEAM_B, { glow: true }),
+    B(0, 4.76, 0, 8.1, 0.16, 2.6, '#eaf4ff', { glow: true }),
   ],
   // ry chosen so spawns FACE the arena centre (forward = (-sin ry, -cos ry))
   spawnsA: [{ x: -31, z: -17, ry: -2.07 }, { x: -31, z: 17, ry: -1.07 }],
@@ -48,10 +62,13 @@ export const ARENA = {
 };
 
 // ============ BATTLEGROUND — big outdoor industrial ========
-const BG_P = '#8a4fd0', BG_P2 = '#6d3ba8', BG_G = '#9aa3ad', BG_C = '#c9a86a', BG_B = '#5e6773';
+const BG_P = '#8a4fd0', BG_P2 = '#6d3ba8', BG_G = '#9aa3ad', BG_C = '#c69a5a', BG_B = '#586170';
+const BG_NEON = '#c17bff', BG_NEON2 = '#57e0ff';
 export const BATTLEGROUND = {
-  id: 'battleground', name: 'Battleground', sky: '#7fb8e8', fog: 0.006,
-  ground: { color: '#79a860', size: 124 },
+  id: 'battleground', name: 'Battleground',
+  sky: '#9cc6ee', sky2: ['#4f96e4', '#8fc0ee', '#d3e6f6'], fog: 0.006,
+  ground: { color: '#6f9e56', size: 124, tex: ['#6f9e56', 'rgba(40,70,30,0.32)', 'rgba(170,215,130,0.14)'] },
+  emblem: '#ffd24a',
   boxes: [
     // perimeter
     B(0, 5, -31, 90, 10, 1.5, BG_P), B(0, 5, 31, 90, 10, 1.5, BG_P),
@@ -74,6 +91,14 @@ export const BATTLEGROUND = {
     // long pipe rack mid
     B(0, 2.6, -19.5, 24, 0.7, 0.7, '#c8ccd4'),
     B(-10.5, 1.3, -19.5, 0.6, 2.6, 0.6, BG_B), B(10.5, 1.3, -19.5, 0.6, 2.6, 0.6, BG_B),
+    // ---- decorative emissive trim (glow → not solid) ----
+    // perimeter neon along the wall tops
+    B(0, 10.05, -31, 90, 0.34, 0.7, BG_NEON, { glow: true }), B(0, 10.05, 31, 90, 0.34, 0.7, BG_NEON, { glow: true }),
+    B(-45, 10.05, 0, 0.7, 0.34, 62, BG_NEON, { glow: true }), B(45, 10.05, 0, 0.7, 0.34, 62, BG_NEON, { glow: true }),
+    // building roof-edge light strips (facing the yard)
+    B(-21, 7.28, -9.2, 17, 0.16, 0.3, BG_NEON2, { glow: true }), B(21, 7.28, 9.2, 17, 0.16, 0.3, BG_NEON2, { glow: true }),
+    // glowing caps on the mid pipe-rack posts
+    B(-10.5, 2.72, -19.5, 0.9, 0.22, 0.9, BG_NEON2, { glow: true }), B(10.5, 2.72, -19.5, 0.9, 0.22, 0.9, BG_NEON2, { glow: true }),
   ],
   spawnsA: [{ x: -39, z: 21, ry: -1.08 }, { x: -39, z: -21, ry: -2.06 }],
   spawnsB: [{ x: 39, z: -21, ry: 2.06 }, { x: 39, z: 21, ry: 1.08 }],

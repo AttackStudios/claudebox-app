@@ -105,6 +105,34 @@ const sun = new THREE.DirectionalLight('#fff2dc', 1.7);
 sun.position.set(30, 60, 20); scene.add(sun);
 const fill = new THREE.DirectionalLight('#8fb8e8', 0.5);
 fill.position.set(-25, 30, -30); scene.add(fill);
+// sky-to-ground ambient gradient — makes tops read cool and bounces warm below
+const hemi = new THREE.HemisphereLight('#dcebff', '#5a6070', 0.6);
+scene.add(hemi);
+
+// vertical gradient sky (screen-space, cheap) — far nicer than a flat colour
+function skyTex(top, mid, bot) {
+  const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, top); g.addColorStop(0.52, mid); g.addColorStop(1, bot);
+  x.fillStyle = g; x.fillRect(0, 0, 8, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// ground texture: big tile grid + soft radial glow toward the centre
+function groundTex(base, line, accent) {
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d');
+  x.fillStyle = base; x.fillRect(0, 0, S, S);
+  const rg = x.createRadialGradient(S / 2, S / 2, 40, S / 2, S / 2, S / 2);
+  rg.addColorStop(0, accent); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = rg; x.fillRect(0, 0, S, S);
+  x.strokeStyle = line; x.lineWidth = 2;
+  for (let i = 0; i <= 8; i++) { const p = (i / 8) * S; x.beginPath(); x.moveTo(p, 0); x.lineTo(p, S); x.moveTo(0, p); x.lineTo(S, p); x.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 
 // white tiled-panel texture with grid seams — the signature RIVALS-arena look
 const _gridBase = (() => {
@@ -134,29 +162,45 @@ let rangeTargets = [];   // lobby shooting-range dummies
 function buildMap(def) {
   if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); }
   mapGroup = new THREE.Group();
-  scene.background = new THREE.Color(def.sky);
-  scene.fog = new THREE.FogExp2(def.sky, def.fog || 0.01);
-  // ground
-  const g = new THREE.Mesh(
-    new THREE.BoxGeometry(def.ground.size, 1, def.ground.size),
-    new THREE.MeshLambertMaterial({ color: def.ground.color })
-  );
+  const panels = def.id !== 'lobby';
+  // gradient sky + horizon-matched fog
+  const sky = def.sky2 || [def.sky, def.sky, def.sky];
+  scene.background = skyTex(sky[0], sky[1], sky[2]);
+  scene.fog = new THREE.FogExp2(sky[2], def.fog || 0.01);
+  // ground — textured grid with a soft centre glow (flat colour for the lobby)
+  const gt = def.ground.tex;
+  const gmat = gt
+    ? (() => { const t = groundTex(gt[0], gt[1], gt[2]); t.repeat.set(def.ground.size / 8, def.ground.size / 8); return new THREE.MeshLambertMaterial({ color: '#ffffff', map: t }); })()
+    : new THREE.MeshLambertMaterial({ color: def.ground.color });
+  const g = new THREE.Mesh(new THREE.BoxGeometry(def.ground.size, 1, def.ground.size), gmat);
   g.position.y = -0.5;
   mapGroup.add(g);
-  // boxes — match maps get the tiled-panel treatment
-  const panels = def.id !== 'lobby';
+  // centre emblem decal (match maps) — a subtle painted ring on the floor
+  if (def.emblem) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d'); x.clearRect(0, 0, 256, 256);
+    x.strokeStyle = def.emblem; x.lineWidth = 10; x.globalAlpha = 0.5;
+    x.beginPath(); x.arc(128, 128, 92, 0, Math.PI * 2); x.stroke();
+    x.lineWidth = 4; x.beginPath(); x.arc(128, 128, 60, 0, Math.PI * 2); x.stroke();
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const disc = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.02; mapGroup.add(disc);
+  }
+  // boxes — match maps get the tiled-panel treatment; glow boxes are emissive
   for (const b of def.boxes) {
     const mat = b.glow
       ? new THREE.MeshBasicMaterial({ color: b.color })
-      : new THREE.MeshLambertMaterial({ color: b.color, map: panels ? panelTex(Math.max(b.sx, b.sz), Math.max(b.sy, 1)) : null });
+      : new THREE.MeshLambertMaterial({ color: b.color, map: panels && !b.plain ? panelTex(Math.max(b.sx, b.sz), Math.max(b.sy, 1)) : null });
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.sx, b.sy, b.sz), mat);
     mesh.position.set(b.x, b.y, b.z);
     mapGroup.add(mesh);
   }
   // flat, bright, even light in matches (like the original's arenas)
-  ambientLight.intensity = panels ? 1.9 : 1.1;
-  sun.intensity = panels ? 0.95 : 1.4;
-  fill.intensity = panels ? 0.45 : 0.5;
+  ambientLight.intensity = panels ? 1.7 : 1.1;
+  sun.intensity = panels ? 1.0 : 1.4;
+  fill.intensity = panels ? 0.5 : 0.5;
+  hemi.intensity = panels ? 0.9 : 0.35;
+  hemi.color.set(sky[0]); hemi.groundColor.set(def.ground.color);
   // the lobby is an interior — give it its own neon mood lighting
   if (def.id === 'lobby') {
     const l1 = new THREE.PointLight('#6ee7ff', 30, 26); l1.position.set(0, 5.4, -8);
