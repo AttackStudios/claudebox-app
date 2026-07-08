@@ -64,9 +64,10 @@ function toast(text, icon = '✨') {
 }
 
 async function api(path, body) {
+  const codeHdr = { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' };
   const res = await fetch('/api' + path, body
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    : undefined);
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json', ...codeHdr }, body: JSON.stringify(body) }
+    : { headers: codeHdr });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'request failed');
   return data;
@@ -86,6 +87,8 @@ async function ensureLogin() {
     const go = async () => {
       const name = $('login-input').value.trim().slice(0, 20);
       if (!name) return;
+      const code = $('code-input')?.value.trim();
+      if (code) localStorage.setItem('claudebox.code', code);
       try {
         const { profile } = await api('/login', { name });
         stateHub.me = profile;
@@ -819,6 +822,10 @@ async function refreshSocial() {
 // ---------------- boot ----------------
 (async () => {
   showSkeletons();
+  try {
+    const acc = await fetch('/api/access').then((r) => r.json());
+    if (acc.locked) $('code-input').classList.remove('hidden');
+  } catch {}
   await ensureLogin();
   $('me-name').textContent = stateHub.me.name;
   thumbInto($('me-thumb'), stateHub.me.avatar);

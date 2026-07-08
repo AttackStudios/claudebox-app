@@ -1300,7 +1300,7 @@ status('Connecting…');
 buildMap(LOBBY);
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
 net.connect();
-net.join({ name: identity.name, avatar: identity.avatar });
+net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
 net.startMovementStream(() => ({
   t: 'move',
   x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),

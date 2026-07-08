@@ -15,6 +15,13 @@ import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS } 
 const DATA_DIR = process.env.CLAUDEBOX_DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const FILE = path.join(DATA_DIR, 'platform.json');
 
+// ---- access lock ----
+// Set the ACCESS_CODE env var (e.g. on Render) to lock the whole platform
+// behind one invite code. Unset = open (home LAN default). Checked on hub
+// login, personal API routes, and every game's WebSocket join.
+export const ACCESS_CODE = (process.env.ACCESS_CODE || '').trim();
+export const checkAccess = (code) => !ACCESS_CODE || String(code || '') === ACCESS_CODE;
+
 // Flip to true (and restart) to close Feather Friends during an update.
 export const FF_MAINTENANCE = false;
 // Flip to true (and restart) to close Backpacking during an update.
@@ -306,6 +313,20 @@ const levelSlug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '
 export function hubRouter() {
   const r = express.Router();
   r.use(express.json({ limit: '2mb' }));   // levels can be large
+
+  // whether this deployment is invite-locked (the hub shows a code field)
+  r.get('/access', (req, res) => res.json({ locked: !!ACCESS_CODE }));
+
+  // invite-code gate: when locked, everything personal/mutating needs the
+  // code (sent as the x-cbx-code header by the hub/games, or in the body).
+  const OPEN = new Set(['/access', '/games', '/rewards/catalog']);
+  r.use((req, res, next) => {
+    if (!ACCESS_CODE) return next();
+    if (OPEN.has(req.path) || (req.method === 'GET' && req.path.startsWith('/level/'))) return next();
+    const code = req.get('x-cbx-code') || req.body?.code;
+    if (checkAccess(code)) return next();
+    res.status(403).json({ error: 'This ClaudeBox is locked — enter the invite code.' });
+  });
 
   r.get('/games', (req, res) => res.json({ games: gamesWithStats() }));
 

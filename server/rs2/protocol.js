@@ -5,7 +5,7 @@ import { state, genId, save, publicPlayer, publicOrder, publicRestaurants, resta
 import { ITEMS, DISHES, STAFF, WALL_COLORS, FLOOR_STYLES, tierPrice, FREE_DISHES } from '../../shared/rs2/catalog.js';
 import { PLOTS, HOUSES, EXPANSIONS, buildingFrame, SPAWN, groundAt } from '../../shared/rs2/world.js';
 import { createOrder, takeOrderFrom, serveCustomer, completeDelivery, ensureStaffBots, orderStepDone } from './sim.js';
-import { ensurePlatformUser } from '../hub.js';
+import { ensurePlatformUser, checkAccess } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 
@@ -390,6 +390,7 @@ function payOwners(order, ctx) {
 }
 
 function onJoin(p, msg, ctx) {
+  if (!checkAccess(msg.code)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'Locked — open from the ClaudeBox hub with the invite code.' })); p.ws.close(4003, 'locked'); } catch {} return; }
   const { send, broadcast } = ctx;
   const name = clean(msg.name, 20) || 'Cook';
   p.name = name;

@@ -806,7 +806,7 @@ function frame(now) {
   scene.add(myAvatar.group);
   camera.position.set(SPAWN.x, SPAWN.y + 8, SPAWN.z + 12);
   net.connect();
-  net.join({ name: identity.name, avatar: identity.avatar });
+  net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
   net.startMovementStream(() => ({
     t: 'move',
     x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2),

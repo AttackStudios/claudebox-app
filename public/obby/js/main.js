@@ -604,7 +604,7 @@ function frame(now) {
   camera.position.set(START.x, START.y + 6, START.z + 10);
   net.connect();
   net.on('_open', () => {});
-  net.join({ name: identity.name, avatar: identity.avatar });
+  net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
   net.startMovementStream(() => {
     if (game.carried) return null;
     return { t: 'move', x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), ry: +player.ry.toFixed(3), anim: player.anim };

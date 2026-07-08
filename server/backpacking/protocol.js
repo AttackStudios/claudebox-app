@@ -6,7 +6,7 @@ import { state, genId, save, publicPlayer, publicVan, clock01 } from './state.js
 import { sprayAt } from './bears.js';
 import { botItems } from './bots.js';
 import { WORLD, height, lavaAt } from '../../shared/bp/worldgen.js';
-import { ensurePlatformUser, BP_MAINTENANCE } from '../hub.js';
+import { ensurePlatformUser, BP_MAINTENANCE, checkAccess } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 const cleanColor = (c, fb) => (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c.toLowerCase() : fb);
@@ -148,6 +148,7 @@ export function handleMessage(p, msg, ctx) {
 }
 
 function onJoin(p, msg, { send, broadcast }) {
+  if (!checkAccess(msg.code)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'Locked — open from the ClaudeBox hub with the invite code.' })); p.ws.close(4003, 'locked'); } catch {} return; }
   if (BP_MAINTENANCE && msg.dev !== 1) {
     send({ t: 'toast', text: '🔧 Backpacking is being upgraded — back soon!' });
     try { p.ws.close(4503, 'maintenance'); } catch {}

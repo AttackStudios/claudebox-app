@@ -12,7 +12,7 @@ export async function loadIdentity() {
   const name = localStorage.getItem('claudebox.user');
   if (!name) { location.href = '/'; return new Promise(() => {}); }
   try {
-    const res = await fetch('/api/avatar/' + encodeURIComponent(name));
+    const res = await fetch('/api/avatar/' + encodeURIComponent(name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } });
     if (!res.ok) throw new Error('no profile');
     const data = await res.json();
     await preloadAvatars(['boy', 'girl']);

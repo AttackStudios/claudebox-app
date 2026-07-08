@@ -5,7 +5,7 @@ import { state, clock, publicPlayer, publicFighter } from './state.js';
 import { ROUND, MODES, WEAPONS, LOADOUT } from '../../shared/rivals/config.js';
 import { createMatch, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade } from './match.js';
 import { tickBots } from './bots.js';
-import { ensurePlatformUser } from '../hub.js';
+import { ensurePlatformUser, checkAccess } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 
@@ -120,6 +120,7 @@ export function handleMessage(p, msg, ctx) {
 }
 
 function onJoin(p, msg, ctx) {
+  if (!checkAccess(msg.code)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'Locked — open from the ClaudeBox hub with the invite code.' })); p.ws.close(4003, 'locked'); } catch {} return; }
   const name = clean(msg.name, 20) || 'Rival';
   p.name = name;
   p.nameLower = name.toLowerCase();

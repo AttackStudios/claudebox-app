@@ -36,7 +36,7 @@
 
   async function api(path, body) {
     const res = await fetch('/api' + path, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' }, body: JSON.stringify(body),
     });
     return res.json().catch(() => ({}));
   }

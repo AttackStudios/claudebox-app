@@ -698,6 +698,7 @@ net.join({
   name: game.me.name,
   bird: game.me.bird,
   nameStyle: game.me.nameStyle,
+  code: localStorage.getItem('claudebox.code') || '',
 });
 
 net.on('welcome', (msg) => {

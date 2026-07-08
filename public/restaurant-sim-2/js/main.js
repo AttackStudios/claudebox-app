@@ -690,7 +690,7 @@ status('Calling the health inspector…');
 const net = new Net();
 game.net = net;
 net.connect();
-net.join({ name: game.me.name, avatar: game.me.avatar });
+net.join({ name: game.me.name, avatar: game.me.avatar, code: localStorage.getItem('claudebox.code') || '' });
 
 function hydrateOrder(o) {
   // derive current step definition from catalog

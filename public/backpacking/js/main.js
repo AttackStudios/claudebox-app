@@ -512,7 +512,7 @@ status('Radioing the ranger station…');
 const net = new Net();
 game.net = net;
 net.connect();
-net.join({ name: game.me.name, avatar: game.me.avatar });
+net.join({ name: game.me.name, avatar: game.me.avatar, code: localStorage.getItem('claudebox.code') || '' });
 
 net.on('welcome', (msg) => {
   game.me.id = msg.id;
