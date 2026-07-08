@@ -5,6 +5,7 @@ import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
 import { SPAWN, CARS, BUILDINGS, ROADS, GROUND } from '/shared/brook/town.js';
+import { sfx, toggleRadio, radioIsOn } from './sfx.js';
 
 const $ = (s) => document.querySelector(s);
 const status = (t) => { const e = $('#load-status'); if (e) e.textContent = t; };
@@ -21,7 +22,8 @@ const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 12
 function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-scene.add(new THREE.HemisphereLight('#eaf4ff', '#6a7d55', 1.05));
+const hemi = new THREE.HemisphereLight('#eaf4ff', '#6a7d55', 1.05);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff2d8', 1.5);
 sun.position.set(60, 120, 40); sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -141,11 +143,12 @@ function makeTree(x, z) {
   f.position.y = 4.4; f.castShadow = true; g.add(f);
   scene.add(g); collider(x, z, 1, 1);
 }
+const lampHeads = [];
 function makeLamp(x, z) {
   const g = new THREE.Group(); g.position.set(x, 0, z);
   g.add(box(0.3, 5, 0.3, '#2a2e36', 0, 2.5, 0));
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffe6a0' }));
-  head.position.y = 5; g.add(head);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffe6a0', transparent: true, opacity: 0.15 }));
+  head.position.y = 5; g.add(head); lampHeads.push(head);
   scene.add(g);
 }
 function buildProps() {
@@ -237,8 +240,9 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Enter') { openChat(); e.preventDefault(); return; }
   if (e.repeat) return;
   keys.add(e.code);
-  if (e.code === 'KeyE') toggleCar();
-  if (e.code === 'Space') keys.add('Space');
+  if (e.code === 'KeyE') interact();
+  if (e.code === 'KeyH') horn();
+  if (e.code === 'KeyP') togglePhone();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 
@@ -259,8 +263,10 @@ let stick = null;
   look.addEventListener('touchend', () => lid = null, { passive: true });
   $('#btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); keys.add('Space'); }, { passive: false });
   $('#btn-jump').addEventListener('touchend', () => keys.delete('Space'), { passive: false });
-  $('#btn-action').addEventListener('touchstart', (e) => { e.preventDefault(); toggleCar(); }, { passive: false });
+  $('#btn-action').addEventListener('touchstart', (e) => { e.preventDefault(); interact(); }, { passive: false });
   $('#btn-chat').addEventListener('touchstart', (e) => { e.preventDefault(); openChat(); }, { passive: false });
+  $('#btn-phone-m').addEventListener('touchstart', (e) => { e.preventDefault(); togglePhone(); }, { passive: false });
+  $('#btn-horn').addEventListener('touchstart', (e) => { e.preventDefault(); horn(); }, { passive: false });
   stick = s;
 })();
 
@@ -282,10 +288,66 @@ function nearestFreeCar() {
   }
   return best;
 }
-function toggleCar() {
+// ---------------- jobs, benches, interact ----------------
+const JOBS = [
+  { x: -54, z: -36, name: 'Teacher', emoji: '🍎', pay: 45 },
+  { x: 54, z: -36, name: 'Doctor', emoji: '🩺', pay: 60 },
+  { x: 56, z: 40, name: 'Officer', emoji: '🚓', pay: 55 },
+  { x: -56, z: 42, name: 'Cashier', emoji: '🛒', pay: 35 },
+  { x: 0, z: -64, name: 'Chef', emoji: '🍔', pay: 40 },
+  { x: 66, z: -6, name: 'Mechanic', emoji: '🔧', pay: 50 },
+];
+const BENCHES = [
+  { x: -10, z: 12, ry: 0 }, { x: 10, z: 12, ry: 0 },
+  { x: -10, z: -12, ry: Math.PI }, { x: 10, z: -12, ry: Math.PI },
+];
+function buildBenches() {
+  for (const b of BENCHES) {
+    const g = new THREE.Group(); g.position.set(b.x, 0, b.z); g.rotation.y = b.ry;
+    g.add(box(2.6, 0.25, 0.9, '#8a5a34', 0, 0.5, 0));
+    g.add(box(2.6, 0.7, 0.2, '#7a4f2c', 0, 0.9, -0.35));
+    g.add(box(0.2, 0.5, 0.9, '#5a3a1c', -1.1, 0.25, 0)); g.add(box(0.2, 0.5, 0.9, '#5a3a1c', 1.1, 0.25, 0));
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    scene.add(g);
+  }
+}
+let money = (() => { try { return Math.max(0, +localStorage.getItem('brook.money') || 0); } catch { return 0; } })();
+function setMoney(v) { money = Math.max(0, Math.round(v)); try { localStorage.setItem('brook.money', money); } catch {} const el = $('#money-amt'); if (el) el.textContent = money.toLocaleString(); }
+let lastJobAt = 0;
+let sitting = null;   // bench being sat on
+
+function nearestInteractable() {
+  const px = player.pos.x, pz = player.pos.z;
+  let best = null, bd = 25;   // 5^2
+  for (const [id, c] of cars) { if (c.driver) continue; const d = (c.x - px) ** 2 + (c.z - pz) ** 2; if (d < bd) { bd = d; best = { kind: 'car', id, c, hint: '🚗 Press E to drive' }; } }
+  for (const j of JOBS) { const d = (j.x - px) ** 2 + (j.z - pz) ** 2; if (d < bd) { bd = d; best = { kind: 'job', job: j, hint: `${j.emoji} Press E to work as ${j.name} (+$${j.pay})` }; } }
+  for (const b of BENCHES) { const d = (b.x - px) ** 2 + (b.z - pz) ** 2; if (d < 9) { best = { kind: 'bench', bench: b, hint: '🪑 Press E to sit' }; } }
+  return best;
+}
+function interact() {
   if (game.car) { exitCar(); return; }
-  const n = nearestFreeCar();
-  if (n) enterCar(n.id, n.c);
+  if (sitting) { sitting = null; player.anim = 'idle'; return; }
+  const t = nearestInteractable();
+  if (!t) return;
+  if (t.kind === 'car') enterCar(t.id, t.c);
+  else if (t.kind === 'job') doJob(t.job);
+  else if (t.kind === 'bench') sitBench(t.bench);
+}
+function doJob(job) {
+  const now = performance.now();
+  if (now - lastJobAt < 1500) return;   // brief shift cooldown
+  lastJobAt = now;
+  setMoney(money + job.pay);
+  sfx.cash();
+  addChat('💼', `You worked as a ${job.name} and earned $${job.pay}!`, false);
+  startEmote('cheer');
+  window.ClaudeBox?.completeChallenge?.('brook-firstjob');
+}
+function sitBench(b) {
+  sitting = b;
+  player.pos = { x: b.x - Math.sin(b.ry) * 0.1, y: 0.55, z: b.z - Math.cos(b.ry) * 0.1 };
+  player.ry = b.ry + Math.PI; player.vel = { x: 0, y: 0, z: 0 };
+  player.anim = 'sit'; sfx.sit();
 }
 function enterCar(id, c) {
   game.car = { id, x: c.x, z: c.z, ry: c.ry, speed: 0 };
@@ -330,6 +392,18 @@ function updateCar(dt) {
 function updateWalk(dt) {
   const inp = readInput();
   const moving = Math.abs(inp.x) > 0.05 || Math.abs(inp.z) > 0.05;
+  if (moving) { sitting = null; emoteAnim = null; emoteUntil = 0; }
+  if (sitting) {
+    player.anim = 'sit';
+    if (myAvatar.group) { myAvatar.group.position.set(player.pos.x, 0.55, player.pos.z); myAvatar.group.rotation.y = player.ry; myAvatar.ctrl.setAnim('sit'); }
+    return;
+  }
+  if (emoteAnim && performance.now() < emoteUntil) {
+    player.anim = emoteAnim;
+    if (myAvatar.group) { myAvatar.group.position.set(player.pos.x, player.pos.y, player.pos.z); myAvatar.group.rotation.y = player.ry; myAvatar.ctrl.setAnim(emoteAnim); }
+    return;
+  }
+  if (emoteAnim) emoteAnim = null;
   const fx = -Math.sin(orbit.yaw), fz = -Math.cos(orbit.yaw);
   const rx = Math.cos(orbit.yaw), rz = -Math.sin(orbit.yaw);
   let wx = fx * inp.z + rx * inp.x, wz = fz * inp.z + rz * inp.x;
@@ -420,10 +494,13 @@ function frame() {
   if (myAvatar.ctrl) {
     if (game.car) updateCar(dt); else updateWalk(dt);
     myAvatar.ctrl.update(dt);
-    // nearby-car hint
-    if (!game.car) { const n = nearestFreeCar(); hint(n ? '🚗 Press E to drive' : ''); }
-    sun.position.set(player.pos.x + 60, 120, player.pos.z + 40); sun.target.position.set(player.pos.x, 0, player.pos.z);
+    // context interact hint
+    if (game.car) hint('🚗 Press E to exit');
+    else if (sitting) hint('🪑 Press E to stand');
+    else { const t = nearestInteractable(); hint(t ? t.hint : ''); }
   }
+  updateDayNight(dt);
+  updateNPCs(dt);
   // remotes
   for (const [, r] of remotes) {
     const s = r.interp.sample([3]);
@@ -440,6 +517,128 @@ function frame() {
   renderer.render(scene, camera);
 }
 
+// ---------------- emotes ----------------
+let emoteUntil = 0, emoteAnim = null;
+const EMOTES = [
+  { id: 'dance', label: 'Dance', emoji: '🕺', clip: 'dance', hold: true },
+  { id: 'sit', label: 'Sit', emoji: '🧎', clip: 'sit', hold: true },
+  { id: 'cheer', label: 'Cheer', emoji: '🙌', clip: 'jump', hold: false, dur: 900 },
+  { id: 'faint', label: 'Faint', emoji: '😵', clip: 'death', hold: false, dur: 1600 },
+  { id: 'wave', label: 'Wave', emoji: '👋', clip: 'idle', hold: false, dur: 700 },
+  { id: 'stop', label: 'Stop', emoji: '🛑', clip: null, hold: false, dur: 0 },
+];
+function startEmote(id) {
+  const e = EMOTES.find((x) => x.id === id); if (!e) return;
+  if (id === 'stop' || !e.clip) { emoteAnim = null; emoteUntil = 0; return; }
+  emoteAnim = e.clip; emoteUntil = e.hold ? Infinity : performance.now() + (e.dur || 800);
+  sfx.emote();
+}
+
+// ---------------- phone ----------------
+let phoneTab = 'emotes';
+function togglePhone() { const p = $('#phone'); if (p.classList.contains('hidden')) openPhone(); else p.classList.add('hidden'); }
+function openPhone() { $('#phone').classList.remove('hidden'); renderPhone(); sfx.ui(); }
+function renderPhone() {
+  document.querySelectorAll('.ptab').forEach((b) => b.classList.toggle('active', b.dataset.tab === phoneTab));
+  const body = $('#phone-body'); const title = $('#phone-title');
+  if (phoneTab === 'emotes') {
+    title.textContent = 'Emotes';
+    body.innerHTML = `<div class="emote-grid">${EMOTES.map((e) => `<button class="emote-btn" data-e="${e.id}"><span>${e.emoji}</span>${e.label}</button>`).join('')}</div>`;
+    body.querySelectorAll('.emote-btn').forEach((b) => b.addEventListener('click', () => startEmote(b.dataset.e)));
+  } else if (phoneTab === 'teleport') {
+    title.textContent = 'Teleport';
+    body.innerHTML = `<div class="tp-list">${TELEPORTS.map((t) => `<button class="tp-btn" data-t="${t.name}"><span>${t.emoji}</span>${t.name}</button>`).join('')}</div>`;
+    body.querySelectorAll('.tp-btn').forEach((b) => b.addEventListener('click', () => teleportTo(b.dataset.t)));
+  } else if (phoneTab === 'music') {
+    title.textContent = 'Radio';
+    const on = radioIsOn();
+    body.innerHTML = `<button class="music-toggle ${on ? '' : 'off'}" id="music-btn">${on ? '⏸ Stop Radio' : '▶ Play Radio'}</button><p class="info-p">Chill town radio — a mellow synth loop to vibe to while you drive around Brooktown.</p>`;
+    $('#music-btn').addEventListener('click', () => { toggleRadio(); sfx.ui(); renderPhone(); });
+  } else {
+    title.textContent = 'Brooktown';
+    body.innerHTML = `<p class="info-p"><b>Welcome to Brooktown!</b><br><br>🚶 <b>WASD</b> to walk, <b>Shift</b> run, <b>Space</b> jump.<br>🚗 <b>E</b> near a car to drive, work a job, or sit.<br>📢 <b>H</b> to honk.<br>💬 <b>Enter</b> to chat.<br>📱 <b>P</b> for this phone.<br><br>Work jobs to earn 💵, then show off your ride. Have fun & roleplay!</p>`;
+  }
+}
+document.querySelectorAll('.ptab').forEach((b) => b.addEventListener('click', () => { phoneTab = b.dataset.tab; renderPhone(); sfx.ui(); }));
+$('#phone-close')?.addEventListener('click', () => $('#phone').classList.add('hidden'));
+$('#btn-phone')?.addEventListener('click', togglePhone);
+$('#btn-horn2')?.addEventListener('click', () => horn());
+
+// ---------------- teleport ----------------
+const TELEPORTS = [
+  { name: 'Town Plaza', emoji: '⛲', x: 0, z: 16 },
+  { name: 'School', emoji: '🏫', x: -54, z: -34 },
+  { name: 'Hospital', emoji: '🏥', x: 54, z: -34 },
+  { name: 'Police', emoji: '🚓', x: 56, z: 40 },
+  { name: 'Market', emoji: '🛒', x: -56, z: 40 },
+  { name: 'Diner', emoji: '🍔', x: 0, z: -62 },
+];
+function teleportTo(name) {
+  const t = TELEPORTS.find((x) => x.name === name); if (!t) return;
+  if (game.car) exitCar();
+  sitting = null; emoteAnim = null;
+  player.pos = { x: t.x, y: 0, z: t.z }; player.vel = { x: 0, y: 0, z: 0 };
+  $('#phone').classList.add('hidden'); sfx.enter();
+}
+
+// ---------------- horn ----------------
+function horn() { sfx.horn(); if (net) net.send({ t: 'emote', emote: 'horn' }); }
+
+// ---------------- day / night ----------------
+const DAY_LEN = 300;   // seconds for a full day
+let dayT = 0.35;       // start mid-morning (0=midnight, .5=noon)
+const SKY_DAY = new THREE.Color('#a9d8f5'), SKY_DUSK = new THREE.Color('#f0a86a'), SKY_NIGHT = new THREE.Color('#0b1330');
+function updateDayNight(dt) {
+  dayT = (dayT + dt / DAY_LEN) % 1;
+  const sunA = (dayT - 0.25) * Math.PI * 2;          // noon at top
+  const height = Math.sin(sunA);                       // -1..1
+  sun.position.set(Math.cos(sunA) * 120, Math.max(-20, height * 140), 40);
+  sun.target.position.set(player.pos.x, 0, player.pos.z);
+  const day = Math.max(0, height);                     // 0 at/under horizon, 1 at noon
+  sun.intensity = 0.15 + day * 1.5;
+  hemi.intensity = 0.35 + day * 0.9;
+  // sky color: night → dusk → day
+  const sky = SKY_NIGHT.clone();
+  if (height > 0.15) sky.copy(SKY_NIGHT).lerp(SKY_DAY, Math.min(1, (height - 0.15) / 0.4));
+  else if (height > -0.15) sky.copy(SKY_NIGHT).lerp(SKY_DUSK, (height + 0.15) / 0.3);
+  scene.background.copy(sky); scene.fog.color.copy(sky);
+  // HUD clock
+  const mins = Math.floor(dayT * 24 * 60); const hh = Math.floor(mins / 60), mm = mins % 60;
+  const el = $('#clock-time'); if (el) el.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  for (const h of lampHeads) h.material.opacity = day > 0.25 ? 0.15 : 1;
+}
+
+// ---------------- NPC townsfolk (client-side ambiance) ----------------
+const npcs = [];
+const NPC_NAMES = ['Max', 'Ivy', 'Leo', 'Zoe', 'Sam', 'Mia', 'Otto', 'Nia'];
+function spawnNPCs() {
+  for (let i = 0; i < 7; i++) {
+    const ctrl = makeAvatar({ body: i % 2 ? 'girl' : 'boy', skin: ['#f5d3b3', '#c98e62', '#8a5a3a'][i % 3], shirtColor: ['#e0503c', '#3a7bd5', '#4ade80', '#ffcf5c', '#9b6bff'][i % 5] });
+    ctrl.group.add(nameSprite(NPC_NAMES[i]));
+    scene.add(ctrl.group);
+    const p = { x: (Math.random() * 2 - 1) * 80, z: (Math.random() * 2 - 1) * 80 };
+    npcs.push({ ctrl, x: p.x, z: p.z, ry: 0, tx: p.x, tz: p.z, wait: 0 });
+  }
+}
+function updateNPCs(dt) {
+  for (const n of npcs) {
+    const dx = n.tx - n.x, dz = n.tz - n.z, d = Math.hypot(dx, dz);
+    if (d < 1.2) {
+      n.wait -= dt;
+      if (n.wait <= 0) { n.tx = (Math.random() * 2 - 1) * 90; n.tz = (Math.random() * 2 - 1) * 90; n.wait = 1 + Math.random() * 3; }
+      n.ctrl.setAnim('idle'); n.ctrl.moveSpeed = 0;
+    } else {
+      const ux = dx / d, uz = dz / d, sp = 3.2;
+      const nx = n.x + ux * sp * dt, nz = n.z + uz * sp * dt;
+      const s = collideXZ(nx, nz, 0.5);
+      if (Math.hypot(s.x - n.x, s.z - n.z) < sp * dt * 0.4) { n.tx = (Math.random() * 2 - 1) * 90; n.tz = (Math.random() * 2 - 1) * 90; }
+      n.x = s.x; n.z = s.z; n.ry = Math.atan2(ux, uz);
+      n.ctrl.setAnim('walk'); n.ctrl.moveSpeed = sp;
+    }
+    n.ctrl.group.position.set(n.x, 0, n.z); n.ctrl.group.rotation.y = n.ry; n.ctrl.update(dt);
+  }
+}
+
 // ---------------- boot ----------------
 (async function boot() {
   status('Waking the town…');
@@ -449,6 +648,7 @@ function frame() {
   myAvatar.ctrl = makeAvatar(identity.avatar || {});
   myAvatar.group = myAvatar.ctrl.group; scene.add(myAvatar.group);
   camera.position.set(SPAWN.x, 8, SPAWN.z + 12);
+  buildBenches(); spawnNPCs(); setMoney(money);
   net.connect();
   net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
   net.startMovementStream(() => game.car

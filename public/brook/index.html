@@ -25,6 +25,33 @@
 <div id="hud" class="hidden">
   <div id="action-hint" class="hidden"></div>
 
+  <!-- top HUD: money + clock -->
+  <div id="top-hud">
+    <div id="money">💵 <b id="money-amt">0</b></div>
+    <div id="clock">🕐 <span id="clock-time">12:00</span></div>
+  </div>
+
+  <!-- desktop quick buttons -->
+  <div id="quickbar">
+    <button id="btn-phone" class="qbtn" title="Phone (P)">📱</button>
+    <button id="btn-horn2" class="qbtn" title="Horn (H)">📢</button>
+  </div>
+
+  <!-- phone -->
+  <div id="phone" class="hidden">
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-head"><span id="phone-title">Emotes</span><button id="phone-close">✕</button></div>
+      <div id="phone-body"></div>
+      <div class="phone-tabs">
+        <button class="ptab active" data-tab="emotes">😀</button>
+        <button class="ptab" data-tab="teleport">🗺️</button>
+        <button class="ptab" data-tab="music">🎵</button>
+        <button class="ptab" data-tab="info">ℹ️</button>
+      </div>
+    </div>
+  </div>
+
   <!-- chat -->
   <div id="chat-log"></div>
   <div id="chat-row" class="hidden">
@@ -42,6 +69,8 @@
     <button id="btn-jump" class="m-btn">⤒</button>
     <button id="btn-action" class="m-btn">🚗</button>
     <button id="btn-chat" class="m-btn">💬</button>
+    <button id="btn-phone-m" class="m-btn">📱</button>
+    <button id="btn-horn" class="m-btn">📢</button>
   </div>
 </div>
 
