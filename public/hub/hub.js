@@ -551,6 +551,100 @@ function showSkeletons() {
   fr.innerHTML = Array.from({ length: 5 }, () => '<div class="friend-circle"><span class="skeleton sk-circle"></span></div>').join('');
 }
 
+// ---------------- direct messages ----------------
+let dmWith = null, dmPoll = null;
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'now'; if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h'; return Math.floor(s / 86400) + 'd';
+}
+async function openDMs(withName) {
+  $('dm-overlay').classList.remove('hidden');
+  await loadDmInbox();
+  if (withName) openThread(withName); else showDmList();
+  sfx.select();
+}
+function closeDMs() { $('dm-overlay').classList.add('hidden'); clearInterval(dmPoll); dmPoll = null; dmWith = null; updateDmBadge(); }
+function showDmList() {
+  dmWith = null; clearInterval(dmPoll); dmPoll = null;
+  $('dm-thread-view').classList.add('hidden'); $('dm-list').classList.remove('hidden');
+  $('dm-back').classList.add('hidden'); $('dm-title').textContent = 'Messages';
+}
+async function loadDmInbox() {
+  try {
+    const data = await api('/dm/inbox?name=' + encodeURIComponent(stateHub.me.name));
+    const host = $('dm-list'); host.innerHTML = '';
+    if (!data.conversations?.length) { host.innerHTML = '<div class="empty-note">No conversations yet. Message a friend to start one!</div>'; return; }
+    for (const c of data.conversations) {
+      const row = document.createElement('button'); row.className = 'dm-conv';
+      const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, c.avatar);
+      const mid = document.createElement('div'); mid.className = 'dm-conv-mid';
+      const nm = document.createElement('span'); nm.className = 'dm-conv-name'; nm.textContent = c.name;
+      applyNameCosmetic(nm, c.nameColor, '');
+      const prev = document.createElement('span'); prev.className = 'dm-conv-prev';
+      prev.textContent = c.last ? (c.last.from === stateHub.me.name.toLowerCase() ? 'You: ' : '') + c.last.text : 'Say hi 👋';
+      mid.append(nm, prev);
+      const right = document.createElement('div'); right.className = 'dm-conv-right';
+      right.innerHTML = `<span class="dm-time">${c.last ? timeAgo(c.last.ts) : ''}</span>` + (c.unread ? `<span class="dm-unread">${c.unread}</span>` : '');
+      row.append(cv, mid, right);
+      row.addEventListener('click', () => openThread(c.name));
+      host.appendChild(row);
+    }
+  } catch (e) { toast(e.message, '⚠️'); }
+}
+async function openThread(name) {
+  dmWith = name;
+  $('dm-list').classList.add('hidden'); $('dm-thread-view').classList.remove('hidden');
+  $('dm-back').classList.remove('hidden'); $('dm-title').textContent = name;
+  await refreshThread();
+  $('dm-input').focus();
+  clearInterval(dmPoll); dmPoll = setInterval(refreshThread, 3000);
+}
+async function refreshThread() {
+  if (!dmWith) return;
+  try {
+    const data = await api(`/dm/thread?name=${encodeURIComponent(stateHub.me.name)}&with=${encodeURIComponent(dmWith)}`);
+    renderMessages(data.messages || []);
+  } catch (e) { /* transient */ }
+}
+function renderMessages(msgs) {
+  const host = $('dm-messages'); const meLower = stateHub.me.name.toLowerCase();
+  const atBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 60;
+  host.innerHTML = '';
+  for (const m of msgs) {
+    const b = document.createElement('div');
+    b.className = 'dm-msg' + (m.from === meLower ? ' me' : '');
+    b.innerHTML = `<span class="dm-bubble"></span>`;
+    b.querySelector('.dm-bubble').textContent = m.text;
+    host.appendChild(b);
+  }
+  if (atBottom || true) host.scrollTop = host.scrollHeight;
+}
+async function sendDm() {
+  const inp = $('dm-input'); const text = inp.value.trim();
+  if (!text || !dmWith) return;
+  inp.value = '';
+  try {
+    const data = await api('/dm/send', { name: stateHub.me.name, to: dmWith, text });
+    renderMessages(data.messages || []); sfx.tap();
+  } catch (e) { toast(e.message, '⚠️'); inp.value = text; }
+}
+async function updateDmBadge() {
+  try {
+    const data = await api('/dm/inbox?name=' + encodeURIComponent(stateHub.me.name));
+    const badge = $('dm-badge');
+    if (data.unread > 0) { badge.textContent = data.unread > 99 ? '99+' : data.unread; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  } catch {}
+}
+$('dm-btn').addEventListener('click', () => openDMs());
+$('dm-close').addEventListener('click', closeDMs);
+$('dm-back').addEventListener('click', () => { showDmList(); loadDmInbox(); });
+$('dm-send').addEventListener('click', sendDm);
+$('dm-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendDm(); });
+$('dm-overlay').addEventListener('click', (e) => { if (e.target.id === 'dm-overlay') closeDMs(); });
+
 // ---------------- connect tab ----------------
 function personRow(person, isFriend) {
   const row = document.createElement('div');
@@ -566,6 +660,11 @@ function personRow(person, isFriend) {
     const join = document.createElement('button'); join.className = 'join'; join.textContent = 'Join';
     join.addEventListener('click', () => launchGame(person.status.split(':')[1] || 'feather-friends'));
     row.appendChild(join);
+  }
+  if (isFriend) {
+    const msg = document.createElement('button'); msg.className = 'dm-open'; msg.textContent = '💬 Message';
+    msg.addEventListener('click', () => openDMs(person.name));
+    row.appendChild(msg);
   }
   const btn = document.createElement('button');
   btn.textContent = isFriend ? 'Remove' : 'Add';
@@ -1063,6 +1162,7 @@ function initSettingsTab() {
 
 // ---------------- social polling ----------------
 async function refreshSocial() {
+  updateDmBadge();
   try {
     const data = await api('/social/' + encodeURIComponent(stateHub.me.name));
     stateHub.me.recentGames = data.me.recentGames;

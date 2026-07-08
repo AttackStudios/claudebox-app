@@ -39,6 +39,7 @@
       <span class="wc-sep"></span>
       <span class="wc-part"><span class="wc-emoji">🔷</span><span id="wc-cubes">0</span></span>
     </button>
+    <button id="dm-btn" class="icon-btn" title="Messages" aria-label="Messages">💬<span id="dm-badge" class="hidden">0</span></button>
     <button id="sound-toggle" class="icon-btn" title="Sound" aria-label="Toggle sound">🔊</button>
     <div id="me-chip" title="Edit your avatar">
       <canvas id="me-thumb" width="68" height="68"></canvas>
@@ -209,6 +210,25 @@
     </div>
   </section>
 </main>
+
+<!-- direct messages -->
+<div id="dm-overlay" class="hidden">
+  <div class="dm-card">
+    <div class="dm-head">
+      <button id="dm-back" class="hidden" aria-label="Back">‹</button>
+      <h2 id="dm-title">Messages</h2>
+      <button id="dm-close" aria-label="Close">✕</button>
+    </div>
+    <div id="dm-list"></div>
+    <div id="dm-thread-view" class="hidden">
+      <div id="dm-messages"></div>
+      <div class="dm-compose">
+        <input id="dm-input" maxlength="500" placeholder="Type a message…" autocomplete="off">
+        <button id="dm-send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- login -->
 <div id="login" class="login-overlay hidden">

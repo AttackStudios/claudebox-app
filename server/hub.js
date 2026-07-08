@@ -121,9 +121,9 @@ export const DEFAULT_AVATAR = {
 function loadPlatform() {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return { users: raw.users || {}, gameStats: raw.gameStats || {} };
+    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {} };
   } catch {
-    return { users: {}, gameStats: {} };
+    return { users: {}, gameStats: {}, dms: {} };
   }
 }
 
@@ -471,6 +471,52 @@ export function hubRouter() {
     if (them) them.friends = them.friends.filter((f) => f !== name);
     save();
     res.json({ ok: true });
+  });
+
+  // ---------------- direct messages ----------------
+  const dmKey = (a, b) => [a, b].sort().join('|');
+  const cleanDm = (s) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, 500);
+  r.post('/dm/send', (req, res) => {
+    const rawName = clean(req.body?.name), rawTo = clean(req.body?.to);
+    const name = rawName.toLowerCase(), to = rawTo.toLowerCase();
+    const text = cleanDm(req.body?.text);
+    if (!name || !to || name === to || !text) return res.status(400).json({ ok: false, error: 'bad request' });
+    ensureUser(rawName);
+    if (!getUser(to)) return res.status(404).json({ ok: false, error: 'no such user' });
+    if (!platform.dms) platform.dms = {};
+    const k = dmKey(name, to);
+    const thread = platform.dms[k] || (platform.dms[k] = []);
+    thread.push({ from: name, text, ts: Date.now() });
+    if (thread.length > 300) thread.splice(0, thread.length - 300);
+    const me = getUser(name); if (me) { me.dmRead = me.dmRead || {}; me.dmRead[to] = Date.now(); }
+    save();
+    res.json({ ok: true, messages: thread });
+  });
+  r.get('/dm/thread', (req, res) => {
+    const name = clean(req.query?.name).toLowerCase(), w = clean(req.query?.with).toLowerCase();
+    if (!name || !w) return res.status(400).json({ ok: false });
+    if (!platform.dms) platform.dms = {};
+    const thread = platform.dms[dmKey(name, w)] || [];
+    const me = getUser(name); if (me) { me.dmRead = me.dmRead || {}; me.dmRead[w] = Date.now(); save(); }
+    res.json({ ok: true, messages: thread, with: getUser(w)?.name || req.query.with });
+  });
+  r.get('/dm/inbox', (req, res) => {
+    const name = clean(req.query?.name).toLowerCase();
+    if (!name) return res.status(400).json({ ok: false });
+    if (!platform.dms) platform.dms = {};
+    const me = getUser(name); const read = (me && me.dmRead) || {};
+    const list = [], seen = new Set();
+    for (const [k, thread] of Object.entries(platform.dms)) {
+      const parts = k.split('|'); if (!parts.includes(name) || !thread.length) continue;
+      const other = parts[0] === name ? parts[1] : parts[0];
+      const last = thread[thread.length - 1];
+      const unread = thread.filter((x) => x.from !== name && x.ts > (read[other] || 0)).length;
+      const pu = publicUser(other); if (!pu) continue;
+      list.push({ ...pu, last, unread }); seen.add(other);
+    }
+    if (me) for (const f of (me.friends || [])) { if (seen.has(f)) continue; const pu = publicUser(f); if (pu) list.push({ ...pu, last: null, unread: 0 }); }
+    list.sort((a, b) => (b.last?.ts || 0) - (a.last?.ts || 0));
+    res.json({ ok: true, conversations: list, unread: list.reduce((s, x) => s + (x.unread || 0), 0) });
   });
 
   // Rename everywhere: platform profile, everyone's friends lists, and the
