@@ -6,8 +6,8 @@ import { boxesOf, hasLOS, eyeY, fireHitscan, meleeSwing, throwGrenade } from './
 import { clock } from './state.js';
 
 const SKILLS = {
-  easy:   { aimErr: 0.16, reaction: 0.85, burst: 3, pause: 0.7, speed: 0.75 },
-  normal: { aimErr: 0.065, reaction: 0.4, burst: 6, pause: 0.35, speed: 0.92 },
+  easy:   { aimErr: 0.16, reaction: 0.85, burst: 3, pause: 0.7, speed: 0.5 },
+  normal: { aimErr: 0.065, reaction: 0.4, burst: 6, pause: 0.35, speed: 0.68 },
 };
 
 function collideXZ(boxes, x, z, y) {
