@@ -696,3 +696,71 @@ main {
   #store-cats { flex-direction: row; overflow-x: auto; }
   .store-cat { white-space: nowrap; }
 }
+
+/* ==================== game detail page (Roblox-style experience card) ==================== */
+body.gd-open { overflow: hidden; }
+.gd-overlay { position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; background: rgba(4,6,10,.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: gdFade .2s var(--ease); }
+.gd-overlay.hidden { display: none; }
+@keyframes gdFade { from { opacity: 0; } to { opacity: 1; } }
+.gd-card { position: relative; width: 100%; max-width: 1120px; background: var(--bg-2, #14161c); border: 1px solid var(--glass-brd); border-radius: var(--r-xl); padding: 26px; box-shadow: 0 40px 100px -20px rgba(0,0,0,.8); animation: gdRise .32s var(--spring); }
+@keyframes gdRise { from { opacity: 0; transform: translateY(24px) scale(.98); } to { opacity: 1; transform: none; } }
+.gd-close { position: absolute; top: 16px; right: 16px; z-index: 5; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--glass-brd); background: rgba(20,24,34,.7); color: var(--text); font-size: 16px; cursor: pointer; transition: transform .12s, background .15s; }
+.gd-close:hover { background: rgba(255,255,255,.1); }
+.gd-close:active { transform: scale(.9); }
+/* top: media + info */
+.gd-top { display: grid; grid-template-columns: 1.65fr 1fr; gap: 26px; }
+.gd-media { position: relative; aspect-ratio: 16 / 10; border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-2); background: #0d0e12; }
+.gd-shot { position: absolute; inset: 0; background-size: cover !important; background-position: center !important; transition: background .2s; }
+.gd-shot.emoji { display: grid; place-items: center; font-size: 120px; }
+.gd-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 46px; height: 46px; border-radius: 50%; border: none; background: rgba(255,255,255,.9); color: #111; font-size: 24px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); transition: transform .12s, background .15s; }
+.gd-arrow:hover { background: #fff; transform: translateY(-50%) scale(1.08); }
+.gd-arrow.prev { left: 14px; } .gd-arrow.next { right: 14px; }
+.gd-info { display: flex; flex-direction: column; }
+.gd-title { font-size: clamp(26px, 3vw, 40px); font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+.gd-by { margin-top: 12px; font-size: 16px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.gd-by b { font-weight: 700; }
+.gd-verify { color: #fff; background: var(--accent); border-radius: 50%; width: 18px; height: 18px; display: inline-grid; place-items: center; font-size: 11px; }
+.gd-maturity { margin-top: 6px; color: var(--muted); font-size: 14px; }
+.gd-play { margin-top: auto; margin-bottom: 18px; width: 100%; padding: 18px; border: none; border-radius: var(--r-md); background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: #fff; font-size: 22px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px var(--accent-glow); transition: transform .12s, filter .15s; }
+.gd-play:hover { filter: brightness(1.08); } .gd-play:active { transform: scale(.98); }
+.gd-play.disabled { background: #2a2e39; color: var(--muted); box-shadow: none; cursor: not-allowed; }
+.gd-actions { display: flex; align-items: center; gap: 26px; }
+.gd-fav { display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: color .15s, transform .12s; }
+.gd-fav .gd-star { font-size: 26px; line-height: 1; color: var(--muted); transition: color .15s; }
+.gd-fav:hover { color: var(--text); } .gd-fav:active { transform: scale(.9); }
+.gd-fav.on { color: var(--gold); } .gd-fav.on .gd-star { color: var(--gold); }
+.gd-votes { display: flex; align-items: center; gap: 10px; flex: 1; }
+.gd-vote { font-size: 13px; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.gd-bar { flex: 1; height: 6px; border-radius: 3px; background: #b23b3b; overflow: hidden; min-width: 60px; }
+.gd-bar-fill { display: block; height: 100%; background: var(--green); border-radius: 3px; }
+/* tabs */
+.gd-tabs { display: flex; gap: 6px; margin: 26px 0 0; border-bottom: 1px solid var(--glass-brd); }
+.gd-tab { flex: 1; padding: 14px; background: none; border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; color: var(--muted); font-size: 16px; font-weight: 700; cursor: pointer; transition: color .15s, border-color .15s; }
+.gd-tab:hover { color: var(--text); }
+.gd-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+/* body */
+.gd-body { padding-top: 22px; }
+.gd-h { font-size: 22px; font-weight: 800; margin-bottom: 14px; }
+.gd-events { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 26px; }
+.gd-event { position: relative; aspect-ratio: 16/9; border-radius: var(--r-md); overflow: hidden; box-shadow: var(--sh-1); }
+.gd-event-art { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.gd-event-badge { position: absolute; top: 10px; left: 10px; background: rgba(6,8,12,.75); color: #fff; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: var(--r-pill); backdrop-filter: blur(6px); }
+.gd-desc { color: var(--text-2, #c3c8d2); line-height: 1.6; font-size: 15px; margin-bottom: 16px; }
+.gd-chipset { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.gd-chipset span { font-size: 12px; font-weight: 600; color: #dfe3ea; background: rgba(255,255,255,.08); border: 1px solid var(--glass-brd); padding: 5px 12px; border-radius: var(--r-pill); }
+.gd-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.gd-stats > div { background: var(--glass); border: 1px solid var(--glass-brd); border-radius: var(--r-md); padding: 16px; text-align: center; }
+.gd-stats b { display: block; font-size: 22px; font-weight: 900; }
+.gd-stats span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.gd-empty { text-align: center; padding: 40px 20px; }
+.gd-empty-emoji { font-size: 54px; }
+.gd-empty p { color: var(--muted); margin: 12px 0 18px; }
+.gd-store-btn, .gd-join { padding: 12px 26px; border: none; border-radius: var(--r-pill); background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: #fff; font-weight: 800; font-size: 15px; cursor: pointer; box-shadow: 0 6px 18px var(--accent-glow); }
+.gd-servers { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.gd-server { display: flex; align-items: center; gap: 8px; font-size: 16px; color: var(--text); }
+@media (max-width: 800px) {
+  .gd-card { padding: 18px; }
+  .gd-top { grid-template-columns: 1fr; gap: 16px; }
+  .gd-play { margin-top: 12px; }
+  .gd-stats { grid-template-columns: repeat(2, 1fr); }
+}

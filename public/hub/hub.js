@@ -262,9 +262,138 @@ function gameTile(game) {
   }
   tile.append(foot);
 
-  if (open) tile.addEventListener('click', () => launchGame(game.id));
+  tile.addEventListener('click', () => openGameDetail(game));
   return tile;
 }
+
+// ---------------- game detail page (Roblox-style experience card) ----------------
+const FAVS_KEY = 'claudebox.favorites';
+function favGames() { try { return JSON.parse(localStorage.getItem(FAVS_KEY) || '[]'); } catch { return []; } }
+function toggleFav(id) { const f = favGames(); const i = f.indexOf(id); if (i >= 0) f.splice(i, 1); else f.push(id); localStorage.setItem(FAVS_KEY, JSON.stringify(f)); return f.includes(id); }
+function themeGrad(g) { const t = themeOf(g.id); return `linear-gradient(150deg, ${t.from}, ${t.to})`; }
+function gdDescription(g) {
+  const tags = (g.tags || []).join(', ');
+  return `${g.tagline || ''} ${g.title} is a ${tags ? tags.toLowerCase() + ' ' : ''}experience on ClaudeBox. Jump in with friends, climb the leaderboards, and earn Stars to spend in the Store. Welcome — have fun!`;
+}
+let gdEl = null, gdShots = [], gdShot = 0, gdGame = null;
+function ensureGdEl() {
+  if (gdEl) return gdEl;
+  gdEl = document.createElement('div');
+  gdEl.id = 'game-detail'; gdEl.className = 'gd-overlay hidden';
+  gdEl.innerHTML =
+    `<div class="gd-card">
+      <button class="gd-close" aria-label="Close">✕</button>
+      <div class="gd-top">
+        <div class="gd-media">
+          <button class="gd-arrow prev" aria-label="Previous">‹</button>
+          <div class="gd-shot"></div>
+          <button class="gd-arrow next" aria-label="Next">›</button>
+        </div>
+        <div class="gd-info">
+          <h1 class="gd-title"></h1>
+          <div class="gd-by">By <b class="gd-creator"></b><span class="gd-verify" title="Verified">✔</span></div>
+          <div class="gd-maturity">Maturity: Mild</div>
+          <button class="gd-play"><span class="gd-play-ico">▶</span></button>
+          <div class="gd-actions">
+            <button class="gd-fav"><span class="gd-star">☆</span><span>Favorite</span></button>
+            <div class="gd-votes">
+              <span class="gd-vote">👍 <b class="gd-likes">0</b></span>
+              <div class="gd-bar"><i class="gd-bar-fill"></i></div>
+              <span class="gd-vote"><b class="gd-dislikes">0</b> 👎</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="gd-tabs">
+        <button class="gd-tab active" data-t="about">About</button>
+        <button class="gd-tab" data-t="store">Store</button>
+        <button class="gd-tab" data-t="servers">Servers</button>
+      </div>
+      <div class="gd-body"></div>
+    </div>`;
+  document.body.appendChild(gdEl);
+  gdEl.querySelector('.gd-close').addEventListener('click', closeGameDetail);
+  gdEl.addEventListener('click', (e) => { if (e.target === gdEl) closeGameDetail(); });
+  gdEl.querySelector('.gd-arrow.prev').addEventListener('click', () => cycleShot(-1));
+  gdEl.querySelector('.gd-arrow.next').addEventListener('click', () => cycleShot(1));
+  gdEl.querySelector('.gd-play').addEventListener('click', () => { if (gdGame) launchGame(gdGame.id); });
+  gdEl.querySelector('.gd-fav').addEventListener('click', () => {
+    if (!gdGame) return; const on = toggleFav(gdGame.id); (on ? sfx.success : sfx.tap)();
+    gdEl.querySelector('.gd-star').textContent = on ? '★' : '☆';
+    gdEl.querySelector('.gd-fav').classList.toggle('on', on);
+  });
+  gdEl.querySelectorAll('.gd-tab').forEach((b) => b.addEventListener('click', () => setGdTab(b.dataset.t)));
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !gdEl.classList.contains('hidden')) closeGameDetail(); });
+  return gdEl;
+}
+function cycleShot(d) { if (gdShots.length < 2) return; gdShot = (gdShot + d + gdShots.length) % gdShots.length; paintShot(); sfx.tap(); }
+function paintShot() {
+  const el = gdEl.querySelector('.gd-shot'); const s = gdShots[gdShot] || {};
+  el.style.background = s.bg || '#14161c'; el.textContent = s.emoji || ''; el.classList.toggle('emoji', !!s.emoji);
+}
+function setGdTab(t) {
+  gdEl.querySelectorAll('.gd-tab').forEach((b) => b.classList.toggle('active', b.dataset.t === t));
+  renderGdBody(t);
+}
+function renderGdBody(t) {
+  const body = gdEl.querySelector('.gd-body'); const g = gdGame; if (!g) return;
+  const players = playerCountFor(g.id);
+  if (t === 'about') {
+    const evArt = g.art ? `url('${g.art}') center/cover` : themeGrad(g);
+    const events = [0, 1].map(() => `<div class="gd-event"><div class="gd-event-art" style="background:${evArt}"></div><span class="gd-event-badge">✦ New content</span></div>`).join('');
+    body.innerHTML =
+      `<h3 class="gd-h">Events</h3>
+       <div class="gd-events">${events}</div>
+       <h3 class="gd-h">Description</h3>
+       <p class="gd-desc">${escapeHtml(gdDescription(g))}</p>
+       <div class="gd-chipset">${(g.tags || []).map((x) => `<span>${escapeHtml(x)}</span>`).join('')}</div>
+       <div class="gd-stats">
+         <div><b>${players > 0 ? fmtNum(players) : '0'}</b><span>Active</span></div>
+         <div><b>${fmtNum(g.plays || 0)}</b><span>Visits</span></div>
+         <div><b>${fmtNum(g.likes || 0)}</b><span>Likes</span></div>
+         <div><b>${approvalPct(g)}%</b><span>Rating</span></div>
+       </div>`;
+  } else if (t === 'store') {
+    body.innerHTML = `<div class="gd-empty"><div class="gd-empty-emoji">🛒</div><p>Deck out your character with cosmetics in the ClaudeBox Store.</p><button class="gd-store-btn">Open Store</button></div>`;
+    body.querySelector('.gd-store-btn').addEventListener('click', () => { closeGameDetail(); selectTab('store'); });
+  } else {
+    body.innerHTML =
+      `<h3 class="gd-h">Servers</h3>
+       <div class="gd-servers">
+         <div class="gd-server">${players > 0 ? `<span class="live-dot"></span><b>${fmtNum(players)}</b>&nbsp;playing now` : `No one's playing right now — be the first in!`}</div>
+         <button class="gd-join">▶ Join a Server</button>
+       </div>`;
+    body.querySelector('.gd-join').addEventListener('click', () => launchGame(g.id));
+  }
+}
+function openGameDetail(game) {
+  ensureGdEl(); gdGame = game;
+  const t = themeOf(game.id);
+  gdShots = [];
+  if (game.art) gdShots.push({ bg: `url("${game.art}") center/cover` });
+  gdShots.push({ bg: themeGrad(game), emoji: t.emoji });
+  gdShot = 0; paintShot();
+  const showArrows = gdShots.length > 1 ? '' : 'none';
+  gdEl.querySelector('.gd-arrow.prev').style.display = showArrows;
+  gdEl.querySelector('.gd-arrow.next').style.display = showArrows;
+  gdEl.querySelector('.gd-title').textContent = `${t.emoji} ${game.title}`;
+  gdEl.querySelector('.gd-creator').textContent = game.creator || 'ClaudeBox Studios';
+  const likes = game.likes || 0, pct = approvalPct(game);
+  gdEl.querySelector('.gd-likes').textContent = fmtNum(likes);
+  gdEl.querySelector('.gd-dislikes').textContent = fmtNum(Math.round(likes * (100 - pct) / Math.max(1, pct)));
+  gdEl.querySelector('.gd-bar-fill').style.width = pct + '%';
+  const fav = favGames().includes(game.id);
+  gdEl.querySelector('.gd-star').textContent = fav ? '★' : '☆';
+  gdEl.querySelector('.gd-fav').classList.toggle('on', fav);
+  const play = gdEl.querySelector('.gd-play'), open = game.playable && !game.maintenance;
+  play.querySelector('.gd-play-ico').textContent = open ? '▶' : (game.maintenance ? '🔧 Updating' : '🔒 Coming soon');
+  play.classList.toggle('disabled', !open);
+  setGdTab('about');
+  gdEl.querySelector('.gd-card').scrollTop = 0;
+  gdEl.classList.remove('hidden'); document.body.classList.add('gd-open');
+  sfx.select();
+}
+function closeGameDetail() { if (gdEl) { gdEl.classList.add('hidden'); document.body.classList.remove('gd-open'); sfx.tap(); } }
 
 // "Popular right now" shelf — playable games ranked by plays.
 function renderPopular() {
