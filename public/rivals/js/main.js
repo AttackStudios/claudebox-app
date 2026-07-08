@@ -368,7 +368,7 @@ const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 // arms are single chunky CUBES in your shirt colour — just like the original
 function mkArm() {
   const g = new THREE.Group();
-  const cube = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.78), vmMat(VM_SHIRT));
+  const cube = new THREE.Mesh(roundedBoxGeo(0.18, 0.18, 0.78, 0.055), vmMat(VM_SHIRT));
   cube.position.set(0, 0, 0.26);
   g.add(cube);
   return g;
@@ -389,8 +389,26 @@ function rigWeapon(g, gunParts, rPos, rRot, lPos, lRot) {
   };
 }
 const GOLD = '#caa14e', DARK = '#23262c', STEEL = '#8b93a5', GREY = '#3a3f47';
+// cartoon-rounded box: subdivided box with every vertex clamped to an inner
+// box and pushed back out to a corner radius — soft toy-like edges
+function roundedBoxGeo(w, h, d, r) {
+  r = Math.min(r, w / 2, h / 2, d / 2);
+  const geo = new THREE.BoxGeometry(w, h, d, 4, 4, 4);
+  const pos = geo.attributes.position;
+  const ix = w / 2 - r, iy = h / 2 - r, iz = d / 2 - r;
+  const v = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    c.set(Math.max(-ix, Math.min(ix, v.x)), Math.max(-iy, Math.min(iy, v.y)), Math.max(-iz, Math.min(iz, v.z)));
+    const dir = v.sub(c);
+    const len = dir.length() || 1;
+    pos.setXYZ(i, c.x + dir.x / len * r, c.y + dir.y / len * r, c.z + dir.z / len * r);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
 function box(w, h, d, color, x, y, z, rx = 0) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), vmMat(color));
+  const m = new THREE.Mesh(roundedBoxGeo(w, h, d, Math.min(w, h, d) * 0.32), vmMat(color));
   m.position.set(x, y, z);
   if (rx) m.rotation.x = rx;
   return m;
@@ -439,8 +457,7 @@ function buildViewmodels() {
   {
     const g = new THREE.Group();
     rigWeapon(g, [
-      box(0.15, 0.18, 0.15, '#3f7d3f', 0.38, -0.14, -0.06),
-      box(0.17, 0.1, 0.13, '#356b35', 0.38, -0.14, -0.06),   // belly bulge
+      (() => { const b = new THREE.Mesh(new THREE.SphereGeometry(0.095, 18, 14), vmMat('#3f7d3f')); b.scale.y = 1.18; b.position.set(0.38, -0.14, -0.06); return b; })(),
       box(0.06, 0.05, 0.06, STEEL, 0.38, -0.03, -0.06),       // cap
       box(0.025, 0.1, 0.05, STEEL, 0.415, -0.06, -0.02, 0.25),// lever
       box(0.05, 0.02, 0.02, '#d8dbe0', 0.35, -0.005, -0.06),  // pin ring
@@ -672,6 +689,41 @@ function drawPlate(p) {
   ctx.fillRect(49, 41, 158 * Math.max(0, p.hp) / 100, 8);
   p.tex.needsUpdate = true;
 }
+// mini third-person weapons so you can SEE what everyone is holding
+function makeHeldWeapon(id) {
+  const g = new THREE.Group();
+  if (id === 'ar') {
+    g.add(box(0.07, 0.09, 0.44, GOLD, 0, 0, -0.06));
+    g.add(box(0.035, 0.035, 0.2, DARK, 0, 0.015, -0.36));
+    g.add(box(0.05, 0.12, 0.08, DARK, 0, -0.09, 0.08));
+  } else if (id === 'handgun') {
+    g.add(box(0.055, 0.06, 0.22, GREY, 0, 0, -0.04));
+    g.add(box(0.05, 0.11, 0.07, DARK, 0, -0.07, 0.06, 0.2));
+  } else if (id === 'sniper') {
+    g.add(box(0.06, 0.08, 0.62, '#3a3125', 0, 0, -0.1));
+    g.add(box(0.03, 0.03, 0.3, DARK, 0, 0.01, -0.5));
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.2, 8), vmMat('#15181d'));
+    t.rotation.x = Math.PI / 2; t.position.set(0, 0.08, -0.1); g.add(t);
+  } else if (id === 'scythe') {
+    g.add(box(0.035, 0.045, 0.13, DARK, 0, 0, 0.03));
+    g.add(box(0.024, 0.042, 0.2, '#c8ccd4', 0, 0, -0.12));
+  } else if (id === 'grenade') {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.062, 10, 8), vmMat('#3f7d3f'));
+    b.scale.y = 1.15; g.add(b);
+  }
+  return g; // fists = empty hands
+}
+function setHeld(o, id) {
+  if (o.heldId === id) return;
+  o.heldId = id;
+  while (o.held.children.length) {
+    const c = o.held.children.pop();
+    c.traverse?.((n) => { n.geometry?.dispose(); n.material?.dispose?.(); });
+    o.held.remove(c);
+  }
+  o.held.add(makeHeldWeapon(id));
+}
+
 function addOther(f) {
   if (others.has(f.id) || f.id === net.id) return;
   const ctrl = makeAvatar(f.avatar || {});
@@ -682,7 +734,13 @@ function addOther(f) {
   drawPlate(plate);
   plate.sprite.position.y = 2.35;
   ctrl.group.add(plate.sprite);
-  others.set(f.id, { ctrl, plate, data: f, target: { ...f.pos, ry: f.ry || 0 } });
+  const held = new THREE.Group();
+  held.position.set(0.34, 1.04, -0.22);   // right-hand height, slightly forward
+  held.rotation.y = -0.12;
+  ctrl.group.add(held);
+  const rec = { ctrl, plate, data: f, target: { ...f.pos, ry: f.ry || 0 }, held, heldId: null };
+  others.set(f.id, rec);
+  setHeld(rec, f.weapon || 'ar');
   ctrl.group.position.set(f.pos.x, f.pos.y, f.pos.z);
 }
 function removeOther(id) {
@@ -962,6 +1020,10 @@ net.on('snap', (msg) => {
     o.data.anim = f.dead ? 'death' : f.anim;
     o.data.dead = f.dead;
     o.data.crouch = f.crouch;
+    o.data.pitch = f.pitch;
+    if (f.weapon) setHeld(o, f.weapon);
+    o.held.visible = !f.dead;
+    o.held.rotation.x = -(f.pitch || 0) * 0.6;   // guns follow their aim
     if (o.plate.hp !== f.hp) { o.plate.hp = f.hp; drawPlate(o.plate); }
   }
 });
