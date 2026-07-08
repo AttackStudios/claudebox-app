@@ -43,7 +43,11 @@ const game = {
   queued: null, queuedSince: 0,
   gotFirstElim: false,
 };
-window.__rivals = { game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; } };
+window.__rivals = {
+  game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; },
+  get anim() { return vmAnim; },
+  fns: { startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a) },
+};
 
 // ============================ sounds (synth) ============================
 const AC = window.AudioContext || window.webkitAudioContext;
@@ -304,7 +308,12 @@ function stepMe(dt) {
   me.pos.x = solved.x; me.pos.z = solved.z;
   me.pos.y += me.vel.y * dt;
   const g = groundAt(me.pos.x, me.pos.z, me.pos.y + 0.4);
-  if (me.pos.y <= g) { me.pos.y = g; me.vel.y = 0; me.grounded = true; }
+  const wasAirborne = !me.grounded;
+  const fallSpeed = -me.vel.y;
+  if (me.pos.y <= g) {
+    me.pos.y = g; me.vel.y = 0; me.grounded = true;
+    if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
+  }
   else me.grounded = false;
 
   // camera
@@ -313,6 +322,7 @@ function stepMe(dt) {
   camera.rotation.set(0, 0, 0);
   camera.rotateY(me.ry);
   camera.rotateX(me.pitch);
+  camera.rotateZ(vmAnim.roll * 0.4);   // subtle strafe lean, like the original
   // recoil kick decay
   camera.rotateX(recoil); recoil *= Math.pow(0.0001, dt);
 }
@@ -323,10 +333,38 @@ const viewRoot = new THREE.Group();
 camera.add(viewRoot); scene.add(camera);
 const viewmodels = {};
 function vmMat(c) { return new THREE.MeshLambertMaterial({ color: c }); }
+
+// your avatar's colours on YOUR hands — like the original's viewmodels
+const VM_SHIRT = identity.avatar?.shirtColor || '#2f5fd0';
+const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
+
+// an arm whose origin sits AT the hand (forearm trails back toward the body)
+function mkArm() {
+  const g = new THREE.Group();
+  const fore = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.34), vmMat(VM_SHIRT));
+  fore.position.set(0, 0, 0.17);
+  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.09, 0.11), vmMat(VM_SKIN));
+  hand.position.set(0, 0, -0.05);
+  g.add(fore, hand);
+  return g;
+}
+function rigWeapon(g, gunParts, rPos, rRot, lPos, lRot) {
+  const gun = new THREE.Group();
+  gunParts.forEach((p) => gun.add(p));
+  const rArm = mkArm(); rArm.position.set(...rPos); rArm.rotation.set(...rRot);
+  const lArm = mkArm(); lArm.position.set(...lPos); lArm.rotation.set(...lRot);
+  g.add(gun, rArm, lArm);
+  g.userData = {
+    gun, rArm, lArm,
+    base: {
+      gun: { p: gun.position.clone(), r: gun.rotation.clone() },
+      rArm: { p: rArm.position.clone(), r: rArm.rotation.clone() },
+      lArm: { p: lArm.position.clone(), r: lArm.rotation.clone() },
+    },
+  };
+}
 function buildViewmodels() {
-  // arms (blue like the footage)
-  const mkArm = () => new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.34), vmMat('#2f5fd0'));
-  // assault rifle — gold/tan
+  // assault rifle — gold/tan, right hand on grip, left on the foregrip
   {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.68), vmMat('#caa14e'));
@@ -336,39 +374,39 @@ function buildViewmodels() {
     mag.position.set(0, -0.15, -0.05);
     const sight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.06), vmMat('#1c1f24'));
     sight.position.set(0, 0.1, -0.1);
-    const arm = mkArm(); arm.position.set(-0.04, -0.09, 0.22);
-    g.add(body, barrel, mag, sight, arm);
+    rigWeapon(g, [body, barrel, mag, sight],
+      [0.05, -0.13, 0.24], [0.5, -0.12, 0], [-0.03, -0.1, -0.2], [0.35, 0.25, 0]);
     viewmodels.ar = g;
   }
-  // handgun — dark
+  // handgun — dark, two-hand support grip
   {
     const g = new THREE.Group();
     const slide = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.3), vmMat('#33373f'));
     const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.17, 0.09), vmMat('#22252b'));
     grip.position.set(0, -0.11, 0.08); grip.rotation.x = 0.25;
-    const arm = mkArm(); arm.position.set(-0.02, -0.12, 0.26);
-    g.add(slide, grip, arm);
+    rigWeapon(g, [slide, grip],
+      [0.03, -0.15, 0.19], [0.45, 0, 0], [-0.055, -0.17, 0.15], [0.45, 0.3, 0.2]);
     viewmodels.handgun = g;
   }
-  // scythe — orange handle, dark blade
+  // scythe — both hands on the shaft
   {
     const g = new THREE.Group();
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.0), vmMat('#d07f2f'));
     handle.rotation.x = 0.5;
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.14), vmMat('#23262c'));
     blade.position.set(-0.2, 0.22, -0.42);
-    const arm = mkArm(); arm.position.set(0.02, -0.1, 0.3);
-    g.add(handle, blade, arm);
+    rigWeapon(g, [handle, blade],
+      [0.04, -0.12, 0.26], [0.55, 0, 0.1], [-0.04, 0.05, -0.14], [0.2, 0.3, -0.2]);
     viewmodels.scythe = g;
   }
-  // grenade — green
+  // grenade — held up in the right hand, left low and relaxed
   {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.14), vmMat('#3f7d3f'));
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.05), vmMat('#8b93a5'));
     cap.position.y = 0.11;
-    const arm = mkArm(); arm.position.set(-0.02, -0.11, 0.24);
-    g.add(body, cap, arm);
+    rigWeapon(g, [body, cap],
+      [0.02, -0.12, 0.12], [0.6, 0, 0], [-0.16, -0.26, 0.18], [0.3, 0.4, 0.3]);
     viewmodels.grenade = g;
   }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
@@ -378,9 +416,23 @@ const VM_HIP = { x: 0.28, y: -0.24, z: -0.5 };
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
 
+// ---- swingy animation state (springs + one-shot clips) ----
+const vmAnim = {
+  swayYaw: 0, swayPitch: 0, roll: 0, sprintK: 0, slideK: 0, airK: 0, landK: 0,
+  lastRy: 0, lastPitch: 0,
+  equipT: 1,                    // 0→1 raise-with-flick on weapon swap
+  reloadStart: 0, reloadDur: 0, // hand-animated reload
+  swingT: 1, swingSide: 1,      // scythe arcs, alternating sides
+  throwT: 1,                    // grenade overhand
+};
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const easeOutBack = (t) => 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
+
 function switchWeapon(id) {
   if (!id || id === me.weapon || me.reloading) return;
   me.weapon = id;
+  vmAnim.equipT = 0;             // raise-with-flick
   net.send({ t: 'weapon', id });
   sfx.click();
   updateAmmoHud(); updateLoadoutHud();
@@ -392,6 +444,8 @@ function startReload() {
   const a = me.ammo[me.weapon];
   if (a.mag >= w.mag || a.res <= 0) return;
   me.reloading = clockNow() + w.reload;
+  vmAnim.reloadStart = clockNow();
+  vmAnim.reloadDur = w.reload;
   $('#reload-hint').classList.remove('hidden');
   sfx.reload();
 }
@@ -411,13 +465,16 @@ function tryFire() {
   const w = WEAPONS[me.weapon];
   if (me.weapon === 'scythe') {
     if (now - me.swingAt < WEAPONS.scythe.rate) return;
-    me.swingAt = now; vmKick = 1.4; sfx.swing();
+    me.swingAt = now;
+    vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // big alternating arcs
+    sfx.swing();
     if (game.phase === 'live') net.send({ t: 'melee' });
     return;
   }
   if (me.weapon === 'grenade') {
     if (me.grenades <= 0 || now - me.lastFire < WEAPONS.grenade.rate) return;
-    me.lastFire = now; me.grenades--; vmKick = 1.2;
+    me.lastFire = now; me.grenades--;
+    vmAnim.throwT = 0;                            // wind-up + overhand whip
     const d = aimDir(0);
     if (game.phase === 'live') net.send({ t: 'nade', dx: d.x, dy: d.y + 0.18, dz: d.z });
     updateLoadoutHud();
@@ -977,20 +1034,116 @@ function frame() {
   for (const t of rangeTargets) {
     if (!t.alive && cn >= t.respawnAt) { t.alive = true; t.grp.rotation.x = 0; }
   }
-  // viewmodel: show active, bob, kick, ads lerp
+  // ================= viewmodel: the swingy stuff =================
   for (const [k, g] of Object.entries(viewmodels)) g.visible = k === me.weapon;
-  const moving = Math.hypot(me.vel.x, me.vel.z) > 0.5 && me.grounded;
-  vmBob += dt * (moving ? 9.5 : 2);
+  const speed2d = Math.hypot(me.vel.x, me.vel.z);
+  const moving = speed2d > 0.5 && me.grounded;
+  const sprinting2 = moving && speed2d > MOVE.walk * 1.1 && !me.sliding;
+  vmBob += dt * (moving ? (sprinting2 ? 11.5 : 8.5) : 2);
   vmKick = Math.max(0, vmKick - dt * 8);
+
+  // springs: look-lag sway (weapon trails your mouse), strafe roll, poses
+  {
+    let dRy = me.ry - vmAnim.lastRy, dPitch = me.pitch - vmAnim.lastPitch;
+    while (dRy > Math.PI) dRy -= Math.PI * 2; while (dRy < -Math.PI) dRy += Math.PI * 2;
+    vmAnim.lastRy = me.ry; vmAnim.lastPitch = me.pitch;
+    const k = 1 - Math.exp(-11 * dt);
+    vmAnim.swayYaw += (clamp(dRy * 2.4, -0.14, 0.14) - vmAnim.swayYaw) * k;
+    vmAnim.swayPitch += (clamp(dPitch * 2.2, -0.12, 0.12) - vmAnim.swayPitch) * k;
+    const rightVel = (me.vel.x * Math.cos(me.ry) - me.vel.z * Math.sin(me.ry)) / MOVE.sprint;
+    vmAnim.roll += (clamp(-rightVel * 0.1, -0.09, 0.09) - vmAnim.roll) * k;
+    vmAnim.sprintK += ((sprinting2 && me.ads < 0.3 ? 1 : 0) - vmAnim.sprintK) * (1 - Math.exp(-8 * dt));
+    vmAnim.slideK += ((me.sliding ? 1 : 0) - vmAnim.slideK) * (1 - Math.exp(-10 * dt));
+    vmAnim.airK += ((me.grounded ? 0 : 1) - vmAnim.airK) * (1 - Math.exp(-6 * dt));
+    vmAnim.landK *= Math.exp(-6.5 * dt);
+    vmAnim.equipT = Math.min(1, vmAnim.equipT + dt / 0.3);
+    vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / 0.38);
+    vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
+  }
+
   const vm = viewmodels[me.weapon];
   if (vm) {
     const k = me.ads;
-    vm.position.set(
-      VM_HIP.x + (VM_ADS.x - VM_HIP.x) * k + Math.sin(vmBob) * 0.008 * (1 - k),
-      VM_HIP.y + (VM_ADS.y - VM_HIP.y) * k + Math.abs(Math.cos(vmBob)) * 0.01 * (1 - k) + vmKick * 0.02,
-      VM_HIP.z + (VM_ADS.z - VM_HIP.z) * k + vmKick * 0.07
-    );
-    vm.rotation.set(vmKick * (me.weapon === 'scythe' ? -0.9 : 0.12), 0, 0);
+    const loose = 1 - k * 0.85;                 // ADS tightens everything
+    const bobAmt = (moving ? (sprinting2 ? 1.5 : 1) : 0) * loose;
+    // figure-8 bob + idle breathing
+    const bobX = Math.sin(vmBob) * 0.013 * bobAmt;
+    const bobY = -Math.abs(Math.cos(vmBob)) * 0.016 * bobAmt + Math.sin(now * 1.6) * 0.0038 * loose;
+
+    let px = VM_HIP.x + (VM_ADS.x - VM_HIP.x) * k + bobX + vmAnim.swayYaw * 0.16 * loose;
+    let py = VM_HIP.y + (VM_ADS.y - VM_HIP.y) * k + bobY + vmAnim.swayPitch * 0.14 * loose
+           + vmKick * 0.02 - vmAnim.landK * 0.11 + vmAnim.airK * 0.024 * loose;
+    let pz = VM_HIP.z + (VM_ADS.z - VM_HIP.z) * k + vmKick * 0.07;
+    let rx = vmKick * 0.12 + vmAnim.swayPitch * 1.5 * loose + vmAnim.landK * 0.24 - vmAnim.airK * 0.07 * loose;
+    let ry2 = vmAnim.swayYaw * 1.7 * loose;
+    let rz = vmAnim.roll * 1.5 * loose + vmAnim.swayYaw * 0.7 * loose - vmAnim.slideK * 0.38;
+
+    // sprint: cant the weapon in and down (with a bit of run sway)
+    rx += vmAnim.sprintK * (0.14 + Math.sin(vmBob * 0.5) * 0.03);
+    ry2 += vmAnim.sprintK * 0.34;
+    py -= vmAnim.sprintK * 0.03;
+    px -= vmAnim.sprintK * 0.03;
+    // slide: shove it across your chest
+    px -= vmAnim.slideK * 0.06; py -= vmAnim.slideK * 0.02;
+
+    // equip flick: rise from below with an overshoot snap
+    if (vmAnim.equipT < 1) {
+      const e = easeOutBack(vmAnim.equipT);
+      py -= (1 - e) * 0.3;
+      rx -= (1 - e) * 0.9;
+      rz += (1 - e) * 0.35;
+    }
+    // scythe swing: a huge horizontal arc, alternating sides
+    if (me.weapon === 'scythe' && vmAnim.swingT < 1) {
+      const s = Math.sin(Math.pow(vmAnim.swingT, 0.75) * Math.PI);
+      rz += vmAnim.swingSide * -1.5 * s;
+      ry2 += vmAnim.swingSide * 1.15 * s;
+      rx += 0.35 * s;
+      px += vmAnim.swingSide * -0.22 * s;
+      pz -= 0.1 * s;
+    }
+    // grenade throw: wind back, then whip forward overhand
+    if (me.weapon === 'grenade' && vmAnim.throwT < 1) {
+      const t = vmAnim.throwT;
+      const wind = sstep(0, 0.3, t) * (1 - sstep(0.3, 0.55, t));
+      const whip = sstep(0.3, 0.55, t) * (1 - sstep(0.75, 1, t));
+      rx += wind * 0.85 - whip * 1.9;
+      py += wind * 0.1 - whip * 0.06;
+      pz += wind * 0.16 - whip * 0.3;
+    }
+
+    vm.position.set(px, py, pz);
+    vm.rotation.set(rx, ry2, rz);
+
+    // ---- hand/part sub-animation (reset to base, then offset) ----
+    const P = vm.userData;
+    if (P?.base) {
+      P.gun.position.copy(P.base.gun.p); P.gun.rotation.copy(P.base.gun.r);
+      P.rArm.position.copy(P.base.rArm.p); P.rArm.rotation.copy(P.base.rArm.r);
+      P.lArm.position.copy(P.base.lArm.p); P.lArm.rotation.copy(P.base.lArm.r);
+      // firing: hands squeeze back with the gun
+      P.gun.position.z += vmKick * 0.05;
+      P.rArm.position.z += vmKick * 0.05;
+      P.lArm.position.z += vmKick * 0.03;
+      // reload: left hand rips the mag out, gun tips, hand slams it back
+      if (me.reloading) {
+        const rT = clamp((cn - vmAnim.reloadStart) / (vmAnim.reloadDur || 1), 0, 1);
+        const out = sstep(0, 0.28, rT) * (1 - sstep(0.62, 0.92, rT));
+        P.lArm.position.y -= out * 0.26;
+        P.lArm.position.z += out * 0.1;
+        P.lArm.rotation.x -= out * 0.9;
+        P.gun.rotation.z += Math.sin(rT * Math.PI) * 0.45;
+        P.gun.rotation.x += Math.sin(rT * Math.PI) * 0.12;
+      }
+      // grenade throw: the right hand does the throwing
+      if (me.weapon === 'grenade' && vmAnim.throwT < 1) {
+        const t = vmAnim.throwT;
+        const whip = sstep(0.3, 0.55, t) * (1 - sstep(0.8, 1, t));
+        P.rArm.position.z -= whip * 0.28;
+        P.rArm.rotation.x -= whip * 1.2;
+        P.gun.visible = t < 0.42 || t > 0.85;   // nade leaves the hand mid-throw
+      } else if (P.gun) P.gun.visible = true;
+    }
   }
   // interpolate others
   for (const o of others.values()) {
