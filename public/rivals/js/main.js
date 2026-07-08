@@ -365,14 +365,12 @@ function vmMat(c) { return new THREE.MeshLambertMaterial({ color: c }); }
 const VM_SHIRT = identity.avatar?.shirtColor || '#2f5fd0';
 const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 
-// an arm whose origin sits AT the hand (forearm trails back toward the body)
+// arms are single chunky CUBES in your shirt colour — just like the original
 function mkArm() {
   const g = new THREE.Group();
-  const fore = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.36), vmMat(VM_SHIRT));
-  fore.position.set(0, 0, 0.18);
-  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.14, 0.15), vmMat(VM_SKIN));
-  hand.position.set(0, 0, -0.06);
-  g.add(fore, hand);
+  const cube = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.17, 0.38), vmMat(VM_SHIRT));
+  cube.position.set(0, 0, 0.1);
+  g.add(cube);
   return g;
 }
 function rigWeapon(g, gunParts, rPos, rRot, lPos, lRot) {
@@ -390,77 +388,89 @@ function rigWeapon(g, gunParts, rPos, rRot, lPos, lRot) {
     },
   };
 }
+const GOLD = '#caa14e', DARK = '#23262c', STEEL = '#8b93a5', GREY = '#3a3f47';
+function box(w, h, d, color, x, y, z, rx = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), vmMat(color));
+  m.position.set(x, y, z);
+  if (rx) m.rotation.x = rx;
+  return m;
+}
 function buildViewmodels() {
-  // assault rifle — gold/tan, right hand on grip, left on the foregrip
+  // ---- assault rifle: stock/body/grip/mag/handguard/barrel/sights ----
   {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.68), vmMat('#caa14e'));
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.3), vmMat('#2a2d33'));
-    barrel.position.set(0, 0.03, -0.48);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.2, 0.12), vmMat('#2a2d33'));
-    mag.position.set(0, -0.15, -0.05);
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.06), vmMat('#1c1f24'));
-    sight.position.set(0, 0.1, -0.1);
-    rigWeapon(g, [body, barrel, mag, sight],
-      [0.05, -0.13, 0.24], [0.5, -0.12, 0], [-0.065, -0.085, -0.22], [0.35, 0.35, 0.1]);
+    rigWeapon(g, [
+      box(0.07, 0.11, 0.2, DARK, 0, -0.01, 0.32),          // stock
+      box(0.09, 0.12, 0.48, GOLD, 0, 0, 0),                // receiver
+      box(0.06, 0.13, 0.07, DARK, 0, -0.12, 0.12, 0.3),    // pistol grip
+      box(0.065, 0.18, 0.1, DARK, 0, -0.15, -0.06, 0.12),  // magazine
+      box(0.075, 0.085, 0.22, GOLD, 0, 0, -0.34),          // handguard
+      box(0.04, 0.04, 0.3, DARK, 0, 0.02, -0.58),          // barrel
+      box(0.055, 0.055, 0.06, GREY, 0, 0.02, -0.74),       // muzzle
+      box(0.028, 0.04, 0.26, DARK, 0, 0.08, -0.02),        // top rail
+      box(0.02, 0.05, 0.02, DARK, 0, 0.085, -0.42),        // front post
+    ], [0.06, -0.16, 0.22], [0.5, -0.12, 0], [-0.08, -0.1, -0.3], [0.35, 0.35, 0.1]);
     viewmodels.ar = g;
   }
-  // handgun — dark, two-hand support grip
+  // ---- handgun ----
   {
     const g = new THREE.Group();
-    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.3), vmMat('#33373f'));
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.17, 0.09), vmMat('#22252b'));
-    grip.position.set(0, -0.11, 0.08); grip.rotation.x = 0.25;
-    rigWeapon(g, [slide, grip],
-      [0.03, -0.15, 0.19], [0.45, 0, 0], [-0.055, -0.17, 0.15], [0.45, 0.3, 0.2]);
+    rigWeapon(g, [
+      box(0.07, 0.075, 0.3, GREY, 0, 0.02, -0.02),         // slide
+      box(0.074, 0.06, 0.06, STEEL, 0, 0.02, 0.1),         // rear serrations
+      box(0.065, 0.05, 0.26, DARK, 0, -0.03, -0.02),       // frame
+      box(0.06, 0.16, 0.085, DARK, 0, -0.13, 0.09, 0.22),  // grip
+      box(0.02, 0.025, 0.02, STEEL, 0, 0.068, -0.15),      // front sight
+    ], [0.045, -0.17, 0.17], [0.45, 0, 0], [-0.085, -0.18, 0.13], [0.45, 0.3, 0.2]);
     viewmodels.handgun = g;
   }
-  // knife — a small pocket knife in the right hand; left hand free on the left
+  // ---- knife (small pocket knife in the right hand) ----
   {
     const g = new THREE.Group();
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.16), vmMat('#2b2e35'));
-    handle.position.set(0.14, -0.1, -0.1);
-    const bolster = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.03), vmMat('#8b93a5'));
-    bolster.position.set(0.14, -0.1, -0.19);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.05, 0.22), vmMat('#c8ccd4'));
-    blade.position.set(0.14, -0.095, -0.31);
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.028, 0.05), vmMat('#c8ccd4'));
-    tip.position.set(0.14, -0.106, -0.44);
-    rigWeapon(g, [handle, bolster, blade, tip],
-      [0.14, -0.14, 0.02], [0.6, 0, 0], [-0.2, -0.16, -0.04], [0.6, 0.2, 0.15]);
+    rigWeapon(g, [
+      box(0.05, 0.06, 0.17, DARK, 0.14, -0.1, -0.1),
+      box(0.055, 0.065, 0.03, STEEL, 0.14, -0.1, -0.2),
+      box(0.03, 0.055, 0.24, '#c8ccd4', 0.14, -0.095, -0.33),
+      box(0.03, 0.03, 0.05, '#c8ccd4', 0.14, -0.108, -0.47),
+    ], [0.14, -0.16, 0.02], [0.6, 0, 0], [-0.22, -0.17, -0.04], [0.6, 0.2, 0.15]);
     viewmodels.scythe = g;
   }
-  // grenade — held up in the right hand, left hand guarding at chest height
+  // ---- grenade (chunkier, lever + pin) ----
   {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.14), vmMat('#3f7d3f'));
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.05), vmMat('#8b93a5'));
-    body.position.set(0.12, -0.06, -0.06); cap.position.set(0.12, 0.05, -0.06);
-    rigWeapon(g, [body, cap],
-      [0.12, -0.14, 0.04], [0.6, 0, 0], [-0.2, -0.16, -0.04], [0.6, 0.2, 0.15]);
+    rigWeapon(g, [
+      box(0.15, 0.18, 0.15, '#3f7d3f', 0.12, -0.06, -0.06),
+      box(0.17, 0.1, 0.13, '#356b35', 0.12, -0.06, -0.06),   // belly bulge
+      box(0.06, 0.05, 0.06, STEEL, 0.12, 0.05, -0.06),       // cap
+      box(0.025, 0.1, 0.05, STEEL, 0.155, 0.02, -0.02, 0.25),// lever
+      box(0.05, 0.02, 0.02, '#d8dbe0', 0.09, 0.075, -0.06),  // pin ring
+    ], [0.12, -0.16, 0.04], [0.6, 0, 0], [-0.22, -0.17, -0.04], [0.6, 0.2, 0.15]);
     viewmodels.grenade = g;
   }
-  // sniper — long dark rifle with a scope tube, both hands committed
+  // ---- sniper: long rifle + scope with objective ----
   {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.12, 0.85), vmMat('#3a3125'));
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.5), vmMat('#23262c'));
-    barrel.position.set(0, 0.03, -0.64);
-    const scopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.3, 10), vmMat('#15181d'));
-    scopeTube.rotation.x = Math.PI / 2; scopeTube.position.set(0, 0.115, -0.08);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), vmMat('#23262c'));
-    mag.position.set(0, -0.12, 0.02);
-    const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.035, 0.035), vmMat('#8b93a5'));
-    bolt.position.set(0.07, 0.03, 0.09);
-    rigWeapon(g, [body, barrel, scopeTube, mag, bolt],
-      [0.05, -0.13, 0.26], [0.5, -0.1, 0], [-0.055, -0.1, -0.28], [0.35, 0.3, 0]);
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.3, 10), vmMat('#15181d'));
+    tube.rotation.x = Math.PI / 2; tube.position.set(0, 0.12, -0.06);
+    const objective = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 10), vmMat('#0c0e12'));
+    objective.rotation.x = Math.PI / 2; objective.position.set(0, 0.12, -0.24);
+    rigWeapon(g, [
+      box(0.075, 0.12, 0.26, GREY, 0, -0.02, 0.36),        // stock
+      box(0.085, 0.12, 0.72, '#3a3125', 0, 0, -0.05),      // body
+      box(0.035, 0.035, 0.52, DARK, 0, 0.02, -0.65),       // barrel
+      box(0.06, 0.06, 0.08, GREY, 0, 0.02, -0.92),         // brake
+      box(0.06, 0.13, 0.09, DARK, 0, -0.13, 0.05, 0.25),   // grip
+      box(0.055, 0.12, 0.09, DARK, 0, -0.12, -0.16),       // mag
+      box(0.09, 0.035, 0.035, STEEL, 0.08, 0.02, 0.12),    // bolt
+      tube, objective,
+    ], [0.05, -0.16, 0.24], [0.5, -0.1, 0], [-0.085, -0.11, -0.32], [0.35, 0.3, 0]);
     viewmodels.sniper = g;
   }
-  // fists — nothing but your two hands, up in a guard
+  // ---- fists: two big shirt-colour cubes ----
   {
     const g = new THREE.Group();
     rigWeapon(g, [],
-      [0.17, -0.14, -0.06], [0.7, -0.15, -0.15], [-0.19, -0.13, -0.12], [0.7, 0.15, 0.15]);
+      [0.19, -0.15, -0.06], [0.7, -0.15, -0.15], [-0.21, -0.14, -0.12], [0.7, 0.15, 0.15]);
     viewmodels.fists = g;
   }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
