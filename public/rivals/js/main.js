@@ -259,6 +259,10 @@ const DEFAULT_BINDS = {
 let binds = (() => { try { return { ...DEFAULT_BINDS, ...JSON.parse(localStorage.getItem('rivals.binds') || '{}') }; } catch { return { ...DEFAULT_BINDS }; } })();
 function saveBinds() { try { localStorage.setItem('rivals.binds', JSON.stringify(binds)); } catch {} }
 let rebinding = null;   // action id currently capturing a key
+// sprint mode: hold (default) vs toggle (press once to lock sprint on/off)
+let sprintToggle = (() => { try { return localStorage.getItem('rivals.sprintToggle') === '1'; } catch { return false; } })();
+let sprintOn = false, mobileSprint = false;
+const isSprinting = () => mobileSprint || (sprintToggle ? sprintOn : keys.has(binds.sprint));
 
 addEventListener('keydown', (e) => {
   if (rebinding) { e.preventDefault(); captureRebind(e.code); return; }
@@ -270,6 +274,7 @@ addEventListener('keydown', (e) => {
   if (c === binds.queue && game.phase === 'lobby') toggleModes();
   if (c === binds.reload) startReload();
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(LOADOUT[i - 1]);
+  if (c === binds.sprint && sprintToggle) sprintOn = !sprintOn;
   if (c === binds.crouch) tryCrouch(true);
 });
 addEventListener('keyup', (e) => {
@@ -317,13 +322,13 @@ function setupMobile() {
       knob.style.left = (50 + dx / max * 42) + '%'; knob.style.top = (50 + dy / max * 42) + '%';
       mobileMove.x = dx / max; mobileMove.z = -dy / max;
       const mag = Math.hypot(mobileMove.x, mobileMove.z);
-      if (mag > 0.85 && mobileMove.z > 0.1) keys.add(binds.sprint); else keys.delete(binds.sprint);
+      mobileSprint = mag > 0.85 && mobileMove.z > 0.1;
     }
   };
   moveZone.addEventListener('touchmove', moveUpdate, { passive: true });
   const moveEnd = (e) => {
     for (const t of e.changedTouches) if (t.identifier === moveId) {
-      moveId = null; mobileMove.x = mobileMove.z = 0; joy.classList.add('hidden'); keys.delete(binds.sprint);
+      moveId = null; mobileMove.x = mobileMove.z = 0; joy.classList.add('hidden'); mobileSprint = false;
     }
   };
   moveZone.addEventListener('touchend', moveEnd, { passive: true });
@@ -372,7 +377,7 @@ function updateMobileHud() {
 function tryCrouch(on) {
   if (on) {
     const speed = Math.hypot(me.vel.x, me.vel.z);
-    const sprinting = keys.has(binds.sprint) && speed > MOVE.walk * 0.9;
+    const sprinting = isSprinting() && speed > MOVE.walk * 0.9;
     if (sprinting && me.grounded && !me.sliding) {
       // SLIDE — signature move
       me.sliding = true;
@@ -450,7 +455,7 @@ function stepMe(dt) {
   const rx = Math.cos(me.ry), rz = -Math.sin(me.ry);
   let wishX = fx * mz + rx * mx, wishZ = fz * mz + rz * mx;
   const wl = Math.hypot(wishX, wishZ) || 1; wishX /= wl; wishZ /= wl;
-  const sprinting = keys.has(binds.sprint) && mz > 0 && !me.crouch;
+  const sprinting = isSprinting() && mz > 0 && !me.crouch;
   const speed = me.crouch && !me.sliding ? MOVE.crouch : sprinting ? MOVE.sprint : MOVE.walk;
 
   if (now < me.dashUntil) {                     // dash overrides
@@ -1374,6 +1379,19 @@ function keyLabel(code) {
 function renderKeybinds() {
   const host = $('#kb-list'); if (!host) return;
   host.innerHTML = '';
+  // ---- options ----
+  const optRow = document.createElement('div'); optRow.className = 'kb-row';
+  const optName = document.createElement('span'); optName.className = 'kb-label'; optName.textContent = 'Toggle Sprint';
+  const sw = document.createElement('button');
+  sw.className = 'kb-switch' + (sprintToggle ? ' on' : ''); sw.setAttribute('role', 'switch');
+  sw.setAttribute('aria-checked', String(sprintToggle)); sw.innerHTML = '<i></i>';
+  sw.addEventListener('click', () => {
+    sprintToggle = !sprintToggle; sprintOn = false;
+    try { localStorage.setItem('rivals.sprintToggle', sprintToggle ? '1' : '0'); } catch {}
+    sfx.click?.(); renderKeybinds();
+  });
+  optRow.append(optName, sw); host.appendChild(optRow);
+  // ---- key rebinds ----
   for (const [id, label] of KB_ACTIONS) {
     const row = document.createElement('div'); row.className = 'kb-row';
     const name = document.createElement('span'); name.className = 'kb-label'; name.textContent = label;
@@ -1683,7 +1701,7 @@ net.startMovementStream(() => ({
   t: 'move',
   x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),
   ry: +me.ry.toFixed(3), pitch: +me.pitch.toFixed(3),
-  anim: me.dead ? 'death' : me.sliding ? 'run' : Math.hypot(me.vel.x, me.vel.z) > 0.5 ? (keys.has(binds.sprint) ? 'run' : 'walk') : 'idle',
+  anim: me.dead ? 'death' : me.sliding ? 'run' : Math.hypot(me.vel.x, me.vel.z) > 0.5 ? (isSprinting() ? 'run' : 'walk') : 'idle',
   crouch: me.crouch || me.sliding,
 }));
 $('#loading').classList.add('hidden');
