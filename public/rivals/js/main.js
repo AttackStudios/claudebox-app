@@ -388,15 +388,19 @@ function buildViewmodels() {
       [0.03, -0.15, 0.19], [0.45, 0, 0], [-0.055, -0.17, 0.15], [0.45, 0.3, 0.2]);
     viewmodels.handgun = g;
   }
-  // scythe — both hands on the shaft
+  // knife — a small pocket knife in the right hand; left hand free on the left
   {
     const g = new THREE.Group();
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.0), vmMat('#d07f2f'));
-    handle.rotation.x = 0.5;
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.14), vmMat('#23262c'));
-    blade.position.set(-0.2, 0.22, -0.42);
-    rigWeapon(g, [handle, blade],
-      [0.04, -0.12, 0.26], [0.55, 0, 0.1], [-0.04, 0.05, -0.14], [0.2, 0.3, -0.2]);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.16), vmMat('#2b2e35'));
+    handle.position.set(0.14, -0.1, -0.1);
+    const bolster = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.03), vmMat('#8b93a5'));
+    bolster.position.set(0.14, -0.1, -0.19);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.05, 0.22), vmMat('#c8ccd4'));
+    blade.position.set(0.14, -0.095, -0.31);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.028, 0.05), vmMat('#c8ccd4'));
+    tip.position.set(0.14, -0.106, -0.44);
+    rigWeapon(g, [handle, bolster, blade, tip],
+      [0.14, -0.14, 0.02], [0.6, 0, 0], [-0.2, -0.16, -0.04], [0.6, 0.2, 0.15]);
     viewmodels.scythe = g;
   }
   // grenade — held up in the right hand, left hand guarding at chest height
@@ -404,9 +408,9 @@ function buildViewmodels() {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.14), vmMat('#3f7d3f'));
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.05), vmMat('#8b93a5'));
-    cap.position.y = 0.11;
+    body.position.set(0.12, -0.06, -0.06); cap.position.set(0.12, 0.05, -0.06);
     rigWeapon(g, [body, cap],
-      [0.02, -0.12, 0.12], [0.6, 0, 0], [-0.15, -0.14, 0.02], [0.5, 0.45, 0.25]);
+      [0.12, -0.14, 0.04], [0.6, 0, 0], [-0.2, -0.16, -0.04], [0.6, 0.2, 0.15]);
     viewmodels.grenade = g;
   }
   // sniper — long dark rifle with a scope tube, both hands committed
@@ -429,13 +433,19 @@ function buildViewmodels() {
   {
     const g = new THREE.Group();
     rigWeapon(g, [],
-      [0.12, -0.14, -0.08], [0.7, -0.15, -0.15], [-0.12, -0.12, -0.14], [0.7, 0.15, 0.15]);
+      [0.17, -0.14, -0.06], [0.7, -0.15, -0.15], [-0.19, -0.13, -0.12], [0.7, 0.15, 0.15]);
     viewmodels.fists = g;
   }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
 const VM_HIP = { x: 0.28, y: -0.24, z: -0.5 };
+// free-hand weapons anchor nearer the centre so the two arms read left + right
+const VM_HIPS = {
+  scythe: { x: 0.06, y: -0.22, z: -0.48 },
+  grenade: { x: 0.06, y: -0.22, z: -0.48 },
+  fists: { x: 0.03, y: -0.22, z: -0.46 },
+};
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
 
@@ -660,7 +670,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🪓', grenade: '💣', sniper: '🔭', fists: '👊' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', sniper: '🔭', fists: '👊' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   LOADOUT.forEach((id, i) => {
@@ -1100,10 +1110,11 @@ function frame() {
     const bobX = Math.sin(vmBob) * 0.013 * bobAmt;
     const bobY = -Math.abs(Math.cos(vmBob)) * 0.016 * bobAmt + Math.sin(now * 1.6) * 0.0038 * loose;
 
-    let px = VM_HIP.x + (VM_ADS.x - VM_HIP.x) * k + bobX + vmAnim.swayYaw * 0.16 * loose;
-    let py = VM_HIP.y + (VM_ADS.y - VM_HIP.y) * k + bobY + vmAnim.swayPitch * 0.14 * loose
+    const HIP = VM_HIPS[me.weapon] || VM_HIP;
+    let px = HIP.x + (VM_ADS.x - HIP.x) * k + bobX + vmAnim.swayYaw * 0.16 * loose;
+    let py = HIP.y + (VM_ADS.y - HIP.y) * k + bobY + vmAnim.swayPitch * 0.14 * loose
            + vmKick * 0.02 - vmAnim.landK * 0.11 + vmAnim.airK * 0.024 * loose;
-    let pz = VM_HIP.z + (VM_ADS.z - VM_HIP.z) * k + vmKick * 0.07;
+    let pz = HIP.z + (VM_ADS.z - HIP.z) * k + vmKick * 0.07;
     let rx = vmKick * 0.12 + vmAnim.swayPitch * 1.5 * loose + vmAnim.landK * 0.24 - vmAnim.airK * 0.07 * loose;
     let ry2 = vmAnim.swayYaw * 1.7 * loose;
     let rz = vmAnim.roll * 1.5 * loose + vmAnim.swayYaw * 0.7 * loose - vmAnim.slideK * 0.38;
@@ -1127,14 +1138,14 @@ function frame() {
       ry2 -= (1 - rise) * 0.55;
       rz += (1 - rise) * 0.6 - settle;
     }
-    // scythe swing: a huge horizontal arc, alternating sides
+    // knife slash: quick compact arcs, alternating sides
     if (me.weapon === 'scythe' && vmAnim.swingT < 1) {
-      const s = Math.sin(Math.pow(vmAnim.swingT, 0.75) * Math.PI);
-      rz += vmAnim.swingSide * -1.5 * s;
-      ry2 += vmAnim.swingSide * 1.15 * s;
-      rx += 0.35 * s;
-      px += vmAnim.swingSide * -0.22 * s;
-      pz -= 0.1 * s;
+      const s = Math.sin(Math.pow(vmAnim.swingT, 0.7) * Math.PI);
+      rz += vmAnim.swingSide * -0.7 * s;
+      ry2 += vmAnim.swingSide * 0.55 * s;
+      rx += 0.2 * s;
+      px += vmAnim.swingSide * -0.1 * s;
+      pz -= 0.2 * s;                       // stab forward
     }
     // grenade throw: wind back, then whip forward overhand
     if (me.weapon === 'grenade' && vmAnim.throwT < 1) {

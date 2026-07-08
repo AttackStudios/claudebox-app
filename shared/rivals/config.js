@@ -47,7 +47,7 @@ export const WEAPONS = {
     pellets: 1,
   },
   scythe: {
-    slot: 3, name: 'Scythe', auto: false, melee: true,
+    slot: 3, name: 'Knife', auto: false, melee: true,
     dmg: 45, rate: 0.5, range: 3.4, backstabOneshot: true,
   },
   fists: {
@@ -79,7 +79,7 @@ export const MODES = {
 export const TIPS = [
   'Your choice of Melee could completely change how you play',
   'Slide by sprinting and then crouching',
-  'Dash with the Scythe using right-click',
+  'Dash with the Knife using right-click',
   'Aim down sights for tighter spread',
   'Grenades bounce — cook your throws around corners',
   'Headshots deal bonus damage',
