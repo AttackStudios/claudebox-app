@@ -54,9 +54,15 @@ export const WEAPONS = {
     slot: 4, name: 'Grenade', auto: false, utility: true,
     count: 3, throwVel: 17, fuse: 1.4, radius: 6.5, maxDmg: 85, rate: 0.8,
   },
+  sniper: {
+    slot: 5, name: 'Sniper', auto: false,
+    dmg: 70, headMult: 2, rate: 1.15, mag: 5, reserve: 25,
+    reload: 2.3, range: 260, spread: 0.05, adsSpread: 0.0006, adsZoom: 4.6,
+    pellets: 1, scoped: true,
+  },
 };
 
-export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade'];
+export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade', 'sniper'];
 
 // queue modes (Beginner = instant easy bot; others bot-fill after botFillSecs)
 export const MODES = {
@@ -73,6 +79,7 @@ export const TIPS = [
   'Aim down sights for tighter spread',
   'Grenades bounce — cook your throws around corners',
   'Headshots deal bonus damage',
+  'The Sniper one-shots on headshots — but hipfire is a prayer',
   'The round timer favors whoever keeps more health',
   'Win duels to earn Stars for the ClaudeBox shop',
 ];

@@ -46,7 +46,7 @@ const game = {
 window.__rivals = {
   game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; },
   get anim() { return vmAnim; },
-  fns: { startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a) },
+  fns: { startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; } },
 };
 
 // ============================ sounds (synth) ============================
@@ -75,7 +75,7 @@ function noiseBurst(dur, vol = 0.15, freq = 1800, type = 'bandpass') {
   src.connect(f); f.connect(g); g.connect(c.destination); src.start();
 }
 const sfx = {
-  shot(w) { if (w === 'handgun') { noiseBurst(0.09, 0.2, 2400); tone(320, 0.06, 'square', 0.1, 90); } else { noiseBurst(0.07, 0.18, 1900); tone(210, 0.05, 'sawtooth', 0.12, 70); } },
+  shot(w) { if (w === 'handgun') { noiseBurst(0.09, 0.2, 2400); tone(320, 0.06, 'square', 0.1, 90); } else if (w === 'sniper') { noiseBurst(0.22, 0.32, 900, 'lowpass'); tone(140, 0.18, 'sawtooth', 0.2, 40); tone(1200, 0.05, 'square', 0.06); } else { noiseBurst(0.07, 0.18, 1900); tone(210, 0.05, 'sawtooth', 0.12, 70); } },
   distantShot() { noiseBurst(0.06, 0.05, 900); },
   swing() { noiseBurst(0.12, 0.08, 500, 'lowpass'); tone(300, 0.1, 'sine', 0.06, 120); },
   reload() { tone(700, 0.05, 'square', 0.07); tone(500, 0.05, 'square', 0.07, 0, 0.14); tone(900, 0.05, 'square', 0.08, 0, 0.5); },
@@ -160,7 +160,7 @@ const me = {
   dashUntil: 0, dashAt: -99, dashVec: { x: 0, z: 0 },
   hp: 100, dead: false,
   weapon: 'ar', ads: 0,
-  ammo: { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 } },
+  ammo: { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 }, sniper: { mag: 5, res: 25 } },
   grenades: WEAPONS.grenade.count,
   reloading: 0, lastFire: 0, swingAt: 0,
 };
@@ -171,7 +171,7 @@ canvas.addEventListener('click', () => { if (!locked) canvas.requestPointerLock(
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
   if (!locked) return;
-  const sens = 0.0021 * (me.ads > 0.5 ? 0.7 : 1);
+  const sens = 0.0021 * (me.ads > 0.5 ? (me.weapon === 'sniper' ? 0.32 : 0.7) : 1);
   me.ry -= e.movementX * sens;
   me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - e.movementY * sens));
 });
@@ -181,7 +181,7 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'KeyE' && game.phase === 'lobby') toggleModes();
   if (e.code === 'KeyR') startReload();
-  if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) switchWeapon(LOADOUT[+e.code.slice(5) - 1]);
+  if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].includes(e.code)) switchWeapon(LOADOUT[+e.code.slice(5) - 1]);
   if (e.code === 'ControlLeft' || e.code === 'KeyC') tryCrouch(true);
 });
 addEventListener('keyup', (e) => {
@@ -267,7 +267,7 @@ function stepMe(dt) {
   const frozen = game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || me.dead;
   const now = clockNow();
   // ADS amount
-  const wantAds = rightDown && (me.weapon === 'ar' || me.weapon === 'handgun') && !me.reloading && !frozen;
+  const wantAds = rightDown && (me.weapon === 'ar' || me.weapon === 'handgun' || me.weapon === 'sniper') && !me.reloading && !frozen;
   me.ads += ((wantAds ? 1 : 0) - me.ads) * Math.min(1, dt * 12);
   camera.fov = BASE_FOV / (1 + me.ads * ((WEAPONS[me.weapon]?.adsZoom || 1.3) - 1));
   camera.updateProjectionMatrix();
@@ -375,7 +375,7 @@ function buildViewmodels() {
     const sight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.06), vmMat('#1c1f24'));
     sight.position.set(0, 0.1, -0.1);
     rigWeapon(g, [body, barrel, mag, sight],
-      [0.05, -0.13, 0.24], [0.5, -0.12, 0], [-0.03, -0.1, -0.2], [0.35, 0.25, 0]);
+      [0.05, -0.13, 0.24], [0.5, -0.12, 0], [-0.065, -0.085, -0.22], [0.35, 0.35, 0.1]);
     viewmodels.ar = g;
   }
   // handgun — dark, two-hand support grip
@@ -399,15 +399,31 @@ function buildViewmodels() {
       [0.04, -0.12, 0.26], [0.55, 0, 0.1], [-0.04, 0.05, -0.14], [0.2, 0.3, -0.2]);
     viewmodels.scythe = g;
   }
-  // grenade — held up in the right hand, left low and relaxed
+  // grenade — held up in the right hand, left hand guarding at chest height
   {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.14), vmMat('#3f7d3f'));
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.05), vmMat('#8b93a5'));
     cap.position.y = 0.11;
     rigWeapon(g, [body, cap],
-      [0.02, -0.12, 0.12], [0.6, 0, 0], [-0.16, -0.26, 0.18], [0.3, 0.4, 0.3]);
+      [0.02, -0.12, 0.12], [0.6, 0, 0], [-0.15, -0.14, 0.02], [0.5, 0.45, 0.25]);
     viewmodels.grenade = g;
+  }
+  // sniper — long dark rifle with a scope tube, both hands committed
+  {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.12, 0.85), vmMat('#3a3125'));
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.5), vmMat('#23262c'));
+    barrel.position.set(0, 0.03, -0.64);
+    const scopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.3, 10), vmMat('#15181d'));
+    scopeTube.rotation.x = Math.PI / 2; scopeTube.position.set(0, 0.115, -0.08);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), vmMat('#23262c'));
+    mag.position.set(0, -0.12, 0.02);
+    const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.035, 0.035), vmMat('#8b93a5'));
+    bolt.position.set(0.07, 0.03, 0.09);
+    rigWeapon(g, [body, barrel, scopeTube, mag, bolt],
+      [0.05, -0.13, 0.26], [0.5, -0.1, 0], [-0.055, -0.1, -0.28], [0.35, 0.3, 0]);
+    viewmodels.sniper = g;
   }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
@@ -435,6 +451,7 @@ function switchWeapon(id) {
   vmAnim.equipT = 0;             // raise-with-flick
   net.send({ t: 'weapon', id });
   sfx.click();
+  setTimeout(() => tone(1000, 0.05, 'square', 0.07), 220);  // the "chk" as hands seat
   updateAmmoHud(); updateLoadoutHud();
 }
 
@@ -488,8 +505,8 @@ function tryFire() {
   a.mag--;
   const spread = me.ads > 0.5 ? w.adsSpread : w.spread;
   const d = aimDir(spread);
-  recoil += 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
-  vmKick = 1;
+  recoil += me.weapon === 'sniper' ? 0.045 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
+  vmKick = me.weapon === 'sniper' ? 1.8 : 1;
   sfx.shot(me.weapon);
   muzzleFlash();
   localTracer(d);
@@ -636,7 +653,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🪓', grenade: '💣' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🪓', grenade: '💣', sniper: '🔭' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   LOADOUT.forEach((id, i) => {
@@ -798,7 +815,7 @@ net.on('round.freeze', (msg) => {
       me.vel = { x: 0, y: 0, z: 0 };
       me.hp = 100; me.dead = false;
       me.weapon = 'ar';
-      me.ammo = { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 } };
+      me.ammo = { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 }, sniper: { mag: 5, res: 25 } };
       me.grenades = WEAPONS.grenade.count;
       me.reloading = 0;
     } else addOther(f);
@@ -973,7 +990,7 @@ function enterLobby(fromMatch) {
   me.pos = { x: LOBBY.spawnsA[0].x, y: 0, z: LOBBY.spawnsA[0].z };
   me.ry = LOBBY.spawnsA[0].ry; me.pitch = 0;
   me.hp = 100; me.dead = false; me.weapon = 'ar';
-  me.ammo = { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 } };
+  me.ammo = { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 }, sniper: { mag: 5, res: 25 } };
   me.grenades = WEAPONS.grenade.count;
   $('#match-top').classList.add('hidden');
   $('#freeze-count').classList.add('hidden');
@@ -1061,8 +1078,14 @@ function frame() {
     vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
   }
 
+  // sniper scope: overlay + hide the rifle while fully scoped
+  const scoped = me.weapon === 'sniper' && me.ads > 0.78;
+  $('#scope').classList.toggle('hidden', !scoped);
+  $('#crosshair').classList.toggle('hidden', scoped);
+
   const vm = viewmodels[me.weapon];
   if (vm) {
+    vm.visible = !scoped;
     const k = me.ads;
     const loose = 1 - k * 0.85;                 // ADS tightens everything
     const bobAmt = (moving ? (sprinting2 ? 1.5 : 1) : 0) * loose;
@@ -1086,12 +1109,16 @@ function frame() {
     // slide: shove it across your chest
     px -= vmAnim.slideK * 0.06; py -= vmAnim.slideK * 0.02;
 
-    // equip flick: rise from below with an overshoot snap
+    // equip: swing up from the hip with a twirl, then settle with a bounce
     if (vmAnim.equipT < 1) {
-      const e = easeOutBack(vmAnim.equipT);
-      py -= (1 - e) * 0.3;
-      rx -= (1 - e) * 0.9;
-      rz += (1 - e) * 0.35;
+      const t = vmAnim.equipT;
+      const rise = easeOutBack(sstep(0, 0.72, t));
+      const settle = Math.sin(sstep(0.6, 1, t) * Math.PI) * 0.06;
+      py -= (1 - rise) * 0.34 - settle * 0.4;
+      px += (1 - rise) * 0.16;
+      rx -= (1 - rise) * 1.05;
+      ry2 -= (1 - rise) * 0.55;
+      rz += (1 - rise) * 0.6 - settle;
     }
     // scythe swing: a huge horizontal arc, alternating sides
     if (me.weapon === 'scythe' && vmAnim.swingT < 1) {
@@ -1125,13 +1152,28 @@ function frame() {
       P.gun.position.z += vmKick * 0.05;
       P.rArm.position.z += vmKick * 0.05;
       P.lArm.position.z += vmKick * 0.03;
-      // reload: left hand rips the mag out, gun tips, hand slams it back
+      // equip: the left hand slaps on a beat late, then racks guns
+      if (vmAnim.equipT < 1) {
+        const t = vmAnim.equipT;
+        const late = 1 - sstep(0.35, 0.7, t);          // left hand catches up late
+        P.lArm.position.y -= late * 0.18;
+        P.lArm.position.x -= late * 0.1;
+        P.lArm.rotation.x -= late * 0.6;
+        const isGun = me.weapon === 'ar' || me.weapon === 'handgun' || me.weapon === 'sniper';
+        if (isGun) {                                   // rack the action
+          const rack = Math.sin(sstep(0.62, 0.95, t) * Math.PI);
+          P.lArm.position.z += rack * 0.11;
+          P.gun.rotation.z -= rack * 0.12;
+        }
+      }
+      // reload: left hand rips the mag out (kept in frame), gun tips over
       if (me.reloading) {
         const rT = clamp((cn - vmAnim.reloadStart) / (vmAnim.reloadDur || 1), 0, 1);
         const out = sstep(0, 0.28, rT) * (1 - sstep(0.62, 0.92, rT));
-        P.lArm.position.y -= out * 0.26;
-        P.lArm.position.z += out * 0.1;
-        P.lArm.rotation.x -= out * 0.9;
+        P.lArm.position.y -= out * 0.18;
+        P.lArm.position.z += out * 0.16;               // pulls toward the camera, stays visible
+        P.lArm.position.x += out * 0.04;
+        P.lArm.rotation.x -= out * 1.0;
         P.gun.rotation.z += Math.sin(rT * Math.PI) * 0.45;
         P.gun.rotation.x += Math.sin(rT * Math.PI) * 0.12;
       }
