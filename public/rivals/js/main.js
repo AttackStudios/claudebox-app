@@ -256,7 +256,16 @@ const DEFAULT_BINDS = {
   jump: 'Space', sprint: 'ShiftLeft', crouch: 'ControlLeft', reload: 'KeyR', queue: 'KeyE',
   weapon1: 'Digit1', weapon2: 'Digit2', weapon3: 'Digit3', weapon4: 'Digit4', weapon5: 'Digit5', weapon6: 'Digit6',
 };
-let binds = (() => { try { return { ...DEFAULT_BINDS, ...JSON.parse(localStorage.getItem('rivals.binds') || '{}') }; } catch { return { ...DEFAULT_BINDS }; } })();
+let binds = (() => {
+  const out = { ...DEFAULT_BINDS };
+  try {
+    const saved = JSON.parse(localStorage.getItem('rivals.binds') || '{}');
+    // only apply NON-empty saved binds so an accidentally-unbound action
+    // (e.g. jump) always falls back to its default instead of being dead
+    for (const k in DEFAULT_BINDS) if (saved[k]) out[k] = saved[k];
+  } catch {}
+  return out;
+})();
 function saveBinds() { try { localStorage.setItem('rivals.binds', JSON.stringify(binds)); } catch {} }
 let rebinding = null;   // action id currently capturing a key
 // sprint mode: hold (default) vs toggle (press once to lock sprint on/off)
@@ -1405,7 +1414,9 @@ function renderKeybinds() {
 function startRebind(id) { rebinding = id; sfx.click?.(); renderKeybinds(); }
 function captureRebind(code) {
   if (code === 'Escape') { rebinding = null; renderKeybinds(); return; }
-  for (const k in binds) if (binds[k] === code) binds[k] = '';   // no duplicate binds
+  const prev = binds[rebinding];
+  // SWAP with whatever else held this key, so no action is ever left unbound
+  for (const k in binds) if (binds[k] === code && k !== rebinding) binds[k] = prev;
   binds[rebinding] = code; rebinding = null; saveBinds(); sfx.click?.(); renderKeybinds();
 }
 function openKeybinds() { renderKeybinds(); $('#keybinds').classList.remove('hidden'); document.exitPointerLock?.(); sfx.click?.(); }
