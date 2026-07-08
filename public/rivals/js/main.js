@@ -241,7 +241,7 @@ const me = {
 const keys = new Set();
 let locked = false;
 
-canvas.addEventListener('click', () => { if (!locked) canvas.requestPointerLock(); });
+canvas.addEventListener('click', () => { if (!locked && !isTouch) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
   if (!locked) return;
@@ -274,6 +274,86 @@ addEventListener('mouseup', (e) => {
   if (e.button === 2) rightDown = false;
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ==================== mobile touch controls ====================
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const mobileMove = { x: 0, z: 0 };
+let mobileOn = false;
+function setupMobile() {
+  if (!isTouch) return;
+  mobileOn = true;
+  const wrap = $('#mobile'); wrap.classList.remove('hidden');
+  const moveZone = $('#move-zone'), lookZone = $('#look-zone');
+  const joy = $('#joy'), knob = $('#joy-knob');
+  const $b = (id) => $(id);
+
+  // --- movement: dynamic joystick on the left half ---
+  let moveId = null, jcx = 0, jcy = 0;
+  moveZone.addEventListener('touchstart', (e) => {
+    if (moveId !== null) return;
+    const t = e.changedTouches[0]; moveId = t.identifier;
+    jcx = t.clientX; jcy = t.clientY;
+    joy.style.left = jcx + 'px'; joy.style.top = jcy + 'px'; joy.classList.remove('hidden');
+    knob.style.left = '50%'; knob.style.top = '50%';
+  }, { passive: true });
+  const moveUpdate = (e) => {
+    for (const t of e.changedTouches) if (t.identifier === moveId) {
+      let dx = t.clientX - jcx, dy = t.clientY - jcy; const max = 52, d = Math.hypot(dx, dy);
+      if (d > max) { dx *= max / d; dy *= max / d; }
+      knob.style.left = (50 + dx / max * 42) + '%'; knob.style.top = (50 + dy / max * 42) + '%';
+      mobileMove.x = dx / max; mobileMove.z = -dy / max;
+      const mag = Math.hypot(mobileMove.x, mobileMove.z);
+      if (mag > 0.85 && mobileMove.z > 0.1) keys.add('ShiftLeft'); else keys.delete('ShiftLeft');
+    }
+  };
+  moveZone.addEventListener('touchmove', moveUpdate, { passive: true });
+  const moveEnd = (e) => {
+    for (const t of e.changedTouches) if (t.identifier === moveId) {
+      moveId = null; mobileMove.x = mobileMove.z = 0; joy.classList.add('hidden'); keys.delete('ShiftLeft');
+    }
+  };
+  moveZone.addEventListener('touchend', moveEnd, { passive: true });
+  moveZone.addEventListener('touchcancel', moveEnd, { passive: true });
+
+  // --- look: drag anywhere on the right half ---
+  let lookId = null, lx = 0, ly = 0;
+  lookZone.addEventListener('touchstart', (e) => {
+    if (lookId !== null) return;
+    const t = e.changedTouches[0]; lookId = t.identifier; lx = t.clientX; ly = t.clientY;
+  }, { passive: true });
+  lookZone.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) if (t.identifier === lookId) {
+      const sens = 0.006 * (me.ads > 0.5 ? (me.weapon === 'sniper' ? 0.5 : 0.72) : 1);
+      me.ry -= (t.clientX - lx) * sens;
+      me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - (t.clientY - ly) * sens));
+      lx = t.clientX; ly = t.clientY;
+    }
+  }, { passive: true });
+  const lookEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null; };
+  lookZone.addEventListener('touchend', lookEnd, { passive: true });
+  lookZone.addEventListener('touchcancel', lookEnd, { passive: true });
+
+  // --- action buttons ---
+  const hold = (id, on, off) => {
+    const el = $b(id); if (!el) return;
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); on(); }, { passive: false });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); off && off(); }, { passive: false });
+  };
+  hold('#m-fire', () => { mouseDown = true; tryFire(); }, () => { mouseDown = false; });
+  hold('#m-aim', () => { rightDown = true; onRightDown(); }, () => { rightDown = false; });
+  hold('#m-jump', () => keys.add('Space'), () => keys.delete('Space'));
+  hold('#m-crouch', () => tryCrouch(true), () => tryCrouch(false));
+  $b('#m-reload').addEventListener('touchstart', (e) => { e.preventDefault(); startReload(); }, { passive: false });
+  $b('#m-play').addEventListener('touchstart', (e) => { e.preventDefault(); toggleModes(); }, { passive: false });
+}
+// swap between lobby (Play button) and in-match (combat buttons) layouts
+function updateMobileHud() {
+  if (!mobileOn) return;
+  const lobby = game.phase === 'lobby';
+  $('#m-play').classList.toggle('hidden', !lobby);
+  for (const id of ['#m-fire', '#m-jump', '#m-aim', '#m-crouch', '#m-reload'])
+    $(id).style.display = lobby ? 'none' : 'flex';
+}
 
 function tryCrouch(on) {
   if (on) {
@@ -347,9 +427,10 @@ function stepMe(dt) {
   camera.updateProjectionMatrix();
 
   let mx = 0, mz = 0;
-  if (!frozen && locked) {
+  if (!frozen && (locked || mobileOn)) {
     mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
     mz = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
+    if (mobileMove.x || mobileMove.z) { mx = mobileMove.x; mz = mobileMove.z; }   // joystick overrides
   }
   const fx = -Math.sin(me.ry), fz = -Math.cos(me.ry);
   const rx = Math.cos(me.ry), rz = -Math.sin(me.ry);
@@ -899,6 +980,7 @@ function updateLoadoutHud() {
     const s = document.createElement('div');
     s.className = 'slot' + (me.weapon === id ? ' active' : '');
     s.innerHTML = `<small>${i + 1}</small>${WEAPON_ICONS[id]}` + (id === 'grenade' ? `<span class="cnt">${me.grenades}</span>` : '');
+    s.addEventListener('pointerdown', (e) => { e.preventDefault(); switchWeapon(id); }); // tap to equip (mobile + desktop)
     hud.loadout.appendChild(s);
   });
 }
@@ -1267,6 +1349,7 @@ function frame() {
   const now = performance.now() / 1000;
   const dt = Math.min(0.05, now - last);
   last = now;
+  if (mobileOn) updateMobileHud();
   const cn = clockNow();
 
   stepMe(dt);
@@ -1489,6 +1572,7 @@ function frame() {
 // ============================ go ============================
 status('Connecting…');
 buildMap(LOBBY);
+setupMobile(); updateMobileHud();
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
 net.connect();
 net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });

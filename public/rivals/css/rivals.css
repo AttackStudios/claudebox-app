@@ -249,3 +249,40 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 /* scope + hitmarker keep clean; dmg numbers bubblier */
 .dmg-num { font-weight: 900; font-size: 21px; }
 .dmg-num.head { font-size: 26px; }
+
+/* ==================== mobile touch controls ==================== */
+#mobile { position: fixed; inset: 0; z-index: 60; pointer-events: none; touch-action: none; }
+#mobile.hidden { display: none; }
+/* invisible drag zones — left half moves, right half looks */
+#move-zone, #look-zone { position: absolute; top: 0; bottom: 0; pointer-events: auto; }
+#move-zone { left: 0; width: 42%; }
+#look-zone { right: 0; width: 58%; }
+/* dynamic joystick */
+#joy { position: absolute; width: 116px; height: 116px; margin: -58px 0 0 -58px;
+  border-radius: 50%; background: rgba(255,255,255,.10); border: 2px solid rgba(255,255,255,.35);
+  pointer-events: none; z-index: 62; }
+#joy.hidden { display: none; }
+#joy-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  border-radius: 50%; background: rgba(255,255,255,.55); border: 2px solid rgba(255,255,255,.85);
+  box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+/* action buttons */
+.mbtn { position: absolute; pointer-events: auto; z-index: 63; -webkit-user-select: none; user-select: none;
+  border: 2px solid rgba(255,255,255,.4); background: rgba(20,24,34,.5); color: #fff;
+  border-radius: 50%; width: 60px; height: 60px; font-size: 26px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px); transition: transform .06s, background .1s; }
+.mbtn:active { transform: scale(.9); background: rgba(90,170,255,.6); }
+.mbtn.big { width: 88px; height: 88px; font-size: 36px; right: 26px; bottom: 100px;
+  background: rgba(255,70,70,.34); border-color: rgba(255,120,120,.6); }
+#m-jump { right: 128px; bottom: 150px; }
+#m-aim { right: 128px; bottom: 76px; }
+#m-crouch { right: 30px; bottom: 214px; width: 54px; height: 54px; font-size: 24px; }
+#m-reload.small { right: 108px; bottom: 232px; width: 50px; height: 50px; font-size: 22px; }
+/* lobby play button */
+#m-play { position: absolute; pointer-events: auto; z-index: 63; left: 50%; bottom: 42px; transform: translateX(-50%);
+  padding: 16px 40px; font-size: 22px; font-weight: 900; color: #fff; border: none; border-radius: 40px;
+  background: linear-gradient(180deg,#4aa3ff,#2f7de0); box-shadow: 0 6px 20px rgba(47,125,224,.5); }
+#m-play.hidden { display: none; }
+/* keep the tappable loadout slots comfy on touch */
+@media (pointer: coarse) { #loadout .slot { min-width: 42px; min-height: 42px; } }
+@media (pointer: coarse) { #lobby-tip { display: none; } }
