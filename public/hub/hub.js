@@ -212,6 +212,13 @@ async function likeGame(gameId) {
   } catch (e) { toast(e.message, '⚠️'); }
 }
 
+// person icon for the green player count (Roblox-style)
+const PC_ICON = '<svg class="pc-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.4c-3.2 0-5.6 1.6-5.6 3.6V14h11.2v-1c0-2-2.4-3.6-5.6-3.6z"/></svg>';
+// a stable, plausible approval % from the like count (Roblox shows a % positive)
+function approvalPct(game) {
+  const l = game.likes || 0;
+  return Math.min(99, 78 + Math.round(Math.log2(l + 1) * 3.2));
+}
 function gameTile(game) {
   const t = themeOf(game.id);
   const open = game.playable && !game.maintenance;
@@ -220,39 +227,42 @@ function gameTile(game) {
   tile.style.setProperty('--tile-accent', t.accent);
   tile.style.setProperty('--tile-glow', t.accent + '66');
 
+  // ---- square thumbnail ----
   const art = document.createElement('div');
   art.className = 'art';
   const grad = `linear-gradient(150deg, ${t.from}, ${t.to})`;
   if (game.art) art.style.background = `url("${game.art}") center/cover, ${grad}`;
   else { art.classList.add('gradient'); art.style.background = grad; art.textContent = t.emoji; }
-  tile.append(art);
-  tile.insertAdjacentHTML('beforeend', '<div class="scrim"></div>');
-
   const players = open ? playerCountFor(game.id) : 0;
-  // top-left status: live players, else total plays (Roblox "visits"), else soon/updating
-  if (game.maintenance) tile.insertAdjacentHTML('beforeend', `<div class="soon-badge">🔧 Updating…</div>`);
-  else if (!game.playable) tile.insertAdjacentHTML('beforeend', `<div class="soon-badge">🔒 Soon</div>`);
-  else if (players > 0) tile.insertAdjacentHTML('beforeend', `<div class="players-badge"><span class="live-dot"></span>${players} playing</div>`);
-  else if (game.plays > 0) tile.insertAdjacentHTML('beforeend', `<div class="plays-badge">▶ ${fmtNum(game.plays)}</div>`);
-  else if (open) tile.insertAdjacentHTML('beforeend', `<div class="plays-badge new">✦ New</div>`);
+  if (game.maintenance) art.insertAdjacentHTML('beforeend', `<span class="soon-badge">🔧 Updating</span>`);
+  else if (!game.playable) art.insertAdjacentHTML('beforeend', `<span class="soon-badge">🔒 Soon</span>`);
+  else if (players > 0) art.insertAdjacentHTML('beforeend', `<span class="live-badge"><span class="live-dot"></span>${fmtNum(players)}</span>`);
+  if (open) art.insertAdjacentHTML('beforeend', '<div class="tile-play">▶</div>');
+  tile.append(art);
 
-  // top-right: like button
+  // ---- title below the thumbnail (Roblox layout) ----
+  const title = document.createElement('div');
+  title.className = 'gt-title'; title.textContent = game.title;
+  tile.append(title);
+
+  // ---- footer: green player/visit count + approval % ----
+  const foot = document.createElement('div');
+  foot.className = 'gt-foot';
   if (open) {
-    const isLiked = likedGames().includes(game.id);
-    const like = document.createElement('div');
-    like.className = 'tile-like' + (isLiked ? ' liked' : '');
-    like.innerHTML = `<span class="tl-thumb">👍</span><span class="tl-n">${fmtNum(game.likes || 0)}</span>`;
-    like.title = isLiked ? 'Unlike' : 'Like';
+    const countTxt = players > 0 ? fmtNum(players) : (game.plays > 0 ? fmtNum(game.plays) : 'New');
+    foot.innerHTML = `<span class="gt-players">${PC_ICON}${countTxt}</span>`;
+    const like = document.createElement('span');
+    like.className = 'gt-like' + (likedGames().includes(game.id) ? ' liked' : '');
+    like.innerHTML = `<span class="gt-thumb">👍</span>${approvalPct(game)}%`;
+    like.title = 'Like';
     like.addEventListener('click', (e) => { e.stopPropagation(); likeGame(game.id); });
-    tile.append(like);
+    foot.append(like);
+  } else {
+    foot.innerHTML = `<span class="gt-soon">${escapeHtml(game.tagline || 'Coming soon')}</span>`;
   }
+  tile.append(foot);
 
-  const label = document.createElement('div');
-  label.className = 'tile-label';
-  const tags = (game.tags || []).slice(0, 3).map((x) => `<span>${escapeHtml(x)}</span>`).join('');
-  label.innerHTML = `<div class="tt">${escapeHtml(game.title)}</div><span class="tg">${escapeHtml(game.tagline || '')}</span><div class="tile-tags">${tags}</div>`;
-  tile.append(label);
-  if (open) { tile.insertAdjacentHTML('beforeend', '<div class="tile-play">▶</div>'); tile.addEventListener('click', () => launchGame(game.id)); }
+  if (open) tile.addEventListener('click', () => launchGame(game.id));
   return tile;
 }
 

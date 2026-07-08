@@ -23,14 +23,14 @@
   --dim: #a7adba;
   --faint: #6c7280;
 
-  /* accent (user-tunable) */
-  --accent: #38b6e8;
-  --accent-2: #6ee7ff;
-  --accent-ink: #041a24;
-  --accent-glow: rgba(56, 182, 232, 0.45);
+  /* accent (user-tunable) — Roblox blue */
+  --accent: #0a94ff;
+  --accent-2: #4fb2ff;
+  --accent-ink: #ffffff;
+  --accent-glow: rgba(10, 148, 255, 0.45);
 
   /* status */
-  --green: #4ade80;
+  --green: #00b06f;
   --gold: #ffcf5c;
   --pink: #ff7eb6;
 
@@ -290,67 +290,57 @@ main {
 /* ======================================================================
    GAME TILES  (premium)
    ====================================================================== */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
-.tile-row { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 14px; scrollbar-width: none; }
+/* ===== Roblox-style game cards: square thumb, title below, green player count ===== */
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 16px 14px; }
+.tile-row { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 14px; scrollbar-width: none; scroll-snap-type: x proximity; }
 .tile-row::-webkit-scrollbar { display: none; }
-.tile-row .game-tile { min-width: 240px; }
+.tile-row .game-tile { min-width: 158px; width: 158px; scroll-snap-align: start; }
 
 .game-tile {
-  position: relative; height: 168px; border-radius: var(--r-lg); overflow: hidden; cursor: pointer;
-  border: 1px solid var(--glass-brd); padding: 0; background: var(--bg-2);
-  box-shadow: var(--sh-1); isolation: isolate; text-align: left; font-family: inherit;
-  transition: transform .32s var(--spring), box-shadow .32s var(--spring), border-color .3s;
+  position: relative; display: flex; flex-direction: column; cursor: pointer;
+  border: none; padding: 0; background: none; text-align: left; font-family: inherit;
   animation: tileIn .5s var(--spring) both;
 }
-@keyframes tileIn { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
-.game-tile:hover {
-  transform: translateY(-6px) scale(1.015);
-  box-shadow: var(--sh-3), 0 0 0 1px var(--tile-accent, var(--accent)), 0 20px 50px -12px var(--tile-glow, var(--accent-glow));
-  border-color: transparent;
+@keyframes tileIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.game-tile .art {
+  position: relative; aspect-ratio: 1 / 1; width: 100%; border-radius: var(--r-md); overflow: hidden;
+  background-size: cover; background-position: center; box-shadow: var(--sh-1);
+  transition: transform .2s var(--spring), box-shadow .2s var(--spring);
 }
-.game-tile:active { transform: translateY(-2px) scale(.99); }
-.game-tile .art { position: absolute; inset: 0; z-index: -2; background-size: cover; background-position: center; transition: transform .5s var(--ease); }
-.game-tile:hover .art { transform: scale(1.08); }
-.game-tile .art.gradient { display: grid; place-items: center; font-size: 52px; }
-.game-tile .scrim { position: absolute; inset: 0; z-index: -1; background: linear-gradient(transparent 30%, rgba(6,8,12,.4) 60%, rgba(6,8,12,.94)); }
-.tile-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 44px 16px 15px; }
-.tile-label .tt { font-weight: 700; font-size: 16px; letter-spacing: -.02em; color: #fff; }
-.tile-label .tg { display: block; font-weight: 500; color: #c3c8d2; font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tile-tags { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
-.tile-tags span { font-size: 10px; font-weight: 600; color: #dfe3ea; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.1); padding: 3px 8px; border-radius: var(--r-pill); backdrop-filter: blur(4px); }
+.game-tile:hover .art { transform: translateY(-5px); box-shadow: var(--sh-3), 0 16px 34px -10px var(--tile-glow, var(--accent-glow)); }
+.game-tile:active .art { transform: translateY(-2px) scale(.99); }
+.game-tile .art.gradient { display: grid; place-items: center; font-size: 54px; }
+/* title + footer sit below the thumbnail */
+.gt-title { font-weight: 700; font-size: 14.5px; letter-spacing: -.01em; color: var(--text); margin-top: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; font-size: 12.5px; }
+.gt-players { display: inline-flex; align-items: center; gap: 3px; color: var(--green); font-weight: 800; }
+.gt-players .pc-ico { width: 13px; height: 13px; }
+.gt-like { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-weight: 700; cursor: pointer; transition: color .15s, transform .15s var(--spring); }
+.gt-like .gt-thumb { filter: grayscale(1) opacity(.7); font-size: 11px; transition: filter .2s; }
+.gt-like:hover { color: var(--text); }
+.gt-like:active { transform: scale(.85); }
+.gt-like.liked { color: var(--green); }
+.gt-like.liked .gt-thumb { filter: none; animation: likePop .4s var(--spring); }
+.gt-soon { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* play affordance on hover */
 .tile-play {
-  position: absolute; top: 14px; right: 14px; width: 44px; height: 44px; border-radius: 50%;
-  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); color: #fff; font-size: 15px;
-  display: grid; place-items: center; backdrop-filter: blur(8px);
-  opacity: 0; transform: scale(.6) translateY(6px); transition: all .3s var(--spring);
+  position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(10,20,32,.5); border: 2px solid rgba(255,255,255,.7); color: #fff; font-size: 18px;
+  display: grid; place-items: center; backdrop-filter: blur(3px);
+  opacity: 0; transform: scale(.7); transition: all .22s var(--spring);
 }
-.game-tile:hover .tile-play { opacity: 1; transform: none; background: var(--tile-accent, var(--accent)); border-color: transparent; color: #041a24; }
-.players-badge {
-  position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 6px;
-  background: rgba(6,8,12,.6); color: var(--green); font-size: 11.5px; font-weight: 700;
-  padding: 5px 11px; border-radius: var(--r-pill); border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(8px);
+.game-tile:hover .tile-play { opacity: 1; transform: scale(1); background: var(--accent); border-color: rgba(255,255,255,.9); }
+/* live-players badge on the thumbnail */
+.live-badge {
+  position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(6,8,12,.68); color: var(--green); font-size: 11px; font-weight: 800;
+  padding: 4px 9px; border-radius: var(--r-pill); backdrop-filter: blur(8px);
 }
-.players-badge .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 var(--green); animation: livePulse 1.8s var(--ease) infinite; }
-@keyframes livePulse { 0%{ box-shadow: 0 0 0 0 rgba(74,222,128,.6); } 70%{ box-shadow: 0 0 0 7px rgba(74,222,128,0); } 100%{ box-shadow: 0 0 0 0 rgba(74,222,128,0); } }
+.live-badge .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livePulse 1.8s var(--ease) infinite; }
+@keyframes livePulse { 0%{ box-shadow: 0 0 0 0 rgba(0,176,111,.6); } 70%{ box-shadow: 0 0 0 6px rgba(0,176,111,0); } 100%{ box-shadow: 0 0 0 0 rgba(0,176,111,0); } }
 .game-tile.soon { cursor: default; }
-.game-tile.soon:hover { transform: none; box-shadow: var(--sh-1); border-color: var(--glass-brd); }
-.game-tile.soon .art { filter: saturate(.25) brightness(.7); }
-.soon-badge { position: absolute; top: 14px; left: 14px; background: rgba(6,8,12,.6); color: var(--gold); font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: var(--r-pill); border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(8px); }
-/* total plays ("visits") badge, Roblox-style */
-.plays-badge { position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 5px; background: rgba(6,8,12,.6); color: #dfe3ea; font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: var(--r-pill); border: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px); }
-.plays-badge.new { color: var(--accent-2); }
-/* like button */
-.tile-like {
-  position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 5px;
-  background: rgba(6,8,12,.62); color: #eef1f6; font-size: 12px; font-weight: 800; padding: 6px 11px;
-  border-radius: var(--r-pill); border: 1px solid rgba(255,255,255,.14); cursor: pointer; backdrop-filter: blur(8px);
-  transition: transform .18s var(--spring), background .2s, border-color .2s; z-index: 2;
-}
-.tile-like:hover { border-color: rgba(255,255,255,.3); transform: translateY(-1px); }
-.tile-like:active { transform: scale(.88); }
-.tile-like .tl-thumb { filter: grayscale(1) opacity(.85); transition: filter .2s; }
-.tile-like.liked { background: rgba(90,209,133,.22); border-color: rgba(90,209,133,.5); color: #9ff0c0; }
-.tile-like.liked .tl-thumb { filter: none; animation: likePop .4s var(--spring); }
+.game-tile.soon .art { filter: saturate(.3) brightness(.72); }
+.soon-badge { position: absolute; top: 8px; left: 8px; background: rgba(6,8,12,.68); color: var(--gold); font-size: 11px; font-weight: 800; padding: 4px 9px; border-radius: var(--r-pill); backdrop-filter: blur(8px); }
 @keyframes likePop { 0%{ transform: scale(1); } 45%{ transform: scale(1.5) rotate(-8deg); } 100%{ transform: scale(1); } }
 
 /* ---------- Charts (ranked top list) ---------- */
