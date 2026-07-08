@@ -67,6 +67,15 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'brook',
+    title: 'Brooktown RP',
+    tagline: 'Live the town life. Drive cars, hang out, roleplay.',
+    art: '/icons/game-brook.png',
+    url: '/games/brook',
+    tags: ['Roleplay', 'Town', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'wibit',
     title: 'Wibit Simulator',
     tagline: 'Bounce, climb, splash. Survive the Wipeout.',

@@ -29,6 +29,8 @@ import { state as wbState, genId as wbGenId, publicPlayer as wbPublicPlayer, clo
 import { handleMessage as wbHandle, onDisconnect as wbDisconnect, makeBroadcaster as wbBroadcaster, tickRound as wbTickRound, getRoundInfo as wbRoundInfo } from './wibit/protocol.js';
 import { state as rvState, genId as rvGenId } from './rivals/state.js';
 import { handleMessage as rvHandle, onDisconnect as rvDisconnect, tickRivals, snapshotRivals } from './rivals/protocol.js';
+import { state as bkState, genId as bkGenId, publicPlayer as bkPublicPlayer, clock as bkClock } from './brook/state.js';
+import { handleMessage as bkHandle, onDisconnect as bkDisconnect, makeBroadcaster as bkBroadcaster } from './brook/protocol.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8787;
@@ -66,6 +68,7 @@ app.get('/games/restaurant-sim-2', (req, res) => res.sendFile(path.join(ROOT, 'p
 app.get('/games/obby', (req, res) => res.sendFile(path.join(ROOT, 'public', 'obby', 'index.html')));
 app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wibit', 'index.html')));
 app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));
+app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.use('/api', hubRouter());
@@ -81,6 +84,7 @@ const rsWss = new WebSocketServer({ noServer: true });
 const obWss = new WebSocketServer({ noServer: true });
 const wbWss = new WebSocketServer({ noServer: true });
 const rvWss = new WebSocketServer({ noServer: true });
+const bkWss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://x');
   if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -89,6 +93,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/obby-ws') obWss.handleUpgrade(req, socket, head, (ws) => obWss.emit('connection', ws, req));
   else if (pathname === '/wibit-ws') wbWss.handleUpgrade(req, socket, head, (ws) => wbWss.emit('connection', ws, req));
   else if (pathname === '/rivals-ws') rvWss.handleUpgrade(req, socket, head, (ws) => rvWss.emit('connection', ws, req));
+  else if (pathname === '/brook-ws') bkWss.handleUpgrade(req, socket, head, (ws) => bkWss.emit('connection', ws, req));
   else socket.destroy();
 });
 
@@ -348,3 +353,30 @@ rvWss.on('connection', (ws) => {
 });
 setInterval(tickRivals, 1000 / 20);       // match state machine + bots + grenades
 setInterval(snapshotRivals, 1000 / 15);   // position snapshots
+
+// ====================== Brooktown RP (town roleplay) ======================
+const bkJoined = () => [...bkState.players.values()].filter((p) => p.joined);
+const bkBroadcast = bkBroadcaster(bkJoined);
+bkWss.on('connection', (ws) => {
+  const p = {
+    id: bkGenId('p'), ws, joined: false,
+    name: '', nameLower: '', avatar: null,
+    pos: { x: 0, y: 0, z: 0 }, ry: 0, anim: 'idle', carId: null,
+  };
+  bkState.players.set(p.id, p);
+  const ctx = { broadcast: bkBroadcast, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
+  ws.on('message', (raw) => {
+    if (raw.length > 4096) return;
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    try { bkHandle(p, msg, ctx); } catch (err) { console.error('[brook]', msg?.t, err); }
+  });
+  ws.on('close', () => bkDisconnect(p, ctx));
+  ws.on('error', () => {});
+});
+setInterval(() => {
+  const players = bkJoined().map((p) => [
+    p.id, +p.pos.x.toFixed(2), +p.pos.y.toFixed(2), +p.pos.z.toFixed(2), +p.ry.toFixed(3), p.anim,
+  ]);
+  const cars = [...bkState.cars.values()].map((c) => [c.id, +c.x.toFixed(2), +c.z.toFixed(2), +c.ry.toFixed(3), c.driver ? 1 : 0]);
+  bkBroadcast({ t: 'snapshot', players, cars, clock: bkClock() });
+}, 1000 / 14);

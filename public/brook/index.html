@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#4fae6a">
+<title>Brooktown RP — ClaudeBox</title>
+<link rel="stylesheet" href="/brook/css/brook.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="loading">
+  <div class="load-card">
+    <div class="load-logo">🏘️</div>
+    <h1>Brooktown RP</h1>
+    <p id="load-status">Waking the town…</p>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="action-hint" class="hidden"></div>
+
+  <!-- chat -->
+  <div id="chat-log"></div>
+  <div id="chat-row" class="hidden">
+    <input id="chat-input" maxlength="140" placeholder="Say something…  (Enter to send)" autocomplete="off">
+    <button id="chat-send">➤</button>
+  </div>
+
+  <!-- controls hint (desktop) -->
+  <div id="controls-tip">WASD move · Shift run · Space jump · <b>E</b> drive · <b>Enter</b> chat · drag to look</div>
+
+  <!-- mobile controls -->
+  <div id="move-cluster" class="hidden">
+    <div id="joystick-zone"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
+    <div id="look-zone"></div>
+    <button id="btn-jump" class="m-btn">⤒</button>
+    <button id="btn-action" class="m-btn">🚗</button>
+    <button id="btn-chat" class="m-btn">💬</button>
+  </div>
+</div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/brook/js/main.js"></script>
+</body>
+</html>
