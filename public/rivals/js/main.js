@@ -675,7 +675,7 @@ function finishReload() {
 }
 
 function tryFire() {
-  if (!locked || me.dead) return;
+  if ((!locked && !mobileOn) || me.dead) return;
   if (game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium') return;
   const now = clockNow();
   const w = WEAPONS[me.weapon];

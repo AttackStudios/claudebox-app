@@ -286,3 +286,8 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 /* keep the tappable loadout slots comfy on touch */
 @media (pointer: coarse) { #loadout .slot { min-width: 42px; min-height: 42px; } }
 @media (pointer: coarse) { #lobby-tip { display: none; } }
+/* weapon slots must sit ABOVE the look-zone so taps switch weapons on mobile */
+@media (pointer: coarse) {
+  #ammo-wrap { z-index: 64; pointer-events: none; }
+  #loadout, #loadout .slot { pointer-events: auto; }
+}

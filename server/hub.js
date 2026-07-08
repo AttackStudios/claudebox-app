@@ -10,7 +10,7 @@ import { state, save as saveGame } from './state.js';
 import { applyCourse as obApplyCourse } from '../shared/obby/course.js';
 import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
 import { toObbyCourse, toWibitWorld } from '../shared/studio/adapters.js';
-import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS } from '../shared/rewards.js';
+import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID } from '../shared/rewards.js';
 
 const DATA_DIR = process.env.CLAUDEBOX_DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const FILE = path.join(DATA_DIR, 'platform.json');
@@ -186,11 +186,11 @@ function sanitizeAvatar(a = {}) {
     shoes: pick(a.shoes, ['sneakers', 'boots', 'sandals', 'none'], 'sneakers'),
     shoeColor: cleanColor(a.shoeColor, DEFAULT_AVATAR.shoeColor),
     // clothing for the 3D model (ids must match avatar3d.js CLOTHING catalog)
-    hat: pick(a.hat, ['none', 'cap', 'beanie', 'tophat', 'crown', 'cowboy', 'headphones', 'halo', 'horns', 'wizard', 'bandana', 'flower'], 'none'),
+    hat: pick(a.hat, ['none', 'cap', 'beanie', 'tophat', 'crown', 'cowboy', 'headphones', 'halo', 'horns', 'wizard', 'bandana', 'flower', 'pirate', 'party', 'chef', 'football', 'propeller'], 'none'),
     hatColor: cleanColor(a.hatColor, DEFAULT_AVATAR.hatColor),
-    back: pick(a.back, ['none', 'backpack', 'wings', 'cape', 'jetpack', 'sword'], 'none'),
+    back: pick(a.back, ['none', 'backpack', 'wings', 'cape', 'jetpack', 'sword', 'angelwings', 'balloon', 'guitar'], 'none'),
     backColor: cleanColor(a.backColor, '#4a7ec0'),
-    face2: pick(a.face2, ['none', 'glasses', 'shades', 'mask'], 'none'),
+    face2: pick(a.face2, ['none', 'glasses', 'shades', 'mask', 'monocle', 'eyepatch', 'threed'], 'none'),
     faceColor: cleanColor(a.faceColor, '#222222'),
     suit: pick(a.suit, ['none', 'swim'], 'none'),
     suitColor: cleanColor(a.suitColor, DEFAULT_AVATAR.suitColor),
@@ -233,9 +233,26 @@ function ensureWallet(u) {
   if (typeof u.cubes !== 'number') u.cubes = 0;
   if (!u.challenges || typeof u.challenges !== 'object') u.challenges = {};
   if (!Array.isArray(u.owned)) u.owned = [];
+  if (!Array.isArray(u.ownedAvatar)) u.ownedAvatar = [];
   if (typeof u.title !== 'string') u.title = '';
   if (typeof u.nameColor !== 'string') u.nameColor = '';
   return u;
+}
+// clothing ids that are FREE (usable without buying) — the starter basics
+const FREE_AVATAR = {
+  hat: new Set(['none', 'cap', 'beanie']),
+  back: new Set(['none', 'backpack']),
+  face2: new Set(['none', 'glasses']),
+  suit: new Set(['none', 'swim']),
+};
+// map an owned avatar-shop item id set → the clothing values the user may equip
+function ownedAvatarValues(u, slot) {
+  const vals = new Set(FREE_AVATAR[slot] || ['none']);
+  for (const id of (u.ownedAvatar || [])) {
+    const it = AVATAR_SHOP_BY_ID[id];
+    if (it && it.slot === slot) vals.add(it.value);
+  }
+  return vals;
 }
 
 // The wallet slice sent to clients.
@@ -243,7 +260,7 @@ function walletOf(u) {
   ensureWallet(u);
   return {
     stars: u.stars, cubes: u.cubes,
-    challenges: u.challenges, owned: u.owned,
+    challenges: u.challenges, owned: u.owned, ownedAvatar: u.ownedAvatar,
     title: u.title, nameColor: u.nameColor,
   };
 }
@@ -390,9 +407,45 @@ export function hubRouter() {
     const name = clean(req.body?.name);
     if (!name) return res.status(400).json({ error: 'name required' });
     const u = ensureUser(name);
-    u.avatar = sanitizeAvatar(req.body?.avatar);
+    const av = sanitizeAvatar(req.body?.avatar);
+    // premium cosmetics require ownership — a slot set to an unowned paid item
+    // silently reverts to 'none' so people can't equip what they didn't buy
+    for (const slot of ['hat', 'back', 'face2', 'suit']) {
+      if (!ownedAvatarValues(u, slot).has(av[slot])) av[slot] = 'none';
+    }
+    u.avatar = av;
     save();
     res.json({ ok: true, avatar: u.avatar });
+  });
+
+  // buy an avatar cosmetic with Bits → add to inventory + auto-equip it
+  r.post('/avatarshop/buy', (req, res) => {
+    const name = clean(req.body?.name);
+    const item = AVATAR_SHOP_BY_ID[String(req.body?.item ?? '')];
+    if (!name) return res.status(400).json({ ok: false, error: 'name required' });
+    if (!item) return res.status(404).json({ ok: false, error: 'unknown item' });
+    const u = ensureUser(name);
+    if (!u.ownedAvatar.includes(item.id)) {
+      if (u.cubes < item.price) return res.status(400).json({ ok: false, error: `not enough ${CURRENCY.name}`, wallet: walletOf(u) });
+      u.cubes -= item.price;
+      u.ownedAvatar.push(item.id);
+    }
+    u.avatar = sanitizeAvatar({ ...u.avatar, [item.slot]: item.value });   // equip
+    save();
+    res.json({ ok: true, bought: item.id, avatar: u.avatar, wallet: walletOf(u) });
+  });
+
+  // equip / unequip an already-owned avatar cosmetic (or clear the slot)
+  r.post('/avatarshop/equip', (req, res) => {
+    const name = clean(req.body?.name);
+    const slot = String(req.body?.slot ?? '');
+    const value = String(req.body?.value ?? 'none');
+    if (!name || !['hat', 'back', 'face2', 'suit'].includes(slot)) return res.status(400).json({ ok: false, error: 'bad request' });
+    const u = ensureUser(name);
+    if (!ownedAvatarValues(u, slot).has(value)) return res.status(400).json({ ok: false, error: 'not owned' });
+    u.avatar = sanitizeAvatar({ ...u.avatar, [slot]: value });
+    save();
+    res.json({ ok: true, avatar: u.avatar, wallet: walletOf(u) });
   });
 
   r.post('/friends/add', (req, res) => {
@@ -494,7 +547,7 @@ export function hubRouter() {
 
   // Static catalog (challenges + shop + rate + currency names) for the hub.
   r.get('/rewards/catalog', (req, res) => {
-    res.json({ challenges: CHALLENGES, cubeRate: CUBE_RATE, shop: Object.values(SHOP_BY_ID), currency: CURRENCY, points: POINTS });
+    res.json({ challenges: CHALLENGES, cubeRate: CUBE_RATE, shop: Object.values(SHOP_BY_ID), avatarShop: AVATAR_SHOP, currency: CURRENCY, points: POINTS });
   });
 
   // A game reports that a player completed a challenge. Idempotent: Stars are

@@ -327,6 +327,13 @@ export const CLOTHING = {
     { id: 'horns', label: 'Horns', emoji: '😈', bone: 'Neck', build: 'horns' },
     { id: 'wizard', label: 'Wizard', emoji: '🧙', bone: 'Neck', build: 'wizard' },
     { id: 'bandana', label: 'Bandana', emoji: '🏴', bone: 'Neck', build: 'bandana' },
+    // ---- premium (Store) ----
+    { id: 'pirate', label: 'Pirate Hat', emoji: '🏴‍☠️', bone: 'Neck', build: 'pirate' },
+    { id: 'party', label: 'Party Hat', emoji: '🥳', bone: 'Neck', build: 'party' },
+    { id: 'chef', label: 'Chef Hat', emoji: '👨‍🍳', bone: 'Neck', build: 'chef' },
+    { id: 'football', label: 'Football Helmet', emoji: '🏈', bone: 'Neck', build: 'football' },
+    { id: 'flower', label: 'Flower Crown', emoji: '🌸', bone: 'Neck', build: 'flower' },
+    { id: 'propeller', label: 'Propeller Cap', emoji: '🚁', bone: 'Neck', build: 'propeller' },
   ],
   backs: [
     { id: 'none', label: 'None', emoji: '🚫' },
@@ -335,12 +342,20 @@ export const CLOTHING = {
     { id: 'cape', label: 'Cape', emoji: '🦸', bone: 'Chest', build: 'cape' },
     { id: 'jetpack', label: 'Jetpack', emoji: '🚀', bone: 'Chest', build: 'jetpack' },
     { id: 'sword', label: 'Sword', emoji: '🗡️', bone: 'Chest', build: 'sword' },
+    // ---- premium (Store) ----
+    { id: 'angelwings', label: 'Angel Wings', emoji: '👼', bone: 'Chest', build: 'angelwings' },
+    { id: 'balloon', label: 'Balloon', emoji: '🎈', bone: 'Chest', build: 'balloon' },
+    { id: 'guitar', label: 'Guitar', emoji: '🎸', bone: 'Chest', build: 'guitar' },
   ],
   faces: [
     { id: 'none', label: 'None', emoji: '🚫' },
     { id: 'glasses', label: 'Glasses', emoji: '👓', bone: 'Neck', build: 'glasses' },
     { id: 'shades', label: 'Shades', emoji: '🕶️', bone: 'Neck', build: 'shades' },
     { id: 'mask', label: 'Mask', emoji: '😷', bone: 'Neck', build: 'mask' },
+    // ---- premium (Store) ----
+    { id: 'monocle', label: 'Monocle', emoji: '🧐', bone: 'Neck', build: 'monocle' },
+    { id: 'eyepatch', label: 'Eyepatch', emoji: '🏴‍☠️', bone: 'Neck', build: 'eyepatch' },
+    { id: 'threed', label: '3D Glasses', emoji: '🤓', bone: 'Neck', build: 'threed' },
   ],
   // Body outfits. 'swim' resolves per body type: swim shorts for boys, a
   // full one-piece for girls (handled in setClothing); the body underneath is
@@ -522,6 +537,86 @@ function buildClothing(item, head) {
       const trim = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.06, 0.36), lam('#ffffff'));
       trim.position.y = -0.2; g.add(trim);
       break;
+    }
+    // ---------- premium hats ----------
+    case 'pirate': {
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.7, R * 1.7, 0.05, 20), lam(c || '#1a1a1e'));
+      brim.position.y = TOP; brim.scale.x = 1.25;
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(R * 1.02, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), lam(c || '#1a1a1e'));
+      crown.position.y = TOP;
+      const skull = new THREE.Mesh(new THREE.SphereGeometry(R * 0.26, 10, 8), basic('#f2f2f2'));
+      skull.position.set(0, TOP + R * 0.35, R * 1.0 * F);
+      g.add(brim, crown, skull); break;
+    }
+    case 'party': {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(R * 0.85, R * 2.2, 18), lam(c || '#ff5aa5'));
+      cone.position.y = TOP + R * 1.0;
+      for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.TorusGeometry(R * (0.5 + i * 0.12), 0.03, 6, 16), basic(i % 2 ? '#5be0ff' : '#ffe14a')); b.rotation.x = Math.PI / 2; b.position.y = TOP + R * (0.3 + i * 0.6); g.add(b); }
+      const pom = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 8, 6), basic('#ffffff')); pom.position.y = TOP + R * 2.1;
+      g.add(cone, pom); break;
+    }
+    case 'chef': {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.02, R * 1.02, R * 0.55, 16), lam('#ffffff')); band.position.y = TOP + R * 0.25;
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(R * 1.15, 14, 10), lam('#ffffff')); puff.position.y = TOP + R * 0.85; puff.scale.y = 0.8;
+      g.add(band, puff); break;
+    }
+    case 'football': {
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(R * 1.18, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), lam(c || '#e0a326'));
+      dome.position.y = TOP - R * 0.35;
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(R * 0.16, R * 1.3, 0.02), lam('#ffffff')); stripe.position.set(0, TOP - R * 0.1, 0);
+      for (const y of [-0.15, 0.12]) { const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, R * 1.5, 8), lam('#d8dde3')); bar.rotation.z = Math.PI / 2; bar.position.set(0, TOP + R * y, R * 1.05 * F); g.add(bar); }
+      const vbar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, R * 0.5, 8), lam('#d8dde3')); vbar.position.set(0, TOP - R * 0.02, R * 1.05 * F);
+      g.add(dome, stripe, vbar); break;
+    }
+    case 'flower': {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(R * 1.05, 0.03, 8, 20), lam('#4a8a3a')); ring.rotation.x = Math.PI / 2; ring.position.y = TOP + R * 0.05;
+      const cols = ['#ff7eb6', '#ffd23f', '#ff5a5a', '#a06bff', '#ffffff'];
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const fl = new THREE.Mesh(new THREE.SphereGeometry(R * 0.18, 8, 6), basic(cols[i % cols.length])); fl.position.set(Math.cos(a) * R * 1.05, TOP + R * 0.1, Math.sin(a) * R * 1.05); fl.scale.y = 0.6; g.add(fl); }
+      g.add(ring); break;
+    }
+    case 'propeller': {
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(R * 1.05, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(c || '#e64a3b')); dome.position.y = TOP - R * 0.1;
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, R * 0.4, 6), lam('#333')); stalk.position.y = TOP + R * 0.3;
+      for (const s of [-1, 1]) { const bl = new THREE.Mesh(new THREE.BoxGeometry(R * 0.9, 0.03, R * 0.22), lam(s > 0 ? '#5be0ff' : '#ffe14a')); bl.position.set(s * R * 0.4, TOP + R * 0.5, 0); bl.rotation.y = s * 0.3; g.add(bl); }
+      g.add(dome, stalk); break;
+    }
+    // ---------- premium faces ----------
+    case 'monocle': {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(R * 0.3, 0.03, 8, 16), lam('#ffd23f')); ring.position.set(R * 0.42, R * 0.1, R * 0.98 * F);
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(R * 0.28, 14), basic('#bfe8ff')); lens.position.set(R * 0.42, R * 0.1, R * 0.96 * F); lens.material.transparent = true; lens.material.opacity = 0.5;
+      const chain = new THREE.Mesh(new THREE.BoxGeometry(0.01, R * 0.5, 0.01), lam('#ffd23f')); chain.position.set(R * 0.42, R * -0.15, R * 0.98 * F);
+      g.add(ring, lens, chain); break;
+    }
+    case 'eyepatch': {
+      const patch = new THREE.Mesh(new THREE.CircleGeometry(R * 0.32, 14), lam('#111')); patch.position.set(-R * 0.42, R * 0.12, R * 1.0 * F); patch.lookAt(-R * 0.42, R * 0.12, R * 3 * F);
+      const strap = new THREE.Mesh(new THREE.TorusGeometry(R * 1.02, 0.03, 6, 20, Math.PI * 1.2), lam('#111')); strap.rotation.z = 0.3; strap.position.y = R * 0.2;
+      g.add(patch, strap); break;
+    }
+    case 'threed': {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(R * 1.5, R * 0.4, 0.03), lam('#111')); frame.position.set(0, R * 0.1, R * 0.98 * F);
+      for (const [s, col] of [[-1, '#ff3b3b'], [1, '#3b7bff']]) { const lens = new THREE.Mesh(new THREE.CircleGeometry(R * 0.3, 14), basic(col)); lens.position.set(s * R * 0.4, R * 0.1, R * 1.0 * F); lens.material.transparent = true; lens.material.opacity = 0.6; g.add(lens); }
+      g.add(frame); break;
+    }
+    // ---------- premium backs ----------
+    case 'angelwings': {
+      for (const s of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const fw = new THREE.Mesh(new THREE.PlaneGeometry(0.34 - i * 0.06, 0.5 - i * 0.08), lam('#fbfbff', { side: THREE.DoubleSide }));
+          fw.position.set(s * (0.18 + i * 0.14), 0.28 - i * 0.18, -0.22 * F); fw.rotation.y = s * 0.9 * F; fw.rotation.z = -s * 0.2; g.add(fw);
+        }
+      }
+      break;
+    }
+    case 'balloon': {
+      const str = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.9, 6), lam('#cccccc')); str.position.set(0.1, 0.5, -0.1 * F);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), lam(c || '#ff4a6b')); ball.position.set(0.1, 1.05, -0.1 * F); ball.scale.y = 1.15;
+      g.add(str, ball); break;
+    }
+    case 'guitar': {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.08), lam(c || '#c0392b')); body.position.set(0.1, -0.15, -0.26 * F); body.scale.x = 0.85;
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.09, 14), basic('#1a1a1a')); hole.position.set(0.1, -0.15, -0.215 * F);
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.05), lam('#6b4a2a')); neck.position.set(-0.02, 0.32, -0.26 * F); neck.rotation.z = 0.35;
+      g.add(body, hole, neck); break;
     }
     default: return null;
   }

@@ -29,6 +29,7 @@
     <button class="tab selected" data-tab="home"><span class="ti">🏠</span><span class="tl">Home</span></button>
     <button class="tab" data-tab="rewards"><span class="ti">🏆</span><span class="tl">Rewards</span></button>
     <button class="tab" data-tab="avatar"><span class="ti">🧍</span><span class="tl">Avatar</span></button>
+    <button class="tab" data-tab="store"><span class="ti">🛒</span><span class="tl">Store</span></button>
     <button class="tab" data-tab="connect"><span class="ti">🤝</span><span class="tl">Friends</span></button>
     <button class="tab" data-tab="settings"><span class="ti">⚙️</span><span class="tl">Settings</span></button>
   </nav>
@@ -142,6 +143,31 @@
         <canvas id="avatar-canvas"></canvas>
       </div>
       <div id="avatar-options"></div>
+    </div>
+  </section>
+
+  <!-- ================= STORE (Avatar Shop) ================= -->
+  <section id="tab-store" class="tab-page hidden">
+    <div class="store-head">
+      <div>
+        <h1 class="store-title">Avatar Shop</h1>
+        <p class="store-sub">Deck out your character with cosmetics — buy with <b id="store-cur">Bits</b>.</p>
+      </div>
+      <div class="store-head-right">
+        <div id="store-search-wrap"><span>🔍</span><input id="store-search" placeholder="Search items…" autocomplete="off"></div>
+        <button id="store-getbits" class="store-getbits">🔷 <b id="store-bal">0</b> · Get more</button>
+      </div>
+    </div>
+    <div class="store-layout">
+      <aside class="store-side">
+        <div class="store-preview">
+          <div class="stage-glow"></div>
+          <canvas id="store-canvas"></canvas>
+          <div id="store-preview-label">Your avatar</div>
+        </div>
+        <nav id="store-cats"></nav>
+      </aside>
+      <div id="store-grid"></div>
     </div>
   </section>
 

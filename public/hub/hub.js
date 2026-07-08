@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { drawAvatarHead } from './avatarModel.js';
 import { preloadAvatars, makeAvatar, CLOTHING } from '/shared/avatar3d.js';
 import { sfx } from './sounds.js';
-import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS } from '/shared/rewards.js';
+import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID, AVATAR_CATS } from '/shared/rewards.js';
 
 const USER_KEY = 'claudebox.user';
 const SETTINGS_KEY = 'claudebox.settings';
@@ -125,6 +125,7 @@ function selectTab(name, withSound = true) {
   movePill();
   if (withSound) sfx.select();
   if (name === 'avatar') avatarEditor.start(); else avatarEditor.stop();
+  if (name === 'store') { renderStore(); storeStage.start(); } else storeStage.stop();
 }
 for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => selectTab(tab.dataset.tab));
 $('me-chip').addEventListener('click', () => selectTab('avatar'));
@@ -720,6 +721,126 @@ async function equipItem(item) {
   if (data?.ok) { sfx.tap(); toast(`Equipped ${item.label}`, '✨'); refreshSocial(); }
 }
 
+// ==================== STORE (Avatar Shop) ====================
+let storeCat = 'Featured';
+const SLOT_LABEL = { hat: 'Hat', back: 'Back', face2: 'Face', suit: 'Outfit' };
+
+// a lightweight live 3D preview of your avatar (own renderer, runs only when the
+// Store tab is open) — mirrors the avatar editor but read-only
+const storeStage = (() => {
+  let renderer = null, scene, cam, ctrl = null, running = false, ready = false;
+  const clock = new THREE.Clock();
+  function rebuild() {
+    if (!scene || !ready) return;
+    if (ctrl) { scene.remove(ctrl.group); ctrl.dispose?.(); }
+    ctrl = makeAvatar(stateHub.me.avatar); ctrl.setAnim('idle'); scene.add(ctrl.group);
+  }
+  async function init() {
+    const canvas = $('store-canvas'); if (!canvas) return;
+    try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (e) { return; }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    scene = new THREE.Scene();
+    cam = new THREE.PerspectiveCamera(32, 1, 0.1, 30); cam.position.set(0, 1.1, 4.6); cam.lookAt(0, 0.95, 0);
+    scene.add(new THREE.AmbientLight('#aab4c4', 1.5));
+    const key = new THREE.DirectionalLight('#fff4dc', 2.0); key.position.set(2, 4, 3); scene.add(key);
+    const rim = new THREE.DirectionalLight(settings.accent, 0.9); rim.position.set(-3, 2, -2); scene.add(rim);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 0.1, 40), new THREE.MeshLambertMaterial({ color: '#26282f' }));
+    disc.position.y = -0.05; scene.add(disc);
+    await preloadAvatars(['boy', 'girl']); ready = true; rebuild();
+  }
+  function frame(now) {
+    if (!running) return; requestAnimationFrame(frame);
+    const c = renderer.domElement, w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.floor(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+    const dt = clock.getDelta();
+    if (ctrl) { ctrl.update(dt); ctrl.group.rotation.y = settings.reduceMotion ? 0 : Math.sin(now / 1000 * 0.4) * 0.6; }
+    renderer.render(scene, cam);
+  }
+  return {
+    async start() { if (!renderer) await init(); running = true; requestAnimationFrame(frame); },
+    stop() { running = false; },
+    refresh() { rebuild(); },
+  };
+})();
+
+function storeCounts() {
+  const w = wallet();
+  const owned = new Set(w.ownedAvatar || []);
+  return { owned };
+}
+function renderCats() {
+  const host = $('store-cats'); if (!host) return;
+  host.innerHTML = '';
+  const emojiByCat = { Featured: '✨', Hats: '🎩', Faces: '🕶️', Back: '🎒' };
+  for (const cat of AVATAR_CATS) {
+    const b = document.createElement('button');
+    b.className = 'store-cat' + (cat === storeCat ? ' active' : '');
+    b.innerHTML = `<span>${emojiByCat[cat] || '🛍️'}</span> ${cat}`;
+    b.addEventListener('click', () => { storeCat = cat; sfx.tap(); renderStore(); });
+    host.appendChild(b);
+  }
+}
+function renderStore() {
+  const grid = $('store-grid'); if (!grid) return;
+  renderCats();
+  $('store-bal').textContent = wallet().cubes || 0;
+  $('store-cur').textContent = CURRENCY.name;
+  const q = ($('store-search')?.value || '').trim().toLowerCase();
+  const { owned } = storeCounts();
+  const av = stateHub.me.avatar || {};
+  let items = AVATAR_SHOP.filter((it) => storeCat === 'Featured' ? it.featured : it.cat === storeCat);
+  if (q) items = AVATAR_SHOP.filter((it) => it.label.toLowerCase().includes(q));
+  grid.innerHTML = '';
+  if (!items.length) { grid.innerHTML = '<div class="store-empty">No items found.</div>'; return; }
+  for (const it of items) {
+    const isOwned = owned.has(it.id);
+    const isEquipped = av[it.slot] === it.value;
+    const card = document.createElement('div');
+    card.className = 'store-card' + (isEquipped ? ' equipped' : '');
+    let btn;
+    if (isEquipped) btn = `<button class="store-btn on">✓ Equipped</button>`;
+    else if (isOwned) btn = `<button class="store-btn equip">Equip</button>`;
+    else btn = `<button class="store-btn buy">🔷 ${it.price}</button>`;
+    card.innerHTML =
+      `<div class="store-thumb">${it.emoji}</div>` +
+      `<div class="store-name">${it.label}</div>` +
+      `<div class="store-cat-tag">${SLOT_LABEL[it.slot] || ''}</div>` +
+      btn;
+    card.querySelector('button').addEventListener('click', () => {
+      if (isEquipped) unequipAvatar(it);
+      else if (isOwned) equipAvatarItem(it);
+      else buyAvatarItem(it);
+    });
+    grid.appendChild(card);
+  }
+}
+async function storePost(path, body) {
+  try {
+    const data = await api(path, body);
+    if (data?.wallet) stateHub.me.wallet = data.wallet;
+    if (data?.avatar) { stateHub.me.avatar = data.avatar; thumbInto($('me-thumb'), stateHub.me.avatar); storeStage.refresh(); }
+    syncRewards(); renderStore();
+    return data;
+  } catch (e) { toast(e.message, '⚠️'); return null; }
+}
+async function buyAvatarItem(it) {
+  if ((wallet().cubes || 0) < it.price) { toast(`Not enough ${CURRENCY.name} — earn & convert Stars first`, '🔷'); sfx.error?.(); return; }
+  const data = await storePost('/avatarshop/buy', { name: stateHub.me.name, item: it.id });
+  if (data?.ok) { sfx.success(); toast(`Unlocked "${it.label}"!`, it.emoji); }
+}
+async function equipAvatarItem(it) {
+  const data = await storePost('/avatarshop/equip', { name: stateHub.me.name, slot: it.slot, value: it.value });
+  if (data?.ok) { sfx.tap(); toast(`Equipped ${it.label}`, '✨'); }
+}
+async function unequipAvatar(it) {
+  const data = await storePost('/avatarshop/equip', { name: stateHub.me.name, slot: it.slot, value: 'none' });
+  if (data?.ok) { sfx.tap(); toast(`Removed ${it.label}`, '👋'); }
+}
+function initStoreTab() {
+  const s = $('store-search'); if (s) s.addEventListener('input', () => renderStore());
+  const gb = $('store-getbits'); if (gb) gb.addEventListener('click', () => { sfx.tap(); selectTab('rewards'); });
+}
+
 function initRewardsTab() {
   // localize labels to the configured currency names
   $('lbl-stars').textContent = POINTS.name;
@@ -836,6 +957,7 @@ async function refreshSocial() {
   renderChips();
   renderGames();
   initRewardsTab();
+  initStoreTab();
   syncRewards();
   await refreshSocial();
   movePill();

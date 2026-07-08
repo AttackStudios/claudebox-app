@@ -66,3 +66,44 @@ export const SHOP = [
 ];
 
 export const SHOP_BY_ID = Object.fromEntries(SHOP.map((s) => [s.id, s]));
+
+// =================== AVATAR SHOP (cosmetics) ===================
+// Premium avatar cosmetics bought with Bits. `slot` is the avatar profile key
+// the item equips into; `value` is the clothing id from avatar3d.js CLOTHING.
+// Once bought the id lands in u.ownedAvatar and can be equipped on the avatar.
+// `cat` drives the Store category sidebar; `featured` items headline the shop.
+const A = (id, cat, slot, value, emoji, label, price, featured = false) =>
+  ({ id, cat, slot, value, emoji, label, price, featured });
+export const AVATAR_SHOP = [
+  // ---- Hats ----
+  A('av-hat-football', 'Hats', 'hat', 'football', '🏈', 'Golden Football Helmet', 80, true),
+  A('av-hat-crown',    'Hats', 'hat', 'crown',    '👑', 'Royal Crown',            60, true),
+  A('av-hat-halo',     'Hats', 'hat', 'halo',     '😇', 'Angel Halo',             50),
+  A('av-hat-pirate',   'Hats', 'hat', 'pirate',   '🏴‍☠️', 'Pirate Hat',           45, true),
+  A('av-hat-wizard',   'Hats', 'hat', 'wizard',   '🧙', 'Wizard Hat',             35),
+  A('av-hat-horns',    'Hats', 'hat', 'horns',    '😈', 'Devil Horns',            30),
+  A('av-hat-flower',   'Hats', 'hat', 'flower',   '🌸', 'Flower Crown',           30),
+  A('av-hat-propeller','Hats', 'hat', 'propeller','🚁', 'Propeller Cap',          25),
+  A('av-hat-cowboy',   'Hats', 'hat', 'cowboy',   '🤠', 'Cowboy Hat',             25),
+  A('av-hat-tophat',   'Hats', 'hat', 'tophat',   '🎩', 'Top Hat',                25),
+  A('av-hat-chef',     'Hats', 'hat', 'chef',     '👨‍🍳', 'Chef Hat',             20),
+  A('av-hat-headphones','Hats','hat', 'headphones','🎧', 'Gold Headphones',        20, true),
+  A('av-hat-party',    'Hats', 'hat', 'party',    '🥳', 'Party Hat',              15),
+  A('av-hat-bandana',  'Hats', 'hat', 'bandana',  '🏴', 'Bandana',                15),
+  // ---- Faces ----
+  A('av-face-monocle', 'Faces', 'face2', 'monocle', '🧐', 'Fancy Monocle',        30),
+  A('av-face-mask',    'Faces', 'face2', 'mask',    '😷', 'Ninja Mask',           25),
+  A('av-face-eyepatch','Faces', 'face2', 'eyepatch','🏴‍☠️', 'Pirate Eyepatch',    25),
+  A('av-face-shades',  'Faces', 'face2', 'shades',  '🕶️', 'Cool Shades',          20, true),
+  A('av-face-threed',  'Faces', 'face2', 'threed',  '🤓', '3D Glasses',           15),
+  // ---- Back ----
+  A('av-back-angel',   'Back', 'back', 'angelwings', '👼', 'Angel Wings',         80, true),
+  A('av-back-wings',   'Back', 'back', 'wings',      '🦋', 'Butterfly Wings',     45),
+  A('av-back-jetpack', 'Back', 'back', 'jetpack',    '🚀', 'Jetpack',             40),
+  A('av-back-sword',   'Back', 'back', 'sword',      '🗡️', 'Back Sword',          35),
+  A('av-back-cape',    'Back', 'back', 'cape',       '🦸', 'Hero Cape',           30),
+  A('av-back-guitar',  'Back', 'back', 'guitar',     '🎸', 'Electric Guitar',     30),
+  A('av-back-balloon', 'Back', 'back', 'balloon',    '🎈', 'Balloon',             15),
+];
+export const AVATAR_SHOP_BY_ID = Object.fromEntries(AVATAR_SHOP.map((s) => [s.id, s]));
+export const AVATAR_CATS = ['Featured', 'Hats', 'Faces', 'Back'];
