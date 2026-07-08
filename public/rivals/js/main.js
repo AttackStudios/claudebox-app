@@ -46,7 +46,10 @@ const game = {
 window.__rivals = {
   game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; },
   get anim() { return vmAnim; },
-  fns: { startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; } },
+  fns: {
+    startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; },
+    spawnDummy: (g, w) => { const fid = 'dummy_' + g + '_' + (w || 'ar'); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x - Math.sin(me.ry) * -3, y: 0, z: me.pos.z - Math.cos(me.ry) * -3 }, ry: 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
+  },
 };
 
 // ============================ sounds (synth) ============================
@@ -717,27 +720,57 @@ function makeHeldWeapon(id) {
 // ride the actual arm animation. Alignment is computed against the settled
 // idle pose: we solve the holder quaternion so the gun points along the
 // model's forward at mount time, then the hand's animation carries it.
+// attach the held weapon to the right-hand bone and solve its grip:
+// two-handed weapons lie along the right-hand→left-hand line (exactly where a
+// rifle sits in the pose), one-handed weapons extend the forearm line. The
+// solve runs against the settled WEAPON pose and re-runs on every swap.
+function poseFor(w) {
+  if (w === 'ar' || w === 'sniper') return 'rifleidle';
+  if (w === 'handgun') return 'pistolidle';
+  if (w === 'scythe' || w === 'grenade') return 'knifeidle';
+  return 'idle';
+}
 function mountHeldToHand(o) {
   const bones = o.ctrl.bones || {};
-  const hand = bones['mixamorigRightHand'] || bones['R_Wrist'];
-  if (!hand) {                               // no rig? fall back to a fixed mount
+  const rHand = bones['mixamorigRightHand'] || bones['R_Wrist'];
+  const lHand = bones['mixamorigLeftHand'] || bones['L_Wrist'];
+  const rElbow = bones['mixamorigRightForeArm'] || bones['R_Elbow'];
+  if (!rHand) {                              // no rig? fixed fallback
+    if (o.held.parent !== o.ctrl.group) o.ctrl.group.add(o.held);
     o.held.position.set(0.34, 1.04, 0.24);
-    o.ctrl.group.add(o.held);
     return;
   }
-  o.ctrl.setAnim('idle');
-  o.ctrl.update(0.25);                       // settle into the idle pose
-  hand.add(o.held);
+  // settle into the pose this weapon is actually held in
+  o.ctrl.setAnim(poseFor(o.heldId));
+  o.ctrl.update(0.35);
+  if (o.held.parent !== rHand) rHand.add(o.held);
   o.ctrl.group.updateWorldMatrix(true, true);
-  const ws = new THREE.Vector3();
-  hand.getWorldScale(ws);
-  o.held.scale.setScalar(1 / (ws.x || 1));   // bones carry rig scale — undo it
-  const hq = new THREE.Quaternion(); hand.getWorldQuaternion(hq);
-  const gq = new THREE.Quaternion(); o.ctrl.group.getWorldQuaternion(gq);
-  // gun models point −Z; model forward is group +Z → flip about Y
-  const desired = gq.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
-  o.held.quaternion.copy(hq.invert().multiply(desired));
-  o.held.position.set(0, 0, 0);
+  const ws = new THREE.Vector3(); rHand.getWorldScale(ws);
+  const inv = 1 / (ws.x || 1);
+  o.held.scale.setScalar(inv);
+  const RW = new THREE.Vector3(); rHand.getWorldPosition(RW);
+  // barrel direction: toward the support hand — unless the pose holds the
+  // hands too close together (girl rig), then extend the forearm line instead
+  const REF = new THREE.Vector3();
+  let aligned = false;
+  if ((o.heldId === 'ar' || o.heldId === 'sniper') && lHand && bones['mixamorigRightHand']) {
+    lHand.getWorldPosition(REF);
+    if (RW.distanceTo(REF) > 0.24) aligned = true;
+  }
+  if (!aligned) {
+    if (rElbow) { const E = new THREE.Vector3(); rElbow.getWorldPosition(E); REF.copy(RW).add(RW.clone().sub(E)); }
+    else { o.ctrl.group.getWorldPosition(REF); REF.z += 1; }
+  }
+  const aimer = new THREE.Object3D();
+  aimer.position.copy(RW);
+  aimer.lookAt(RW.clone().multiplyScalar(2).sub(REF));   // +Z away → gun −Z points at REF
+  const hq = new THREE.Quaternion(); rHand.getWorldQuaternion(hq);
+  const hqInv = hq.clone().invert();
+  o.held.quaternion.copy(hqInv).multiply(aimer.quaternion);
+  // nudge the grip into the palm: a small world-space push along the barrel,
+  // expressed in bone-local units (bone scale undone)
+  const gripWorld = REF.clone().sub(RW).normalize().multiplyScalar(0.07);
+  o.held.position.copy(gripWorld.applyQuaternion(hqInv)).multiplyScalar(inv);
 }
 
 function setHeld(o, id) {
@@ -1042,7 +1075,7 @@ net.on('snap', (msg) => {
       if (!o) { addOther({ ...pl, team: 'A' }); continue; }
       o.target = { ...pl.pos, ry: pl.ry };
       o.data.anim = pl.anim;
-      if (pl.weapon) setHeld(o, pl.weapon);
+      if (pl.weapon && o.heldId !== pl.weapon) { setHeld(o, pl.weapon); mountHeldToHand(o); }
     }
     return;
   }
@@ -1059,7 +1092,7 @@ net.on('snap', (msg) => {
     o.data.dead = f.dead;
     o.data.crouch = f.crouch;
     o.data.pitch = f.pitch;
-    if (f.weapon) setHeld(o, f.weapon);
+    if (f.weapon && o.heldId !== f.weapon) { setHeld(o, f.weapon); mountHeldToHand(o); }
     o.held.visible = !f.dead;
     if (o.plate.hp !== f.hp) { o.plate.hp = f.hp; drawPlate(o.plate); }
   }
