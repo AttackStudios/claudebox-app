@@ -714,6 +714,7 @@ function makeHeldWeapon(id) {
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.062, 10, 8), vmMat('#3f7d3f'));
     b.scale.y = 1.15; g.add(b);
   }
+  g.scale.setScalar(1.6);   // chunky, readable from across the arena
   return g; // fists = empty hands
 }
 // attach the held-weapon group to the avatar's right hand BONE so weapons
