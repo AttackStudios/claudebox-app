@@ -713,6 +713,33 @@ function makeHeldWeapon(id) {
   }
   return g; // fists = empty hands
 }
+// attach the held-weapon group to the avatar's right hand BONE so weapons
+// ride the actual arm animation. Alignment is computed against the settled
+// idle pose: we solve the holder quaternion so the gun points along the
+// model's forward at mount time, then the hand's animation carries it.
+function mountHeldToHand(o) {
+  const bones = o.ctrl.bones || {};
+  const hand = bones['mixamorigRightHand'] || bones['R_Wrist'];
+  if (!hand) {                               // no rig? fall back to a fixed mount
+    o.held.position.set(0.34, 1.04, 0.24);
+    o.ctrl.group.add(o.held);
+    return;
+  }
+  o.ctrl.setAnim('idle');
+  o.ctrl.update(0.25);                       // settle into the idle pose
+  hand.add(o.held);
+  o.ctrl.group.updateWorldMatrix(true, true);
+  const ws = new THREE.Vector3();
+  hand.getWorldScale(ws);
+  o.held.scale.setScalar(1 / (ws.x || 1));   // bones carry rig scale — undo it
+  const hq = new THREE.Quaternion(); hand.getWorldQuaternion(hq);
+  const gq = new THREE.Quaternion(); o.ctrl.group.getWorldQuaternion(gq);
+  // gun models point −Z; model forward is group +Z → flip about Y
+  const desired = gq.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
+  o.held.quaternion.copy(hq.invert().multiply(desired));
+  o.held.position.set(0, 0, 0);
+}
+
 function setHeld(o, id) {
   if (o.heldId === id) return;
   o.heldId = id;
@@ -735,12 +762,10 @@ function addOther(f) {
   plate.sprite.position.y = 2.35;
   ctrl.group.add(plate.sprite);
   const held = new THREE.Group();
-  held.position.set(0.34, 1.04, -0.22);   // right-hand height, slightly forward
-  held.rotation.y = -0.12;
-  ctrl.group.add(held);
   const rec = { ctrl, plate, data: f, target: { ...f.pos, ry: f.ry || 0 }, held, heldId: null };
   others.set(f.id, rec);
   setHeld(rec, f.weapon || 'ar');
+  mountHeldToHand(rec);
   ctrl.group.position.set(f.pos.x, f.pos.y, f.pos.z);
 }
 function removeOther(id) {
@@ -1023,7 +1048,6 @@ net.on('snap', (msg) => {
     o.data.pitch = f.pitch;
     if (f.weapon) setHeld(o, f.weapon);
     o.held.visible = !f.dead;
-    o.held.rotation.x = -(f.pitch || 0) * 0.6;   // guns follow their aim
     if (o.plate.hp !== f.hp) { o.plate.hp = f.hp; drawPlate(o.plate); }
   }
 });
@@ -1327,7 +1351,7 @@ function frame() {
     gp.x += (o.target.x - gp.x) * Math.min(1, dt * 12);
     gp.y += (o.target.y - gp.y) * Math.min(1, dt * 12);
     gp.z += (o.target.z - gp.z) * Math.min(1, dt * 12);
-    let dry = o.target.ry - o.ctrl.group.rotation.y;
+    let dry = (o.target.ry + Math.PI) - o.ctrl.group.rotation.y;   // model forward is opposite our camera-yaw convention
     while (dry > Math.PI) dry -= Math.PI * 2;
     while (dry < -Math.PI) dry += Math.PI * 2;
     o.ctrl.group.rotation.y += dry * Math.min(1, dt * 10);
