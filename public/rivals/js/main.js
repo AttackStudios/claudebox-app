@@ -368,8 +368,8 @@ const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 // arms are single chunky CUBES in your shirt colour — just like the original
 function mkArm() {
   const g = new THREE.Group();
-  const cube = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.17, 0.56), vmMat(VM_SHIRT));
-  cube.position.set(0, 0, 0.18);
+  const cube = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.78), vmMat(VM_SHIRT));
+  cube.position.set(0, 0, 0.26);
   g.add(cube);
   return g;
 }
@@ -409,7 +409,7 @@ function buildViewmodels() {
       box(0.055, 0.055, 0.06, GREY, 0, 0.02, -0.74),       // muzzle
       box(0.028, 0.04, 0.26, DARK, 0, 0.08, -0.02),        // top rail
       box(0.02, 0.05, 0.02, DARK, 0, 0.085, -0.42),        // front post
-    ], [0.24, -0.22, 0.26], [0.5, -0.38, 0.15], [-0.32, -0.18, -0.14], [0.35, 0.55, -0.15]);
+    ], [0.42, -0.3, 0.3], [0.5, -0.55, 0.2], [-0.55, -0.26, -0.1], [0.35, 0.75, -0.2]);
     viewmodels.ar = g;
   }
   // ---- handgun ----
@@ -421,30 +421,30 @@ function buildViewmodels() {
       box(0.065, 0.05, 0.26, DARK, 0, -0.03, -0.02),       // frame
       box(0.06, 0.16, 0.085, DARK, 0, -0.13, 0.09, 0.22),  // grip
       box(0.02, 0.025, 0.02, STEEL, 0, 0.068, -0.15),      // front sight
-    ], [0.22, -0.24, 0.2], [0.45, -0.3, 0.1], [-0.3, -0.25, 0.12], [0.45, 0.5, -0.15]);
+    ], [0.4, -0.32, 0.24], [0.45, -0.5, 0.15], [-0.52, -0.32, 0.14], [0.45, 0.7, -0.2]);
     viewmodels.handgun = g;
   }
   // ---- knife (small pocket knife in the right hand) ----
   {
     const g = new THREE.Group();
     rigWeapon(g, [
-      box(0.05, 0.06, 0.17, DARK, 0.26, -0.12, -0.1),
-      box(0.055, 0.065, 0.03, STEEL, 0.26, -0.12, -0.2),
-      box(0.03, 0.055, 0.24, '#c8ccd4', 0.26, -0.115, -0.33),
-      box(0.03, 0.03, 0.05, '#c8ccd4', 0.26, -0.128, -0.47),
-    ], [0.26, -0.2, 0.04], [0.6, -0.2, 0.1], [-0.36, -0.22, -0.04], [0.6, 0.35, -0.1]);
+      box(0.05, 0.06, 0.17, DARK, 0.4, -0.16, -0.1),
+      box(0.055, 0.065, 0.03, STEEL, 0.4, -0.16, -0.2),
+      box(0.03, 0.055, 0.24, '#c8ccd4', 0.4, -0.155, -0.33),
+      box(0.03, 0.03, 0.05, '#c8ccd4', 0.4, -0.168, -0.47),
+    ], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
     viewmodels.scythe = g;
   }
   // ---- grenade (chunkier, lever + pin) ----
   {
     const g = new THREE.Group();
     rigWeapon(g, [
-      box(0.15, 0.18, 0.15, '#3f7d3f', 0.22, -0.1, -0.06),
-      box(0.17, 0.1, 0.13, '#356b35', 0.22, -0.1, -0.06),   // belly bulge
-      box(0.06, 0.05, 0.06, STEEL, 0.22, 0.01, -0.06),       // cap
-      box(0.025, 0.1, 0.05, STEEL, 0.255, -0.02, -0.02, 0.25),// lever
-      box(0.05, 0.02, 0.02, '#d8dbe0', 0.19, 0.035, -0.06),  // pin ring
-    ], [0.22, -0.22, 0.06], [0.6, -0.2, 0.1], [-0.36, -0.22, -0.04], [0.6, 0.35, -0.1]);
+      box(0.15, 0.18, 0.15, '#3f7d3f', 0.38, -0.14, -0.06),
+      box(0.17, 0.1, 0.13, '#356b35', 0.38, -0.14, -0.06),   // belly bulge
+      box(0.06, 0.05, 0.06, STEEL, 0.38, -0.03, -0.06),       // cap
+      box(0.025, 0.1, 0.05, STEEL, 0.415, -0.06, -0.02, 0.25),// lever
+      box(0.05, 0.02, 0.02, '#d8dbe0', 0.35, -0.005, -0.06),  // pin ring
+    ], [0.38, -0.26, 0.08], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
     viewmodels.grenade = g;
   }
   // ---- sniper: long rifle + scope with objective ----
@@ -463,14 +463,14 @@ function buildViewmodels() {
       box(0.055, 0.12, 0.09, DARK, 0, -0.12, -0.16),       // mag
       box(0.09, 0.035, 0.035, STEEL, 0.08, 0.02, 0.12),    // bolt
       tube, objective,
-    ], [0.22, -0.22, 0.26], [0.5, -0.32, 0.12], [-0.3, -0.19, -0.34], [0.35, 0.5, -0.1]);
+    ], [0.4, -0.3, 0.3], [0.5, -0.5, 0.18], [-0.52, -0.26, -0.3], [0.35, 0.7, -0.15]);
     viewmodels.sniper = g;
   }
   // ---- fists: two big shirt-colour cubes ----
   {
     const g = new THREE.Group();
     rigWeapon(g, [],
-      [0.19, -0.15, -0.06], [0.7, -0.15, -0.15], [-0.21, -0.14, -0.12], [0.7, 0.15, 0.15]);
+      [0.58, -0.26, -0.04], [0.7, -0.45, -0.2], [-0.6, -0.25, -0.1], [0.7, 0.45, 0.2]);
     viewmodels.fists = g;
   }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
