@@ -98,7 +98,7 @@ export function handleMessage(p, msg, ctx) {
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
       if (!f || f.dead || m.state !== 'live') return;
-      meleeSwing(m, f);
+      meleeSwing(m, f, WEAPONS[msg.weapon]?.melee ? msg.weapon : 'scythe');
       return;
     }
     case 'dash': { // cosmetic relay; movement is client-side

@@ -3,16 +3,16 @@
 
 // ---- movement (the RIVALS-y part) ----
 export const MOVE = {
-  walk: 8.2,
-  sprint: 12.4,
-  crouch: 4.6,
-  slideBurst: 18.5,     // slide = crouch while sprinting: burst that decays…
+  walk: 9.6,
+  sprint: 14.4,
+  crouch: 5.2,
+  slideBurst: 21,       // slide = crouch while sprinting: burst that decays…
   slideFriction: 7.5,   // …at this rate; slide ends when speed < crouch speed
-  dashSpeed: 26,        // Scythe MB2: forward impulse
+  dashSpeed: 28,        // Scythe MB2: forward impulse
   dashTime: 0.18,       // seconds of dash force
   dashCooldown: 3.0,
   jumpVel: 8.6,
-  gravity: 24,
+  gravity: 17,          // floatier falls
   eyeStand: 1.62,
   eyeCrouch: 1.05,
   radius: 0.42,         // collision capsule-ish AABB half-width
@@ -48,7 +48,11 @@ export const WEAPONS = {
   },
   scythe: {
     slot: 3, name: 'Scythe', auto: false, melee: true,
-    dmg: 45, rate: 0.5, range: 3.4,
+    dmg: 45, rate: 0.5, range: 3.4, backstabOneshot: true,
+  },
+  fists: {
+    slot: 6, name: 'Fists', auto: true, melee: true,
+    dmg: 18, rate: 0.26, range: 2.6, backstabMult: 2,
   },
   grenade: {
     slot: 4, name: 'Grenade', auto: false, utility: true,
@@ -62,7 +66,7 @@ export const WEAPONS = {
   },
 };
 
-export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade', 'sniper'];
+export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade', 'sniper', 'fists'];
 
 // queue modes (Beginner = instant easy bot; others bot-fill after botFillSecs)
 export const MODES = {

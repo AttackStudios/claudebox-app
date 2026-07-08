@@ -171,7 +171,7 @@ canvas.addEventListener('click', () => { if (!locked) canvas.requestPointerLock(
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
   if (!locked) return;
-  const sens = 0.0021 * (me.ads > 0.5 ? (me.weapon === 'sniper' ? 0.32 : 0.7) : 1);
+  const sens = 0.0021 * (me.ads > 0.5 ? (me.weapon === 'sniper' ? 0.48 : 0.7) : 1);
   me.ry -= e.movementX * sens;
   me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - e.movementY * sens));
 });
@@ -181,7 +181,7 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'KeyE' && game.phase === 'lobby') toggleModes();
   if (e.code === 'KeyR') startReload();
-  if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].includes(e.code)) switchWeapon(LOADOUT[+e.code.slice(5) - 1]);
+  if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].includes(e.code)) switchWeapon(LOADOUT[+e.code.slice(5) - 1]);
   if (e.code === 'ControlLeft' || e.code === 'KeyC') tryCrouch(true);
 });
 addEventListener('keyup', (e) => {
@@ -425,6 +425,13 @@ function buildViewmodels() {
       [0.05, -0.13, 0.26], [0.5, -0.1, 0], [-0.055, -0.1, -0.28], [0.35, 0.3, 0]);
     viewmodels.sniper = g;
   }
+  // fists — nothing but your two hands, up in a guard
+  {
+    const g = new THREE.Group();
+    rigWeapon(g, [],
+      [0.12, -0.14, -0.08], [0.7, -0.15, -0.15], [-0.12, -0.12, -0.14], [0.7, 0.15, 0.15]);
+    viewmodels.fists = g;
+  }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
@@ -480,12 +487,12 @@ function tryFire() {
   if (game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium') return;
   const now = clockNow();
   const w = WEAPONS[me.weapon];
-  if (me.weapon === 'scythe') {
-    if (now - me.swingAt < WEAPONS.scythe.rate) return;
+  if (w?.melee) {
+    if (now - me.swingAt < w.rate) return;
     me.swingAt = now;
-    vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // big alternating arcs
+    vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // arcs / alternating jabs
     sfx.swing();
-    if (game.phase === 'live') net.send({ t: 'melee' });
+    if (game.phase === 'live') net.send({ t: 'melee', weapon: me.weapon });
     return;
   }
   if (me.weapon === 'grenade') {
@@ -505,8 +512,8 @@ function tryFire() {
   a.mag--;
   const spread = me.ads > 0.5 ? w.adsSpread : w.spread;
   const d = aimDir(spread);
-  recoil += me.weapon === 'sniper' ? 0.045 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
-  vmKick = me.weapon === 'sniper' ? 1.8 : 1;
+  recoil += me.weapon === 'sniper' ? 0.018 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
+  vmKick = me.weapon === 'sniper' ? 1.25 : 1;
   sfx.shot(me.weapon);
   muzzleFlash();
   localTracer(d);
@@ -653,7 +660,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🪓', grenade: '💣', sniper: '🔭' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🪓', grenade: '💣', sniper: '🔭', fists: '👊' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   LOADOUT.forEach((id, i) => {
@@ -1165,6 +1172,17 @@ function frame() {
           P.lArm.position.z += rack * 0.11;
           P.gun.rotation.z -= rack * 0.12;
         }
+      }
+      // fists: straight alternating jabs
+      if (me.weapon === 'fists' && vmAnim.swingT < 1) {
+        const t2 = vmAnim.swingT;
+        const jab = Math.sin(Math.pow(t2, 0.7) * Math.PI);
+        const hand = vmAnim.swingSide > 0 ? P.rArm : P.lArm;
+        const off = vmAnim.swingSide > 0 ? P.lArm : P.rArm;
+        hand.position.z -= jab * 0.34;
+        hand.position.y += jab * 0.06;
+        hand.rotation.x -= jab * 0.5;
+        off.position.z += jab * 0.06;
       }
       // reload: left hand rips the mag out (kept in frame), gun tips over
       if (me.reloading) {

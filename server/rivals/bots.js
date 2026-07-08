@@ -103,7 +103,7 @@ export function tickBots(m, dt) {
 
     // ---- combat ----
     if (los && mem.sawAt && now - mem.sawAt >= skill.reaction) {
-      if (f.weapon === 'scythe') { meleeSwing(m, f); continue; }
+      if (f.weapon === 'scythe') { meleeSwing(m, f, 'scythe'); continue; }
       // burst-fire management
       if (mem.pauseUntil && now < mem.pauseUntil) continue;
       mem.shots = mem.shots || 0;

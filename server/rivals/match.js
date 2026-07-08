@@ -225,12 +225,13 @@ export function fireHitscan(m, shooter, dirX, dirY, dirZ, weaponId) {
   }
 }
 
-export function meleeSwing(m, attacker) {
-  const w = WEAPONS.scythe;
+export function meleeSwing(m, attacker, weaponId = 'scythe') {
+  const w = WEAPONS[weaponId];
+  if (!w?.melee) return;
   const now = clock();
   if (now - attacker.meleeAt < w.rate * 0.85) return;
   attacker.meleeAt = now;
-  matchSend(m, { t: 'shot', id: attacker.id, weapon: 'scythe', dist: w.range });
+  matchSend(m, { t: 'shot', id: attacker.id, weapon: weaponId, dist: w.range });
   const fx = -Math.sin(attacker.ry), fz = -Math.cos(attacker.ry);
   for (const f of m.fighters.values()) {
     if (f.id === attacker.id || f.dead || f.team === attacker.team) continue;
@@ -238,7 +239,17 @@ export function meleeSwing(m, attacker) {
     const d = Math.hypot(dx, dz);
     if (d > w.range) continue;
     const dot = (dx / (d || 1)) * fx + (dz / (d || 1)) * fz;
-    if (dot > 0.35 || d < 1.0) applyDamage(m, f, w.dmg, attacker, 'scythe', false);
+    if (dot > 0.35 || d < 1.0) {
+      // BACKSTAB: the attacker is behind the victim (relative to where the
+      // victim is facing) → scythe one-shots, fists hit double.
+      const tfx = -Math.sin(f.ry), tfz = -Math.cos(f.ry);
+      const toAtkX = -dx / (d || 1), toAtkZ = -dz / (d || 1);
+      const behind = toAtkX * tfx + toAtkZ * tfz < -0.3;
+      let dmg = w.dmg;
+      if (behind && w.backstabOneshot) dmg = 999;
+      else if (behind && w.backstabMult) dmg = Math.round(w.dmg * w.backstabMult);
+      applyDamage(m, f, dmg, attacker, weaponId, behind);   // backstab pings gold
+    }
   }
 }
 
