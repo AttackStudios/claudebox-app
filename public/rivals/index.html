@@ -45,6 +45,7 @@
 
   <!-- lobby helper -->
   <div id="lobby-tip" class="hidden">Click to look around · <b>E</b> — open Duels · shooting range on the right</div>
+  <button id="kb-open" class="hidden">⌨ Controls</button>
 
   <!-- match top bar -->
   <div id="match-top" class="hidden">
@@ -72,6 +73,12 @@
 
   <div id="rv-toasts"></div>
 
+  <!-- text chat -->
+  <div id="chat">
+    <div id="chat-log"></div>
+    <input id="chat-input" class="hidden" maxlength="140" placeholder="Say something… (Enter to send, Esc to cancel)" autocomplete="off">
+  </div>
+
   <!-- ==================== mobile touch controls ==================== -->
   <div id="mobile" class="hidden">
     <!-- left half: move joystick (dynamic base) + right half: look -->
@@ -84,6 +91,7 @@
     <button id="m-aim" class="mbtn">🎯</button>
     <button id="m-crouch" class="mbtn">⤓</button>
     <button id="m-reload" class="mbtn small">⟳</button>
+    <button id="m-chat" class="mbtn small">💬</button>
     <!-- lobby-only play button -->
     <button id="m-play" class="hidden">⚔️ Play</button>
   </div>
@@ -100,6 +108,19 @@
       <button class="mode-card" data-mode="squad"><span class="mc-emoji">👥</span><b>2v2</b><small>Team duel · bots fill in</small></button>
     </div>
     <button class="panel-close" id="modes-close">Close</button>
+  </div>
+</div>
+
+<!-- keybinds / controls -->
+<div id="keybinds" class="overlay hidden">
+  <div class="panel kb-panel">
+    <h2>⌨ Controls</h2>
+    <p class="kb-hint">Click a key to rebind it. Movement, aim, and dash also work as usual.</p>
+    <div id="kb-list"></div>
+    <div class="kb-foot">
+      <button id="kb-reset">↺ Reset to default</button>
+      <button class="panel-close" id="kb-close">Done</button>
+    </div>
   </div>
 </div>
 

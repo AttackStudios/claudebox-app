@@ -295,8 +295,16 @@ function tickGrenades(m, dt) {
         if (d > w.radius) continue;
         const friendly = f.team === g.team && f.id !== g.owner;
         if (friendly) continue;
-        let dmg = w.maxDmg * (1 - d / w.radius);
-        if (f.id === g.owner) dmg *= 0.5;
+        // your OWN grenade doesn't hurt you — it rocket-jumps you instead
+        if (f.id === g.owner) {
+          const dx = f.pos.x - g.x, dy = eyeY(f) - g.y, dz = f.pos.z - g.z;
+          const dd = Math.hypot(dx, dz) || 0.001;
+          const power = 13 * (1 - d / w.radius) + 5;   // stronger the closer the blast
+          const self = state.players.get(g.owner);
+          if (self?.ws?.readyState === 1) self.ws.send(JSON.stringify({ t: 'launch', vx: (dx / dd) * power, vy: Math.max(11, 9 + (1 - d / w.radius) * 8), vz: (dz / dd) * power }));
+          continue;
+        }
+        const dmg = w.maxDmg * (1 - d / w.radius);
         if (dmg >= 1) applyDamage(m, f, Math.round(dmg), owner, 'grenade', false);
       }
     }

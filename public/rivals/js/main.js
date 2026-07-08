@@ -250,17 +250,31 @@ document.addEventListener('mousemove', (e) => {
   me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - e.movementY * sens));
 });
 
+// ---------------- rebindable keybinds ----------------
+const DEFAULT_BINDS = {
+  forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
+  jump: 'Space', sprint: 'ShiftLeft', crouch: 'ControlLeft', reload: 'KeyR', queue: 'KeyE',
+  weapon1: 'Digit1', weapon2: 'Digit2', weapon3: 'Digit3', weapon4: 'Digit4', weapon5: 'Digit5', weapon6: 'Digit6',
+};
+let binds = (() => { try { return { ...DEFAULT_BINDS, ...JSON.parse(localStorage.getItem('rivals.binds') || '{}') }; } catch { return { ...DEFAULT_BINDS }; } })();
+function saveBinds() { try { localStorage.setItem('rivals.binds', JSON.stringify(binds)); } catch {} }
+let rebinding = null;   // action id currently capturing a key
+
 addEventListener('keydown', (e) => {
+  if (rebinding) { e.preventDefault(); captureRebind(e.code); return; }
+  if (chatting) return;   // typing in chat — ignore game keys
+  if (e.code === 'Enter' && ['lobby', 'freeze', 'live', 'roundEnd'].includes(game.phase)) { e.preventDefault(); openChat(); return; }
   if (e.repeat) return;
   keys.add(e.code);
-  if (e.code === 'KeyE' && game.phase === 'lobby') toggleModes();
-  if (e.code === 'KeyR') startReload();
-  if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].includes(e.code)) switchWeapon(LOADOUT[+e.code.slice(5) - 1]);
-  if (e.code === 'ControlLeft' || e.code === 'KeyC') tryCrouch(true);
+  const c = e.code;
+  if (c === binds.queue && game.phase === 'lobby') toggleModes();
+  if (c === binds.reload) startReload();
+  for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(LOADOUT[i - 1]);
+  if (c === binds.crouch) tryCrouch(true);
 });
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
-  if (e.code === 'ControlLeft' || e.code === 'KeyC') tryCrouch(false);
+  if (e.code === binds.crouch) tryCrouch(false);
 });
 
 let mouseDown = false, rightDown = false;
@@ -303,13 +317,13 @@ function setupMobile() {
       knob.style.left = (50 + dx / max * 42) + '%'; knob.style.top = (50 + dy / max * 42) + '%';
       mobileMove.x = dx / max; mobileMove.z = -dy / max;
       const mag = Math.hypot(mobileMove.x, mobileMove.z);
-      if (mag > 0.85 && mobileMove.z > 0.1) keys.add('ShiftLeft'); else keys.delete('ShiftLeft');
+      if (mag > 0.85 && mobileMove.z > 0.1) keys.add(binds.sprint); else keys.delete(binds.sprint);
     }
   };
   moveZone.addEventListener('touchmove', moveUpdate, { passive: true });
   const moveEnd = (e) => {
     for (const t of e.changedTouches) if (t.identifier === moveId) {
-      moveId = null; mobileMove.x = mobileMove.z = 0; joy.classList.add('hidden'); keys.delete('ShiftLeft');
+      moveId = null; mobileMove.x = mobileMove.z = 0; joy.classList.add('hidden'); keys.delete(binds.sprint);
     }
   };
   moveZone.addEventListener('touchend', moveEnd, { passive: true });
@@ -341,7 +355,7 @@ function setupMobile() {
   };
   hold('#m-fire', () => { mouseDown = true; tryFire(); }, () => { mouseDown = false; });
   hold('#m-aim', () => { rightDown = true; onRightDown(); }, () => { rightDown = false; });
-  hold('#m-jump', () => keys.add('Space'), () => keys.delete('Space'));
+  hold('#m-jump', () => keys.add(binds.jump), () => keys.delete(binds.jump));
   hold('#m-crouch', () => tryCrouch(true), () => tryCrouch(false));
   $b('#m-reload').addEventListener('touchstart', (e) => { e.preventDefault(); startReload(); }, { passive: false });
   $b('#m-play').addEventListener('touchstart', (e) => { e.preventDefault(); toggleModes(); }, { passive: false });
@@ -358,7 +372,7 @@ function updateMobileHud() {
 function tryCrouch(on) {
   if (on) {
     const speed = Math.hypot(me.vel.x, me.vel.z);
-    const sprinting = keys.has('ShiftLeft') && speed > MOVE.walk * 0.9;
+    const sprinting = keys.has(binds.sprint) && speed > MOVE.walk * 0.9;
     if (sprinting && me.grounded && !me.sliding) {
       // SLIDE — signature move
       me.sliding = true;
@@ -428,15 +442,15 @@ function stepMe(dt) {
 
   let mx = 0, mz = 0;
   if (!frozen && (locked || mobileOn)) {
-    mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
-    mz = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
+    mx = (keys.has(binds.right) ? 1 : 0) - (keys.has(binds.left) ? 1 : 0);
+    mz = (keys.has(binds.forward) ? 1 : 0) - (keys.has(binds.back) ? 1 : 0);
     if (mobileMove.x || mobileMove.z) { mx = mobileMove.x; mz = mobileMove.z; }   // joystick overrides
   }
   const fx = -Math.sin(me.ry), fz = -Math.cos(me.ry);
   const rx = Math.cos(me.ry), rz = -Math.sin(me.ry);
   let wishX = fx * mz + rx * mx, wishZ = fz * mz + rz * mx;
   const wl = Math.hypot(wishX, wishZ) || 1; wishX /= wl; wishZ /= wl;
-  const sprinting = keys.has('ShiftLeft') && mz > 0 && !me.crouch;
+  const sprinting = keys.has(binds.sprint) && mz > 0 && !me.crouch;
   const speed = me.crouch && !me.sliding ? MOVE.crouch : sprinting ? MOVE.sprint : MOVE.walk;
 
   if (now < me.dashUntil) {                     // dash overrides
@@ -454,7 +468,7 @@ function stepMe(dt) {
     me.vel.x += (wishX * speed - me.vel.x) * MOVE.airControl * dt * 8;
     me.vel.z += (wishZ * speed - me.vel.z) * MOVE.airControl * dt * 8;
   }
-  if (keys.has('Space') && me.grounded && !frozen) { me.vel.y = MOVE.jumpVel; me.grounded = false; me.sliding = false; }
+  if (keys.has(binds.jump) && me.grounded && !frozen) { me.vel.y = MOVE.jumpVel; me.grounded = false; me.sliding = false; }
 
   me.vel.y -= MOVE.gravity * dt;
   let nx = me.pos.x + me.vel.x * dt;
@@ -1146,6 +1160,7 @@ net.on('round.freeze', (msg) => {
   $('#health-wrap').classList.remove('hidden');
   $('#ammo-wrap').classList.remove('hidden');
   $('#lobby-tip').classList.add('hidden');
+  $('#kb-open')?.classList.add('hidden'); closeKeybinds();
   $('#freeze-count').classList.remove('hidden');
   hud.scoreA.textContent = game.score[game.myTeam];
   hud.scoreB.textContent = game.score[game.myTeam === 'A' ? 'B' : 'A'];
@@ -1254,6 +1269,11 @@ net.on('hurt', (msg) => { // I took damage — directional arc
   arc.style.transform = `translate(-50%,-50%) rotate(${rel}rad)`;
   arc.classList.remove('show'); void arc.offsetWidth; arc.classList.add('show');
 });
+net.on('launch', (msg) => { // your own grenade rocket-jumps you
+  me.vel.x += msg.vx; me.vel.z += msg.vz; me.vel.y = Math.max(me.vel.y, msg.vy);
+  me.grounded = false; me.sliding = false;
+  sfx.dash();
+});
 net.on('elim', (msg) => {
   const killer = msg.killer === net.id ? { name: identity.name } : game.roster.find((r) => r.id === msg.killer);
   const victim = msg.victim === net.id ? { name: identity.name } : game.roster.find((r) => r.id === msg.victim);
@@ -1330,9 +1350,92 @@ function enterLobby(fromMatch) {
   $('#health-wrap').classList.add('hidden');
   $('#ammo-wrap').classList.remove('hidden');  // range shooting still shows ammo
   $('#lobby-tip').classList.remove('hidden');
+  $('#kb-open')?.classList.remove('hidden');
   $('#podium').classList.add('hidden');
   updateAmmoHud(); updateLoadoutHud();
 }
+
+// ---------------- keybinds settings UI ----------------
+const KB_ACTIONS = [
+  ['forward', 'Move Forward'], ['back', 'Move Back'], ['left', 'Move Left'], ['right', 'Move Right'],
+  ['jump', 'Jump'], ['sprint', 'Sprint'], ['crouch', 'Crouch / Slide'], ['reload', 'Reload'], ['queue', 'Open Queue'],
+  ['weapon1', 'Slot 1 · Rifle'], ['weapon2', 'Slot 2 · Handgun'], ['weapon3', 'Slot 3 · Knife'],
+  ['weapon4', 'Slot 4 · Grenade'], ['weapon5', 'Slot 5 · Sniper'], ['weapon6', 'Slot 6 · Fists'],
+];
+function keyLabel(code) {
+  if (!code) return '—';
+  const m = { Space: 'Space', ShiftLeft: 'L-Shift', ShiftRight: 'R-Shift', ControlLeft: 'L-Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'L-Alt', AltRight: 'R-Alt', MetaLeft: 'L-Cmd', MetaRight: 'R-Cmd', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter', Tab: 'Tab', Backquote: '`', Escape: 'Esc', CapsLock: 'Caps', Minus: '-', Equal: '=', Backslash: '\\' };
+  if (m[code]) return m[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+  return code;
+}
+function renderKeybinds() {
+  const host = $('#kb-list'); if (!host) return;
+  host.innerHTML = '';
+  for (const [id, label] of KB_ACTIONS) {
+    const row = document.createElement('div'); row.className = 'kb-row';
+    const name = document.createElement('span'); name.className = 'kb-label'; name.textContent = label;
+    const btn = document.createElement('button');
+    btn.className = 'kb-key' + (rebinding === id ? ' listening' : '');
+    btn.textContent = rebinding === id ? 'Press a key…' : keyLabel(binds[id]);
+    btn.addEventListener('click', () => startRebind(id));
+    row.append(name, btn); host.appendChild(row);
+  }
+}
+function startRebind(id) { rebinding = id; sfx.click?.(); renderKeybinds(); }
+function captureRebind(code) {
+  if (code === 'Escape') { rebinding = null; renderKeybinds(); return; }
+  for (const k in binds) if (binds[k] === code) binds[k] = '';   // no duplicate binds
+  binds[rebinding] = code; rebinding = null; saveBinds(); sfx.click?.(); renderKeybinds();
+}
+function openKeybinds() { renderKeybinds(); $('#keybinds').classList.remove('hidden'); document.exitPointerLock?.(); sfx.click?.(); }
+function closeKeybinds() { rebinding = null; $('#keybinds').classList.add('hidden'); }
+$('#kb-open')?.addEventListener('click', openKeybinds);
+$('#kb-close')?.addEventListener('click', closeKeybinds);
+$('#kb-reset')?.addEventListener('click', () => { binds = { ...DEFAULT_BINDS }; saveBinds(); renderKeybinds(); sfx.click?.(); });
+$('#keybinds')?.addEventListener('click', (e) => { if (e.target.id === 'keybinds') closeKeybinds(); });
+
+// ---------------- text chat ----------------
+let chatting = false;
+function openChat() {
+  if (chatting) return;
+  chatting = true; keys.clear();
+  document.exitPointerLock?.();
+  const inp = $('#chat-input'); inp.classList.remove('hidden'); inp.value = ''; inp.focus();
+  $('#chat').classList.add('typing');
+}
+function closeChat() {
+  chatting = false;
+  const inp = $('#chat-input'); inp.classList.add('hidden'); inp.blur();
+  $('#chat').classList.remove('typing');
+}
+function sendChat() {
+  const inp = $('#chat-input'); const text = inp.value.trim();
+  if (text) net.send({ t: 'chat', text });
+  closeChat();
+}
+function addChatLine(name, text, team, self) {
+  const log = $('#chat-log');
+  const line = document.createElement('div');
+  line.className = 'chat-line fresh';
+  const nm = document.createElement('b');
+  nm.className = 'chat-name' + (team === 'B' ? ' enemy' : team === 'A' ? ' ally' : '') + (self ? ' me' : '');
+  nm.textContent = name + ': ';
+  const tx = document.createElement('span'); tx.textContent = text;   // textContent = safe, no HTML injection
+  line.append(nm, tx); log.appendChild(line);
+  while (log.children.length > 40) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+  setTimeout(() => line.classList.remove('fresh'), 60);
+}
+$('#chat-input')?.addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.code === 'Enter') { e.preventDefault(); sendChat(); }
+  else if (e.code === 'Escape') { e.preventDefault(); closeChat(); }
+});
+$('#m-chat')?.addEventListener('touchstart', (e) => { e.preventDefault(); openChat(); }, { passive: false });
+net.on('chat', (msg) => { addChatLine(msg.name, msg.text, msg.team, msg.id === net.id); });
 
 function banner(text, ms) {
   const el = $('#round-banner');
@@ -1580,7 +1683,7 @@ net.startMovementStream(() => ({
   t: 'move',
   x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),
   ry: +me.ry.toFixed(3), pitch: +me.pitch.toFixed(3),
-  anim: me.dead ? 'death' : me.sliding ? 'run' : Math.hypot(me.vel.x, me.vel.z) > 0.5 ? (keys.has('ShiftLeft') ? 'run' : 'walk') : 'idle',
+  anim: me.dead ? 'death' : me.sliding ? 'run' : Math.hypot(me.vel.x, me.vel.z) > 0.5 ? (keys.has(binds.sprint) ? 'run' : 'walk') : 'idle',
   crouch: me.crouch || me.sliding,
 }));
 $('#loading').classList.add('hidden');

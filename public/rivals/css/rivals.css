@@ -291,3 +291,51 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
   #ammo-wrap { z-index: 64; pointer-events: none; }
   #loadout, #loadout .slot { pointer-events: auto; }
 }
+
+/* ==================== keybinds / controls ==================== */
+#kb-open {
+  position: fixed; left: 20px; bottom: 20px; z-index: 30; pointer-events: auto;
+  padding: 10px 16px; border-radius: 999px; border: 2px solid rgba(255,255,255,.22);
+  background: rgba(20,24,34,.7); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer;
+  backdrop-filter: blur(8px); transition: transform .1s, background .15s;
+}
+#kb-open:hover { background: rgba(40,50,68,.85); }
+#kb-open:active { transform: scale(.94); }
+.kb-panel { max-width: 460px; width: 100%; max-height: 82vh; display: flex; flex-direction: column; }
+.kb-hint { color: rgba(255,255,255,.6); font-size: 13px; margin: 4px 0 14px; }
+#kb-list { overflow-y: auto; display: flex; flex-direction: column; gap: 7px; padding-right: 4px; }
+.kb-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 12px; background: rgba(255,255,255,.05); }
+.kb-label { font-weight: 700; font-size: 14px; }
+.kb-key {
+  min-width: 82px; padding: 8px 14px; border-radius: 10px; cursor: pointer;
+  border: 2px solid rgba(255,255,255,.2); border-bottom-width: 4px;
+  background: rgba(12,16,24,.9); color: #fff; font-weight: 800; font-size: 13px; font-family: inherit;
+  transition: transform .08s, border-color .15s, background .15s;
+}
+.kb-key:hover { border-color: #6ee7ff; }
+.kb-key:active { transform: translateY(2px); border-bottom-width: 2px; }
+.kb-key.listening { border-color: #ffcf5c; background: rgba(255,207,92,.18); color: #ffcf5c; animation: kbPulse 1s ease infinite; }
+@keyframes kbPulse { 50% { opacity: .6; } }
+.kb-foot { display: flex; gap: 10px; margin-top: 16px; }
+#kb-reset { flex: 1; padding: 12px; border-radius: 12px; border: 2px solid rgba(255,255,255,.16); background: rgba(255,255,255,.06); color: #fff; font-weight: 700; cursor: pointer; }
+#kb-reset:hover { background: rgba(255,255,255,.12); }
+
+/* ==================== text chat ==================== */
+#chat { position: fixed; left: 18px; bottom: 90px; z-index: 32; width: min(360px, 62vw); pointer-events: none; }
+#chat-log { display: flex; flex-direction: column; gap: 3px; max-height: 30vh; overflow-y: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(transparent, #000 20%); mask-image: linear-gradient(transparent, #000 20%); }
+#chat-log::-webkit-scrollbar { display: none; }
+#chat.typing #chat-log { -webkit-mask-image: none; mask-image: none; }
+.chat-line { font-size: 14px; line-height: 1.35; color: #eef1f6; text-shadow: 0 1px 3px rgba(0,0,0,.9); word-wrap: break-word; opacity: .95; transition: opacity .3s; }
+.chat-line.fresh { animation: chatIn .22s var(--spring, cubic-bezier(.22,1,.36,1)); }
+@keyframes chatIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: .95; transform: none; } }
+.chat-name { font-weight: 800; }
+.chat-name.ally { color: #6cc0ff; }
+.chat-name.enemy { color: #ff8a6b; }
+.chat-name.me { color: #ffd86b; }
+#chat-input {
+  pointer-events: auto; margin-top: 8px; width: 100%; padding: 11px 14px; border-radius: 12px;
+  border: 2px solid rgba(110,231,255,.6); background: rgba(10,14,22,.9); color: #fff; font-size: 15px; font-family: inherit;
+  outline: none; box-shadow: 0 6px 20px rgba(0,0,0,.5);
+}
+#m-chat { right: 30px; bottom: 288px; width: 50px; height: 50px; font-size: 22px; }
+@media (pointer: coarse) { #chat { bottom: 130px; } }

@@ -115,6 +115,15 @@ export function handleMessage(p, msg, ctx) {
       return;
     }
 
+    case 'chat': {
+      const text = String(msg.text ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 140);
+      if (!text || !p.joined) return;
+      const out = { t: 'chat', id: p.id, name: p.name, text };
+      const m = p.matchId && state.matches.get(p.matchId);
+      if (m) { out.team = m.fighters.get(p.id)?.team || 'A'; matchSend(m, out); }
+      else lobbySend(out);
+      return;
+    }
     case 'match.leave': return leaveMatch(p, ctx, true);
     case 'range.hit': return; // shooting-range targets are client-side
   }
