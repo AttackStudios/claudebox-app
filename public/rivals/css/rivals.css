@@ -79,6 +79,17 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 #round-banner { position: fixed; top: 30%; left: 50%; transform: translateX(-50%); z-index: 31; font-size: 34px; font-weight: 900; letter-spacing: .04em; text-shadow: 0 2px 14px rgba(0,0,0,.8); animation: bannerPop .5s ease; }
 @keyframes bannerPop { from { opacity: 0; transform: translateX(-50%) scale(.8); } }
 
+/* map-name card (round 1, like the original) */
+#map-card { position: fixed; left: 50%; top: 38%; transform: translate(-50%,-50%); z-index: 32;
+  width: 180px; border-radius: 14px; overflow: hidden; border: 3px solid #59d185;
+  background: #14171f; text-align: center; padding-bottom: 10px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 24px rgba(89,209,133,.35); animation: mapIn .45s cubic-bezier(.22,1,.36,1); }
+#map-card .mc-art { height: 96px; margin-bottom: 8px; }
+#map-card .mc-art.arena { background: linear-gradient(160deg,#f2f4f8,#aab2bf); }
+#map-card .mc-art.bg { background: linear-gradient(160deg,#8a4fd0,#79a860); }
+#map-card b { font-size: 16px; }
+@keyframes mapIn { from { opacity: 0; transform: translate(-50%,-50%) scale(.8); } }
+
 /* killfeed */
 #killfeed { position: fixed; top: 66px; right: 16px; z-index: 28; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 .kf { background: rgba(14,16,22,.82); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 6px 12px; font-size: 13px; font-weight: 700; animation: kfIn .25s ease; }

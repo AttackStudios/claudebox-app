@@ -96,11 +96,33 @@ const sfx = {
 addEventListener('pointerdown', () => A(), { once: true });
 
 // ============================ world building ============================
-scene.add(new THREE.AmbientLight('#aeb8c8', 1.35));
+const ambientLight = new THREE.AmbientLight('#c4ccd8', 1.35);
+scene.add(ambientLight);
 const sun = new THREE.DirectionalLight('#fff2dc', 1.7);
 sun.position.set(30, 60, 20); scene.add(sun);
 const fill = new THREE.DirectionalLight('#8fb8e8', 0.5);
 fill.position.set(-25, 30, -30); scene.add(fill);
+
+// white tiled-panel texture with grid seams — the signature RIVALS-arena look
+const _gridBase = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128);
+  const gr = x.createLinearGradient(0, 0, 128, 128);
+  gr.addColorStop(0, 'rgba(0,0,0,0.015)'); gr.addColorStop(1, 'rgba(0,0,0,0.06)');
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+  x.strokeStyle = 'rgba(96,106,122,0.4)'; x.lineWidth = 4;
+  x.strokeRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+})();
+function panelTex(w, h) {
+  const t = _gridBase.clone();
+  t.needsUpdate = true;
+  t.repeat.set(Math.max(1, Math.round(w / 2.2)), Math.max(1, Math.round(h / 2.2)));
+  return t;
+}
 
 let mapGroup = null;
 let mapBoxes = [];
@@ -118,15 +140,20 @@ function buildMap(def) {
   );
   g.position.y = -0.5;
   mapGroup.add(g);
-  // boxes
+  // boxes — match maps get the tiled-panel treatment
+  const panels = def.id !== 'lobby';
   for (const b of def.boxes) {
     const mat = b.glow
       ? new THREE.MeshBasicMaterial({ color: b.color })
-      : new THREE.MeshLambertMaterial({ color: b.color });
+      : new THREE.MeshLambertMaterial({ color: b.color, map: panels ? panelTex(Math.max(b.sx, b.sz), Math.max(b.sy, 1)) : null });
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.sx, b.sy, b.sz), mat);
     mesh.position.set(b.x, b.y, b.z);
     mapGroup.add(mesh);
   }
+  // flat, bright, even light in matches (like the original's arenas)
+  ambientLight.intensity = panels ? 1.9 : 1.1;
+  sun.intensity = panels ? 0.95 : 1.4;
+  fill.intensity = panels ? 0.45 : 0.5;
   // the lobby is an interior — give it its own neon mood lighting
   if (def.id === 'lobby') {
     const l1 = new THREE.PointLight('#6ee7ff', 30, 26); l1.position.set(0, 5.4, -8);
@@ -341,10 +368,10 @@ const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 // an arm whose origin sits AT the hand (forearm trails back toward the body)
 function mkArm() {
   const g = new THREE.Group();
-  const fore = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.34), vmMat(VM_SHIRT));
-  fore.position.set(0, 0, 0.17);
-  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.09, 0.11), vmMat(VM_SKIN));
-  hand.position.set(0, 0, -0.05);
+  const fore = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.36), vmMat(VM_SHIRT));
+  fore.position.set(0, 0, 0.18);
+  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.14, 0.15), vmMat(VM_SKIN));
+  hand.position.set(0, 0, -0.06);
   g.add(fore, hand);
   return g;
 }
@@ -848,7 +875,13 @@ net.on('round.freeze', (msg) => {
   chipAvatars($('#chip-a-av'), game.roster, game.myTeam);
   chipAvatars($('#chip-b-av'), game.roster, game.myTeam === 'A' ? 'B' : 'A');
   updateHpHud(); updateAmmoHud();
-  banner(`ROUND ${msg.round}`, 900);
+  if (msg.round === 1) {
+    const card = $('#map-card');
+    $('#map-card-name').textContent = (MAPS[game.mapId] || MAPS.arena).name;
+    card.querySelector('.mc-art').className = 'mc-art ' + (game.mapId === 'battleground' ? 'bg' : 'arena');
+    card.classList.remove('hidden');
+    setTimeout(() => card.classList.add('hidden'), 2000);
+  } else banner(`ROUND ${msg.round}`, 900);
   sfx.roundStart();
   try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
 });
