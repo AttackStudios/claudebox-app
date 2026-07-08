@@ -768,6 +768,18 @@ function addOther(f) {
   mountHeldToHand(rec);
   ctrl.group.position.set(f.pos.x, f.pos.y, f.pos.z);
 }
+// weapon-aware pose: standing/running with a rifle/pistol/knife LOOKS like it
+function displayAnim(o) {
+  const d = o.data;
+  if (d.dead) return 'death';
+  if (d.actionUntil && clockNow() < d.actionUntil) return d.actionAnim;
+  const base = d.anim || 'idle';
+  const w = o.heldId;
+  if (w === 'ar' || w === 'sniper') { if (base === 'idle') return 'rifleidle'; if (base === 'run' || base === 'walk') return 'riflerun'; }
+  else if (w === 'handgun') { if (base === 'idle') return 'pistolidle'; if (base === 'run' || base === 'walk') return 'pistolrun'; }
+  else if (w === 'scythe' || w === 'grenade') { if (base === 'idle') return 'knifeidle'; }
+  return base;
+}
 function removeOther(id) {
   const o = others.get(id);
   if (!o) return;
@@ -1030,6 +1042,7 @@ net.on('snap', (msg) => {
       if (!o) { addOther({ ...pl, team: 'A' }); continue; }
       o.target = { ...pl.pos, ry: pl.ry };
       o.data.anim = pl.anim;
+      if (pl.weapon) setHeld(o, pl.weapon);
     }
     return;
   }
@@ -1089,6 +1102,8 @@ net.on('shot', (msg) => { // someone else fired — tracer from their eye
   const o = others.get(msg.id);
   if (!o) return;
   sfx.distantShot();
+  o.data.actionUntil = clockNow() + (msg.weapon === 'scythe' ? 0.7 : 0.3);
+  o.data.actionAnim = msg.weapon === 'scythe' ? 'knifestab' : 'riflefire';
   if (msg.weapon === 'scythe') return;
   const eye = new THREE.Vector3(o.ctrl.group.position.x, o.ctrl.group.position.y + 1.55, o.ctrl.group.position.z);
   const d = o.data;
@@ -1355,7 +1370,7 @@ function frame() {
     while (dry > Math.PI) dry -= Math.PI * 2;
     while (dry < -Math.PI) dry += Math.PI * 2;
     o.ctrl.group.rotation.y += dry * Math.min(1, dt * 10);
-    o.ctrl.setAnim(o.data.dead ? 'death' : (o.data.anim || 'idle'));
+    o.ctrl.setAnim(displayAnim(o));
     o.ctrl.update(dt);
   }
   // timers

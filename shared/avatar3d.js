@@ -15,7 +15,8 @@ function loadGLB(url) {
   return glbCache.get(url);
 }
 
-const EXTRA_CLIPS = ['run', 'jump', 'sit', 'dance', 'death', 'swim', 'tread'];   // 'idle' ships inside the base model
+const EXTRA_CLIPS = ['run', 'jump', 'sit', 'dance', 'death', 'swim', 'tread',
+  'rifleidle', 'riflerun', 'riflefire', 'pistolidle', 'pistolrun', 'knifeidle', 'knifestab'];   // 'idle' ships inside the base model
 const genders = new Map();   // gender -> { template, clips, minY, scale }
 export const TARGET_HEIGHT = 1.9;       // normalize every model to this height (feet at y=0)
 export const HITBOX = { radius: 0.4, height: TARGET_HEIGHT, eye: TARGET_HEIGHT * 0.92 };
@@ -115,12 +116,20 @@ function splitBodyByRegion(mesh) {
 const ANIM_MAP = {
   idle: 'idle', walk: 'run', run: 'run', jump: 'jump', fall: 'jump',
   swim: 'swim', tread: 'tread',
+  rifleidle: 'rifleidle', riflerun: 'riflerun', riflefire: 'riflefire',
+  pistolidle: 'pistolidle', pistolrun: 'pistolrun',
+  knifeidle: 'knifeidle', knifestab: 'knifestab',
   sit: 'sit', lie: 'sit', drive: 'sit', sitchair: 'sit', dance: 'dance',
   death: 'death', dead: 'death', fly: 'idle', spray: 'idle', roast: 'idle', eat: 'idle',
 };
 // if a model lacks a clip, fall back to the closest one it does have
-const ANIM_FALLBACK = { swim: 'run', tread: 'idle' };
-const ONESHOT = new Set(['jump', 'death']);
+const ANIM_FALLBACK = {
+  swim: 'run', tread: 'idle',
+  rifleidle: 'idle', riflerun: 'run', riflefire: 'idle',
+  pistolidle: 'idle', pistolrun: 'run',
+  knifeidle: 'idle', knifestab: 'idle',
+};
+const ONESHOT = new Set(['jump', 'death', 'knifestab', 'riflefire']);
 
 function genderOf(profile) {
   const b = (profile.body || '').toString().toLowerCase();

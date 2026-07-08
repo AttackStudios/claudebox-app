@@ -80,10 +80,11 @@ export function handleMessage(p, msg, ctx) {
     }
 
     case 'weapon': {
+      if (!LOADOUT.includes(msg.id)) return;
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
-      if (!f || f.dead) return;
-      if (LOADOUT.includes(msg.id)) f.weapon = msg.id;
+      if (f && !f.dead) f.weapon = msg.id;
+      else if (!m) p.weapon = msg.id;   // lobby: show what they're holding too
       return;
     }
 
