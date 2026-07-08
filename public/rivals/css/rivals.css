@@ -176,3 +176,76 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 #pd-rematch { background: #2a3140; color: #eef1f6; }
 #pd-again { background: linear-gradient(150deg,#38b6e8,#6ee7ff); color: #041a24; }
 #pd-leave { background: #3a2326; color: #f08a8a; }
+
+/* ================= CARTOON SKIN — chunky, bubbly, like the original ================= */
+#hud, .overlay, #rv-toasts, #killfeed {
+  font-family: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Nunito', 'Trebuchet MS', sans-serif;
+}
+/* chunky outlined text helper applied to the loud bits */
+#round-clock, #freeze-count, #round-banner, .team-chip b, #ammo-big b, #weapon-name,
+#podium-title, .vote-head, #map-card b, #health-num, .mode-card b, #qb-time {
+  text-shadow: -2px 0 0 rgba(10,14,20,.55), 2px 0 0 rgba(10,14,20,.55), 0 -2px 0 rgba(10,14,20,.55), 0 3px 0 rgba(10,14,20,.6);
+  letter-spacing: .01em;
+}
+/* team chips: candy slabs */
+.team-chip { border-radius: 16px; padding: 7px 14px; border: 2.5px solid rgba(255,255,255,.35);
+  border-bottom: 5px solid rgba(0,0,0,.28); box-shadow: 0 6px 0 rgba(0,0,0,.22), 0 10px 18px rgba(0,0,0,.3); }
+.team-chip b { font-size: 22px; font-weight: 900; }
+.tc-avatars canvas { border-radius: 8px; border: 2px solid rgba(255,255,255,.4); }
+#round-clock { border-radius: 16px; border: 2.5px solid rgba(255,255,255,.22); border-bottom: 5px solid rgba(0,0,0,.5);
+  font-weight: 900; font-size: 20px; background: #20242e; box-shadow: 0 6px 0 rgba(0,0,0,.25); }
+#freeze-count { font-size: 54px; }
+#round-banner { font-size: 40px; }
+/* health: fat rounded tube with shine */
+#health-wrap { height: 30px; border-radius: 999px; border: 3px solid rgba(255,255,255,.25);
+  box-shadow: 0 5px 0 rgba(0,0,0,.3), inset 0 3px 6px rgba(0,0,0,.45); }
+#health-bar { box-shadow: inset 0 4px 0 rgba(255,255,255,.35), inset 0 -4px 0 rgba(0,0,0,.15); }
+#health-num { font-size: 14px; font-weight: 900; }
+/* ammo: giant bubbly numbers */
+#ammo-big b { font-size: 54px; font-weight: 900; }
+#ammo-big span { font-weight: 900; }
+#weapon-name { font-weight: 900; font-size: 15px; }
+/* loadout slots: candy tiles */
+.slot { border-radius: 14px; border: 2.5px solid rgba(255,255,255,.18); border-bottom: 5px solid rgba(0,0,0,.45);
+  width: 50px; height: 42px; font-size: 19px; box-shadow: 0 4px 0 rgba(0,0,0,.25); transition: transform .12s; }
+.slot.active { border-color: #fff; transform: translateY(-4px) scale(1.06);
+  box-shadow: 0 8px 0 rgba(0,0,0,.25), 0 0 14px rgba(110,231,255,.55); }
+.slot small { font-size: 10px; font-weight: 900; }
+/* killfeed + toasts: rounded candy pills */
+.kf { border-radius: 999px; border: 2px solid rgba(255,255,255,.2); border-bottom: 4px solid rgba(0,0,0,.4); font-weight: 800; }
+.rv-toast { border-radius: 999px; border: 2px solid rgba(255,255,255,.3); border-bottom: 5px solid rgba(0,0,0,.3);
+  font-weight: 900; box-shadow: 0 6px 0 rgba(0,0,0,.2); }
+/* queue banner */
+#queue-banner { border-radius: 18px; border: 2.5px solid rgba(255,255,255,.2); border-bottom: 5px solid rgba(0,0,0,.45);
+  font-weight: 800; box-shadow: 0 6px 0 rgba(0,0,0,.25); }
+#qb-cancel { border-radius: 10px; border-bottom: 3px solid rgba(0,0,0,.35); width: 30px; height: 30px; }
+#lobby-tip { border-radius: 999px; border: 2px solid rgba(255,255,255,.16); border-bottom: 4px solid rgba(0,0,0,.4); font-weight: 800; }
+/* overlays: candy panels + buttons */
+.panel, .podium-card { border-radius: 26px; border: 3px solid rgba(255,255,255,.16); border-bottom: 8px solid rgba(0,0,0,.45); }
+.mode-card { border-radius: 20px; border: 3px solid rgba(255,255,255,.14); border-bottom: 7px solid rgba(0,0,0,.45);
+  transition: transform .15s cubic-bezier(.34,1.56,.64,1), border-color .15s; }
+.mode-card:hover { transform: translateY(-5px) scale(1.03); border-color: #6ee7ff; }
+.mode-card b { font-size: 19px; font-weight: 900; }
+.panel-close, .podium-btns button, .add-row button {
+  border-radius: 16px !important; font-weight: 900 !important;
+  border-bottom: 6px solid rgba(0,0,0,.35) !important; box-shadow: 0 5px 0 rgba(0,0,0,.2);
+  transition: transform .1s, box-shadow .1s;
+}
+.podium-btns button:active, .panel-close:active { transform: translateY(4px); box-shadow: 0 1px 0 rgba(0,0,0,.2); }
+#pd-again { border-bottom-color: rgba(4,60,80,.55) !important; }
+#pd-leave { border-bottom-color: rgba(60,10,14,.6) !important; }
+/* vote cards: bouncy candy */
+.vote-card { border-radius: 20px; border-width: 3.5px; border-bottom-width: 8px;
+  transition: transform .16s cubic-bezier(.34,1.56,.64,1), border-color .15s; font-weight: 900; }
+.vote-card:hover { transform: translateY(-6px) scale(1.04); }
+.vote-card.picked { border-color: #59d185; border-bottom-color: #2c7a4b; }
+.vote-head { font-size: 30px; font-weight: 900; }
+/* map card */
+#map-card { border-radius: 20px; border-width: 4px; border-bottom-width: 9px; border-bottom-color: #2c7a4b; font-weight: 900; }
+/* podium stats: rounded rows */
+.pstat { border-radius: 16px; border: 2px solid rgba(255,255,255,.12); border-bottom: 4px solid rgba(0,0,0,.35); }
+.pstat canvas { border-radius: 10px; border: 2px solid rgba(255,255,255,.3); }
+#podium-title { font-size: 50px; letter-spacing: .04em; }
+/* scope + hitmarker keep clean; dmg numbers bubblier */
+.dmg-num { font-weight: 900; font-size: 21px; }
+.dmg-num.head { font-size: 26px; }
