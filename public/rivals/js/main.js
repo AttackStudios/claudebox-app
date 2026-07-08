@@ -48,7 +48,7 @@ window.__rivals = {
   get anim() { return vmAnim; },
   fns: {
     startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; },
-    spawnDummy: (g, w) => { const fid = 'dummy_' + g + '_' + (w || 'ar'); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x - Math.sin(me.ry) * -3, y: 0, z: me.pos.z - Math.cos(me.ry) * -3 }, ry: 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
+    spawnDummy: (g, w, ry, dx, dz) => { const fid = 'dummy_' + g + '_' + (w || 'ar') + '_' + (ry || 0); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x + (dx || 0), y: 0, z: me.pos.z + (dz || 6) }, ry: ry || 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
   },
 };
 
@@ -714,9 +714,19 @@ function makeHeldWeapon(id) {
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.062, 10, 8), vmMat('#3f7d3f'));
     b.scale.y = 1.15; g.add(b);
   }
-  g.scale.setScalar(1.6);   // chunky, readable from across the arena
-  return g; // fists = empty hands
+  return g; // fists = empty hands (scale applied at mount via GUN_ANCHORS)
 }
+// per-weapon grip geometry (mesh-local, matching makeHeldWeapon above):
+//  grip = the point the RIGHT hand wraps (trigger/handle)
+//  fore = a point up the BARREL that the LEFT hand should reach toward
+//  scale = world size of the held model
+const GUN_ANCHORS = {
+  ar:      { grip: [0, -0.03, 0.08], fore: [0, 0, -0.34], scale: 1.7, twoHand: true },
+  sniper:  { grip: [0, -0.03, 0.06], fore: [0, 0, -0.46], scale: 1.6, twoHand: true },
+  handgun: { grip: [0, -0.04, 0.05], fore: [0, 0, -0.13], scale: 1.6, twoHand: false },
+  scythe:  { grip: [0, 0, 0.05],     fore: [0, 0, -0.12], scale: 1.6, twoHand: false },
+  grenade: { grip: [0, 0, 0],        fore: [0, 0, -0.07], scale: 1.5, twoHand: false },
+};
 // attach the held-weapon group to the avatar's right hand BONE so weapons
 // ride the actual arm animation. Alignment is computed against the settled
 // idle pose: we solve the holder quaternion so the gun points along the
@@ -736,42 +746,44 @@ function mountHeldToHand(o) {
   const rHand = bones['mixamorigRightHand'] || bones['R_Wrist'];
   const lHand = bones['mixamorigLeftHand'] || bones['L_Wrist'];
   const rElbow = bones['mixamorigRightForeArm'] || bones['R_Elbow'];
-  if (!rHand) {                              // no rig? fixed fallback
+  const a = GUN_ANCHORS[o.heldId];
+  if (!rHand || !a) {                        // fists, or no rig → fixed fallback
     if (o.held.parent !== o.ctrl.group) o.ctrl.group.add(o.held);
     o.held.position.set(0.34, 1.04, 0.24);
+    o.held.quaternion.identity();
+    o.held.scale.setScalar(1);
     return;
   }
-  // settle into the pose this weapon is actually held in
+  // settle into the pose this weapon is actually held in, so the hand bones
+  // are where they'll be at rest before we solve the grip
   o.ctrl.setAnim(poseFor(o.heldId));
   o.ctrl.update(0.35);
   if (o.held.parent !== rHand) rHand.add(o.held);
   o.ctrl.group.updateWorldMatrix(true, true);
   const ws = new THREE.Vector3(); rHand.getWorldScale(ws);
-  const inv = 1 / (ws.x || 1);
-  o.held.scale.setScalar(inv);
+  const s = (1 / (ws.x || 1)) * a.scale;     // undo bone scale, apply world size
+  const grip = new THREE.Vector3().fromArray(a.grip);
+  const fore = new THREE.Vector3().fromArray(a.fore);
+  // where should the BARREL point? toward the left hand for two-handed weapons
+  // (handle in the right hand, barrel reaching the left), else along the forearm
   const RW = new THREE.Vector3(); rHand.getWorldPosition(RW);
-  // barrel direction: toward the support hand — unless the pose holds the
-  // hands too close together (girl rig), then extend the forearm line instead
-  const REF = new THREE.Vector3();
-  let aligned = false;
-  if ((o.heldId === 'ar' || o.heldId === 'sniper') && lHand && bones['mixamorigRightHand']) {
-    lHand.getWorldPosition(REF);
-    if (RW.distanceTo(REF) > 0.24) aligned = true;
+  let dirLocal = null;
+  if (a.twoHand && lHand) {
+    const LW = new THREE.Vector3(); lHand.getWorldPosition(LW);
+    if (RW.distanceTo(LW) > 0.12) dirLocal = rHand.worldToLocal(LW.clone());
   }
-  if (!aligned) {
-    if (rElbow) { const E = new THREE.Vector3(); rElbow.getWorldPosition(E); REF.copy(RW).add(RW.clone().sub(E)); }
-    else { o.ctrl.group.getWorldPosition(REF); REF.z += 1; }
+  if (!dirLocal) {
+    if (rElbow) { const E = new THREE.Vector3(); rElbow.getWorldPosition(E); dirLocal = rHand.worldToLocal(RW.clone().add(RW.clone().sub(E))); }
+    else dirLocal = new THREE.Vector3(0, 0, -1);
   }
-  const aimer = new THREE.Object3D();
-  aimer.position.copy(RW);
-  aimer.lookAt(RW.clone().multiplyScalar(2).sub(REF));   // +Z away → gun −Z points at REF
-  const hq = new THREE.Quaternion(); rHand.getWorldQuaternion(hq);
-  const hqInv = hq.clone().invert();
-  o.held.quaternion.copy(hqInv).multiply(aimer.quaternion);
-  // nudge the grip into the palm: a small world-space push along the barrel,
-  // expressed in bone-local units (bone scale undone)
-  const gripWorld = REF.clone().sub(RW).normalize().multiplyScalar(0.07);
-  o.held.position.copy(gripWorld.applyQuaternion(hqInv)).multiplyScalar(inv);
+  dirLocal.normalize();
+  // rotate the gun so its barrel axis (grip→fore) lands on that direction,
+  // then translate so the grip point sits exactly at the right-hand origin
+  const axis = fore.clone().sub(grip).normalize();
+  const Q = new THREE.Quaternion().setFromUnitVectors(axis, dirLocal);
+  o.held.quaternion.copy(Q);
+  o.held.scale.setScalar(s);
+  o.held.position.copy(grip).multiplyScalar(-s).applyQuaternion(Q);
 }
 
 function setHeld(o, id) {

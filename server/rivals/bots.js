@@ -94,8 +94,18 @@ export function tickBots(m, dt) {
       f.pos.y += mem.vy * dt; mem.vy -= MOVE.gravity * dt;
       if (f.pos.y <= 0) { f.pos.y = 0; delete mem.vy; }
     }
-    f.anim = los && dist < 18 ? 'run' : 'run';
-    f.ry = Math.atan2(-(enemy.pos.x - f.pos.x), -(enemy.pos.z - f.pos.z));
+    f.anim = 'run';
+    // facing is COSMETIC only — the shots above aim straight at the enemy
+    // regardless of f.ry. Face the way we're actually moving so bots visibly
+    // turn as they roam, instead of moonwalking with the body locked toward an
+    // enemy they can't even see (through a wall). Snap to the target only in a
+    // close fight or when standing still, so gunfights still read as aiming.
+    const moveLen = Math.hypot(moveX, moveZ);
+    if ((los && dist < 16) || moveLen < 0.01) {
+      f.ry = Math.atan2(-(enemy.pos.x - f.pos.x), -(enemy.pos.z - f.pos.z));
+    } else {
+      f.ry = Math.atan2(-moveX, -moveZ);
+    }
 
     // ---- weapon choice ----
     if (dist < 3.2 && los) f.weapon = 'scythe';
