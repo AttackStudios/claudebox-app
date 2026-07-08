@@ -353,8 +353,6 @@ function renderGames() {
   for (const g of soon) sr.appendChild(gameTile(g));
 
   renderPopular();
-  renderCharts();
-  renderHero();
 }
 
 // ---------------- hero (rotating featured) ----------------
@@ -397,7 +395,7 @@ function restartHeroTimer() {
   if (settings.reduceMotion || heroList.length < 2) return;
   heroTimer = setInterval(() => { heroIdx = (heroIdx + 1) % heroList.length; paintHero(); }, 7000);
 }
-$('hero').addEventListener('click', () => { const g = heroList[heroIdx]; if (g) launchGame(g.id); });
+$('hero')?.addEventListener('click', () => { const g = heroList[heroIdx]; if (g) launchGame(g.id); });
 
 function launchGame(gameId) {
   const game = stateHub.games.find((g) => g.id === gameId);
