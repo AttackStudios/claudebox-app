@@ -644,6 +644,16 @@ async function openProfile(name) {
       } catch (e) { toast(e.message, '⚠️'); }
     };
   }
+  const frB = $('pf-friend');
+  if (data.isSelf || !data.isUser) frB.classList.add('hidden');
+  else {
+    frB.classList.remove('hidden');
+    const reopen = () => openProfile(pfName);
+    if (data.isFriend) { frB.textContent = '✓ Friends'; frB.className = 'pf-fr is'; frB.onclick = async () => { await friendAction('/friends/remove', pfName, `Removed ${pfName}`, '👋'); reopen(); }; }
+    else if (data.friendReqIncoming) { frB.textContent = '✓ Accept'; frB.className = 'pf-fr accept'; frB.onclick = async () => { await friendAction('/friends/accept', pfName, `You're now friends with ${pfName}!`, '🎉'); reopen(); }; }
+    else if (data.friendReqSent) { frB.textContent = 'Requested'; frB.className = 'pf-fr'; frB.onclick = async () => { await friendAction('/friends/cancel', pfName, `Canceled request to ${pfName}`, '↩️'); reopen(); }; }
+    else { frB.textContent = '+ Add Friend'; frB.className = 'pf-fr'; frB.onclick = async () => { await sendFriendReq(pfName); reopen(); }; }
+  }
   const gh = $('pf-games');
   if (!data.games.length) gh.innerHTML = '<div class="empty-note">No experiences yet.</div>';
   else for (const g of data.games) {
@@ -757,7 +767,7 @@ $('dm-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendDm
 $('dm-overlay').addEventListener('click', (e) => { if (e.target.id === 'dm-overlay') closeDMs(); });
 
 // ---------------- connect tab ----------------
-function personRow(person, isFriend) {
+function personRow(person, mode) {
   const row = document.createElement('div');
   row.className = 'person-row';
   const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, person.avatar);
@@ -775,42 +785,54 @@ function personRow(person, isFriend) {
     join.addEventListener('click', () => launchGame(person.status.split(':')[1] || 'feather-friends'));
     row.appendChild(join);
   }
-  if (isFriend) {
+  const mkBtn = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.addEventListener('click', fn); row.appendChild(b); return b; };
+  if (mode === 'friend') {
     const msg = document.createElement('button'); msg.className = 'dm-open'; msg.textContent = '💬 Message';
     msg.addEventListener('click', () => openDMs(person.name));
     row.appendChild(msg);
+    mkBtn('Remove', '', () => friendAction('/friends/remove', person.name, `Removed ${person.name}`, '👋'));
+  } else if (mode === 'request') {
+    mkBtn('✓ Accept', 'accept', () => friendAction('/friends/accept', person.name, `You're now friends with ${person.name}!`, '🎉'));
+    mkBtn('Decline', 'decline', () => friendAction('/friends/decline', person.name, `Declined ${person.name}`, '✖'));
+  } else {
+    if ((stateHub.sent || []).includes(person.name.toLowerCase()))
+      mkBtn('Requested', 'requested', () => friendAction('/friends/cancel', person.name, `Canceled request to ${person.name}`, '↩️'));
+    else mkBtn('Add Friend', '', () => sendFriendReq(person.name));
   }
-  const btn = document.createElement('button');
-  btn.textContent = isFriend ? 'Remove' : 'Add';
-  btn.addEventListener('click', async () => {
-    try {
-      await api(isFriend ? '/friends/remove' : '/friends/add', { name: stateHub.me.name, friend: person.name });
-      if (isFriend) { sfx.back(); toast(`Removed ${person.name}`, '👋'); }
-      else { sfx.success(); toast(`You and ${person.name} are friends!`, '🎉'); }
-      refreshSocial();
-    } catch (e) { toast(e.message, '⚠️'); }
-  });
-  row.appendChild(btn);
   return row;
+}
+async function sendFriendReq(friend) {
+  try {
+    const r = await api('/friends/add', { name: stateHub.me.name, friend });
+    if (r?.state === 'friends') { sfx.success(); toast(`You're now friends with ${friend}!`, '🎉'); }
+    else { sfx.tap(); toast(`Friend request sent to ${friend}`, '📨'); }
+    refreshSocial(); return r;
+  } catch (e) { toast(e.message, '⚠️'); }
+}
+async function friendAction(path, friend, msg, emoji) {
+  try { await api(path, { name: stateHub.me.name, friend }); sfx.tap(); toast(msg, emoji); refreshSocial(); }
+  catch (e) { toast(e.message, '⚠️'); }
 }
 function renderConnect() {
   const fl = $('friend-list'); fl.innerHTML = '';
-  if (!stateHub.friends.length) fl.innerHTML = '<div class="empty-note">Nobody yet. Add someone above!</div>';
-  for (const f of stateHub.friends) fl.appendChild(personRow(f, true));
+  const reqs = stateHub.requestsIn || [];
+  if (reqs.length) {
+    const h = document.createElement('div'); h.className = 'req-header'; h.textContent = `📨 Friend Requests · ${reqs.length}`;
+    fl.appendChild(h);
+    for (const r of reqs) fl.appendChild(personRow(r, 'request'));
+    const h2 = document.createElement('div'); h2.className = 'req-header'; h2.textContent = 'Friends'; fl.appendChild(h2);
+  }
+  if (!stateHub.friends.length) fl.insertAdjacentHTML('beforeend', '<div class="empty-note">No friends yet. Send someone a request below!</div>');
+  for (const f of stateHub.friends) fl.appendChild(personRow(f, 'friend'));
   const ol = $('online-list'); ol.innerHTML = '';
   if (!stateHub.online.length) ol.innerHTML = '<div class="empty-note">Nobody else is online right now.</div>';
-  for (const p of stateHub.online) ol.appendChild(personRow(p, false));
+  for (const p of stateHub.online) ol.appendChild(personRow(p, 'online'));
 }
 $('add-btn').addEventListener('click', async () => {
   const friend = $('add-input').value.trim();
   if (!friend) return;
-  try {
-    await api('/friends/add', { name: stateHub.me.name, friend });
-    sfx.success();
-    toast(`You and ${friend} are friends!`, '🎉');
-    $('add-input').value = '';
-    refreshSocial();
-  } catch (e) { toast(e.message, '⚠️'); }
+  const r = await sendFriendReq(friend);
+  if (r) $('add-input').value = '';
 });
 $('add-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('add-btn').click(); });
 
@@ -1283,6 +1305,8 @@ async function refreshSocial() {
     if (data.me.likedGames) stateHub.me.likedGames = data.me.likedGames;
     stateHub.friends = data.friends;
     stateHub.online = data.online;
+    stateHub.requestsIn = data.requestsIn || [];
+    stateHub.sent = data.sent || [];
     // wallet may have changed while you were in a game — flash if it grew
     const prev = wallet();
     const grew = data.me.wallet && (data.me.wallet.stars !== prev.stars || data.me.wallet.cubes !== prev.cubes);

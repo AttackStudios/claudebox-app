@@ -188,6 +188,16 @@ function avatarForName(nameLower) {
   if (u) { ensureWallet(u); return u.avatar; }
   return nameLower === OFFICIAL_NAME ? STUDIO_AVATAR : DEFAULT_AVATAR;
 }
+// official bot accounts that auto-accept friend requests
+const BOTS = new Set(['claudebox studios']);
+// make a and b mutual friends and clear any pending requests between them
+function acceptFriend(a, aLower, b, bLower) {
+  ensureWallet(a); ensureWallet(b);
+  if (!a.friends.includes(bLower)) a.friends.push(bLower);
+  if (!b.friends.includes(aLower)) b.friends.push(aLower);
+  a.friendReqIn = a.friendReqIn.filter((x) => x !== bLower); a.friendReqOut = a.friendReqOut.filter((x) => x !== bLower);
+  b.friendReqIn = b.friendReqIn.filter((x) => x !== aLower); b.friendReqOut = b.friendReqOut.filter((x) => x !== aLower);
+}
 function followersOf(nameLower) {
   let n = 0;
   for (const u of Object.values(platform.users)) if (Array.isArray(u.following) && u.following.includes(nameLower)) n++;
@@ -287,6 +297,8 @@ function ensureWallet(u) {
   if (!Array.isArray(u.owned)) u.owned = [];
   if (!Array.isArray(u.ownedAvatar)) u.ownedAvatar = [];
   if (!Array.isArray(u.following)) u.following = [];
+  if (!Array.isArray(u.friendReqIn)) u.friendReqIn = [];
+  if (!Array.isArray(u.friendReqOut)) u.friendReqOut = [];
   if (typeof u.title !== 'string') u.title = '';
   if (typeof u.nameColor !== 'string') u.nameColor = '';
   return u;
@@ -379,6 +391,14 @@ function publicUser(nameLower) {
 
 const LEVELS_DIR = path.join(DATA_DIR, 'levels');
 const levelSlug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'sandbox';
+
+// ensure the official ClaudeBox Studios account exists as a real, friendable
+// (auto-accepting) user so people can add it.
+(function ensureBotAccounts() {
+  const cbs = ensureUser('ClaudeBox Studios');
+  cbs.isBot = true;
+  cbs.avatar = sanitizeAvatar(STUDIO_AVATAR);
+})();
 
 export function hubRouter() {
   const r = express.Router();
@@ -501,27 +521,61 @@ export function hubRouter() {
     res.json({ ok: true, avatar: u.avatar, wallet: walletOf(u) });
   });
 
+  // send a friend REQUEST (must be accepted). auto-accepts if they already
+  // requested you, or if the target is an official bot (ClaudeBox Studios).
   r.post('/friends/add', (req, res) => {
     const name = clean(req.body?.name).toLowerCase();
-    const friend = clean(req.body?.friend).toLowerCase();
+    const friend = cleanCreator(req.body?.friend).toLowerCase();
     if (!name || !friend || name === friend) return res.status(400).json({ error: 'bad request' });
-    const me = getUser(name);
-    const them = getUser(friend);
+    const me = getUser(name); const them = getUser(friend);
     if (!me) return res.status(400).json({ error: 'log in first' });
     if (!them) return res.status(404).json({ error: `No one named "${req.body?.friend}" has joined ClaudeBox yet.` });
-    if (!me.friends.includes(friend)) me.friends.push(friend);
-    if (!them.friends.includes(name)) them.friends.push(name);
+    ensureWallet(me); ensureWallet(them);
+    if (me.friends.includes(friend)) return res.json({ ok: true, state: 'friends' });
+    if (me.friendReqIn.includes(friend)) { acceptFriend(me, name, them, friend); save(); return res.json({ ok: true, state: 'friends', accepted: true }); }
+    if (them.isBot || BOTS.has(friend)) { acceptFriend(me, name, them, friend); save(); return res.json({ ok: true, state: 'friends', accepted: true, bot: true }); }
+    if (!me.friendReqOut.includes(friend)) me.friendReqOut.push(friend);
+    if (!them.friendReqIn.includes(name)) them.friendReqIn.push(name);
     save();
+    res.json({ ok: true, state: 'requested' });
+  });
+  // accept a request FROM `friend`
+  r.post('/friends/accept', (req, res) => {
+    const name = clean(req.body?.name).toLowerCase();
+    const friend = cleanCreator(req.body?.friend).toLowerCase();
+    const me = getUser(name); const them = getUser(friend);
+    if (!me || !them) return res.status(404).json({ error: 'unknown user' });
+    ensureWallet(me);
+    if (!me.friendReqIn.includes(friend)) return res.json({ ok: false, error: 'no pending request' });
+    acceptFriend(me, name, them, friend); save();
     res.json({ ok: true });
+  });
+  // decline an incoming request
+  r.post('/friends/decline', (req, res) => {
+    const name = clean(req.body?.name).toLowerCase();
+    const friend = cleanCreator(req.body?.friend).toLowerCase();
+    const me = getUser(name); const them = getUser(friend);
+    if (me) { ensureWallet(me); me.friendReqIn = me.friendReqIn.filter((f) => f !== friend); }
+    if (them) { ensureWallet(them); them.friendReqOut = them.friendReqOut.filter((f) => f !== name); }
+    save(); res.json({ ok: true });
+  });
+  // cancel an outgoing request
+  r.post('/friends/cancel', (req, res) => {
+    const name = clean(req.body?.name).toLowerCase();
+    const friend = cleanCreator(req.body?.friend).toLowerCase();
+    const me = getUser(name); const them = getUser(friend);
+    if (me) { ensureWallet(me); me.friendReqOut = me.friendReqOut.filter((f) => f !== friend); }
+    if (them) { ensureWallet(them); them.friendReqIn = them.friendReqIn.filter((f) => f !== name); }
+    save(); res.json({ ok: true });
   });
 
   r.post('/friends/remove', (req, res) => {
     const name = clean(req.body?.name).toLowerCase();
-    const friend = clean(req.body?.friend).toLowerCase();
+    const friend = cleanCreator(req.body?.friend).toLowerCase();
     const me = getUser(name);
     const them = getUser(friend);
-    if (me) me.friends = me.friends.filter((f) => f !== friend);
-    if (them) them.friends = them.friends.filter((f) => f !== name);
+    if (me) { ensureWallet(me); me.friends = me.friends.filter((f) => f !== friend); me.friendReqIn = me.friendReqIn.filter((f) => f !== friend); me.friendReqOut = me.friendReqOut.filter((f) => f !== friend); }
+    if (them) { ensureWallet(them); them.friends = them.friends.filter((f) => f !== name); them.friendReqIn = them.friendReqIn.filter((f) => f !== name); them.friendReqOut = them.friendReqOut.filter((f) => f !== name); }
     save();
     res.json({ ok: true });
   });
@@ -627,18 +681,23 @@ export function hubRouter() {
     const me = getUser(nameLower);
     if (!me) return res.status(404).json({ error: 'unknown user' });
 
+    ensureWallet(me);
     const friends = me.friends.map(publicUser).filter(Boolean);
+    const requestsIn = (me.friendReqIn || []).map(publicUser).filter(Boolean);
+    const inSet = new Set(me.friendReqIn || []);
     // everyone else currently online (hub or in a game), for the Connect tab
     const online = [];
     for (const [key, u] of Object.entries(platform.users)) {
-      if (key === nameLower || me.friends.includes(key)) continue;
+      if (key === nameLower || me.friends.includes(key) || inSet.has(key) || u.isBot) continue;
       const status = presenceOf(key);
-      if (status !== 'offline') online.push({ name: u.name, avatar: u.avatar, status });
+      if (status !== 'offline') online.push({ name: u.name, avatar: u.avatar, status, badge: badgeFor(u.name) });
     }
     res.json({
       me: { name: me.name, avatar: me.avatar, recentGames: me.recentGames, wallet: walletOf(me), likedGames: likedGamesOf(nameLower) },
       friends,
       online,
+      requestsIn,
+      sent: me.friendReqOut || [],
     });
   });
 
@@ -680,6 +739,9 @@ export function hubRouter() {
       followers: followersOf(nameLower),
       following: (u?.following || []).length,
       isFollowing: !!(vu && (vu.following || []).includes(nameLower)),
+      isFriend: !!(vu && (vu.friends || []).includes(nameLower)),
+      friendReqSent: !!(vu && (vu.friendReqOut || []).includes(nameLower)),
+      friendReqIncoming: !!(vu && (vu.friendReqIn || []).includes(nameLower)),
       isSelf: viewer === nameLower,
       isUser: !!u,
       totalVisits,
