@@ -16,13 +16,13 @@ function ramp(x, y0, z, dir, steps, w, color) {
 }
 
 // ================= ARENA — bright white box with team-colour trim =====
-const AR_W = '#2b3240', AR_W2 = '#232936', AR_ACC = '#324256';
+const AR_W = '#eef1f6', AR_W2 = '#d9dee6', AR_ACC = '#c6ccd6';
 const TEAM_A = '#2fa4ff', TEAM_B = '#ff7a34';   // blue side vs orange side
 export const ARENA = {
   id: 'arena', name: 'Arena',
-  sky: '#0d1524', sky2: ['#0a1122', '#122038', '#20406a'], fog: 0.011,
-  ground: { color: '#141a26', size: 96, tex: ['#141a26', 'rgba(70,160,220,0.28)', 'rgba(60,150,255,0.16)'] },
-  emblem: '#3fd6e0',
+  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#e8f1f8'], fog: 0.008,
+  ground: { color: '#e9edf3', size: 96, tex: ['#e9edf3', 'rgba(110,125,150,0.30)', 'rgba(140,190,255,0.18)'] },
+  emblem: '#2fa4ff',
   boxes: [
     // outer walls
     B(0, 4.5, -23, 70, 9, 1, AR_W), B(0, 4.5, 23, 70, 9, 1, AR_W),
@@ -62,13 +62,13 @@ export const ARENA = {
 };
 
 // ============ BATTLEGROUND — big outdoor industrial ========
-const BG_P = '#3a2f6a', BG_P2 = '#2a2050', BG_G = '#39414e', BG_C = '#48525f', BG_B = '#282e38';
+const BG_P = '#8a4fd0', BG_P2 = '#6d3ba8', BG_G = '#9aa3ad', BG_C = '#c69a5a', BG_B = '#586170';
 const BG_NEON = '#c17bff', BG_NEON2 = '#57e0ff';
 export const BATTLEGROUND = {
   id: 'battleground', name: 'Battleground',
-  sky: '#0c1420', sky2: ['#08101c', '#122236', '#1e3a52'], fog: 0.007,
-  ground: { color: '#141c22', size: 124, tex: ['#141c22', 'rgba(70,180,180,0.26)', 'rgba(90,220,220,0.13)'] },
-  emblem: '#57e0ff',
+  sky: '#9cc6ee', sky2: ['#4f96e4', '#8fc0ee', '#d3e6f6'], fog: 0.006,
+  ground: { color: '#6f9e56', size: 124, tex: ['#6f9e56', 'rgba(40,70,30,0.32)', 'rgba(170,215,130,0.14)'] },
+  emblem: '#ffd24a',
   boxes: [
     // perimeter
     B(0, 5, -31, 90, 10, 1.5, BG_P), B(0, 5, 31, 90, 10, 1.5, BG_P),

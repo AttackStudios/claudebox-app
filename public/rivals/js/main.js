@@ -102,9 +102,9 @@ addEventListener('keydown', () => resumeAudio(), { once: true });
 loadAudio();
 
 // ============================ world building ============================
-const ambientLight = new THREE.AmbientLight('#9aabcc', 1.2);
+const ambientLight = new THREE.AmbientLight('#c4ccd8', 1.35);
 scene.add(ambientLight);
-const sun = new THREE.DirectionalLight('#dce7ff', 1.5);
+const sun = new THREE.DirectionalLight('#fff2dc', 1.7);
 sun.position.set(30, 60, 20); scene.add(sun);
 const fill = new THREE.DirectionalLight('#8fb8e8', 0.5);
 fill.position.set(-25, 30, -30); scene.add(fill);
@@ -145,10 +145,8 @@ const _gridBase = (() => {
   const gr = x.createLinearGradient(0, 0, 128, 128);
   gr.addColorStop(0, 'rgba(0,0,0,0.015)'); gr.addColorStop(1, 'rgba(0,0,0,0.06)');
   x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
-  x.strokeStyle = 'rgba(120,200,235,0.35)'; x.lineWidth = 3;
-  x.strokeRect(1, 1, 126, 126);
-  x.strokeStyle = 'rgba(120,200,235,0.12)'; x.lineWidth = 1;
-  x.beginPath(); x.moveTo(0,64); x.lineTo(128,64); x.moveTo(64,0); x.lineTo(64,128); x.stroke();
+  x.strokeStyle = 'rgba(96,106,122,0.4)'; x.lineWidth = 4;
+  x.strokeRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
@@ -201,10 +199,10 @@ function buildMap(def) {
     mapGroup.add(mesh);
   }
   // flat, bright, even light in matches (like the original's arenas)
-  ambientLight.intensity = panels ? 1.05 : 1.1;
-  sun.intensity = panels ? 0.8 : 1.4;
-  fill.intensity = panels ? 0.4 : 0.5;
-  hemi.intensity = panels ? 0.55 : 0.35;
+  ambientLight.intensity = panels ? 1.7 : 1.1;
+  sun.intensity = panels ? 1.0 : 1.4;
+  fill.intensity = panels ? 0.5 : 0.5;
+  hemi.intensity = panels ? 0.9 : 0.35;
   hemi.color.set(sky[0]); hemi.groundColor.set(def.ground.color);
   // the lobby is an interior — give it its own neon mood lighting
   if (def.id === 'lobby') {
@@ -549,7 +547,7 @@ function rigWeapon(g, gunParts, rPos, rRot, lPos, lRot) {
     },
   };
 }
-const GOLD = '#3b4454', DARK = '#11141a', STEEL = '#6f7a8c', GREY = '#232936';
+const GOLD = '#caa14e', DARK = '#23262c', STEEL = '#8b93a5', GREY = '#3a3f47';
 // cartoon-rounded box: subdivided box with every vertex clamped to an inner
 // box and pushed back out to a corner radius — soft toy-like edges
 function roundedBoxGeo(w, h, d, r) {
@@ -763,7 +761,7 @@ function aimDir(spread) {
 }
 
 // muzzle flash + tracers
-const flashLight = new THREE.PointLight('#5fe6ff', 0, 6);
+const flashLight = new THREE.PointLight('#ffd28a', 0, 6);
 scene.add(flashLight);
 let flashUntil = 0;
 function muzzleFlash() {
@@ -772,7 +770,7 @@ function muzzleFlash() {
   flashUntil = clockNow() + 0.04;
 }
 const tracers = [];
-function spawnTracer(from, to, color = '#7ff0ff') {
+function spawnTracer(from, to, color = '#ffe6a8') {
   const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
   const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
   scene.add(line);
