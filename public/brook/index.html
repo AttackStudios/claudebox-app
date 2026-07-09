@@ -31,6 +31,13 @@
     <div id="clock">🕐 <span id="clock-time">12:00</span></div>
   </div>
 
+  <!-- active job -->
+  <div id="job-hud" class="hidden">
+    <div id="job-title">💼 Job</div>
+    <div id="job-task">…</div>
+    <button id="job-end">End shift</button>
+  </div>
+
   <!-- desktop quick buttons -->
   <div id="quickbar">
     <button id="btn-phone" class="qbtn" title="Phone (P)">📱</button>
@@ -61,6 +68,18 @@
 
   <!-- controls hint (desktop) -->
   <div id="controls-tip">WASD move · Shift run · Space jump · <b>E</b> drive · <b>Enter</b> chat · drag to look</div>
+
+  <!-- decorate: appears inside a house -->
+  <button id="deco-open" class="hidden">🎨 Decorate</button>
+  <div id="decorate-bar" class="hidden">
+    <div id="deco-hint">Pick furniture, then <b>click the floor</b> to place · <b>R</b> rotate · click 🗑 then an item to remove</div>
+    <div id="deco-palette"></div>
+    <div id="deco-tools">
+      <button id="deco-remove">🗑 Remove</button>
+      <button id="deco-clear">Clear all</button>
+      <button id="deco-done">✓ Done</button>
+    </div>
+  </div>
 
   <!-- mobile controls -->
   <div id="move-cluster" class="hidden">

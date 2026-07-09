@@ -151,11 +151,36 @@ function makeLamp(x, z) {
   head.position.y = 5; g.add(head); lampHeads.push(head);
   scene.add(g);
 }
+function makeBush(x, z) {
+  const f = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6), lam('#4a9a4e'));
+  f.position.set(x, 0.9, z); f.scale.y = 0.7; f.castShadow = true; scene.add(f);
+}
+function makeHydrant(x, z) {
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  g.add(box(0.5, 0.9, 0.5, '#d13b3b', 0, 0.45, 0)); g.add(box(0.6, 0.2, 0.6, '#b02f2f', 0, 0.95, 0));
+  scene.add(g);
+}
+function makeMailbox(x, z) {
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  g.add(box(0.15, 1, 0.15, '#5a4a3a', 0, 0.5, 0)); g.add(box(0.5, 0.4, 0.7, '#3a6a9c', 0, 1.05, 0));
+  scene.add(g);
+}
 function buildProps() {
-  // trees around the edges + between blocks (kept off roads)
-  const spots = [[-90, -70], [-90, 70], [90, -70], [90, 70], [-40, 20], [40, 20], [-40, -18], [40, -18], [-100, 0], [100, 0], [0, 90], [0, -100], [-70, -78], [70, 78]];
-  for (const [x, z] of spots) makeTree(x, z);
-  for (let x = -80; x <= 80; x += 40) { makeLamp(x, 10); makeLamp(x, -10); }
+  // trees filling the blocks (kept clear of roads)
+  const trees = [];
+  for (let x = -130; x <= 130; x += 26) for (let z = -110; z <= 110; z += 28) {
+    if (Math.abs(x) < 12 || Math.abs(z) < 12) continue;            // main roads
+    if (Math.abs(Math.abs(z) - 52) < 10 || Math.abs(Math.abs(x) - 60) < 10) continue;  // side roads
+    if ((x + z) % 3 === 0) trees.push([x + (x % 7) - 3, z + (z % 5) - 2]);
+  }
+  for (const [x, z] of trees) makeTree(x, z);
+  // streetlights along the main roads
+  for (let x = -120; x <= 120; x += 30) { makeLamp(x, 11); makeLamp(x, -11); }
+  for (let z = -100; z <= 100; z += 30) { if (Math.abs(z) < 12) continue; makeLamp(11, z); makeLamp(-11, z); }
+  // small clutter: bushes, hydrants, mailboxes near sidewalks
+  for (let x = -100; x <= 100; x += 20) { makeBush(x, 13); makeBush(x + 6, -13); }
+  for (const [x, z] of [[-30, 10], [30, 10], [-30, -10], [30, -10], [-90, 12], [90, -12]]) makeHydrant(x, z);
+  for (const [x, z] of [[-18, 10], [18, 10], [-18, -10], [18, -10], [-72, 13], [72, -13]]) makeMailbox(x, z);
 }
 
 buildGround();
@@ -224,11 +249,15 @@ function updateCamera() {
 const keys = new Set();
 let dragging = false, lastX = 0, lastY = 0, locked = false;
 const typing = () => { const e = document.activeElement; return e && (e.tagName === 'INPUT' || e.tagName === 'TEXTAREA'); };
-canvas.addEventListener('click', () => { if (!locked && !typing() && !('ontouchstart' in window)) canvas.requestPointerLock?.(); });
+canvas.addEventListener('click', (e) => {
+  if (decorating >= 0) { decoPlaceAt(e.clientX, e.clientY); return; }
+  if (!locked && !typing() && !('ontouchstart' in window)) canvas.requestPointerLock?.();
+});
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 canvas.addEventListener('mousedown', (e) => { if (!locked) { dragging = true; lastX = e.clientX; lastY = e.clientY; } });
 addEventListener('mouseup', () => dragging = false);
 addEventListener('mousemove', (e) => {
+  if (decorating >= 0 && ghost && decoType) { const p = floorPoint(e.clientX, e.clientY); if (p) { ghost.position.set(p.x, 0, p.z); ghost.rotation.y = decoRot; } }
   if (locked) { orbit.yaw -= e.movementX * 0.0024; orbit.pitch += e.movementY * 0.0024; clampPitch(); return; }
   if (!dragging) return;
   orbit.yaw -= (e.clientX - lastX) * 0.005; orbit.pitch += (e.clientY - lastY) * 0.005; clampPitch();
@@ -243,6 +272,9 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyH') horn();
   if (e.code === 'KeyP') togglePhone();
+  if (e.code === 'KeyR' && decorating >= 0) { decoRot += Math.PI / 8; if (ghost) ghost.rotation.y = decoRot; }
+  if (e.code === 'KeyG') { const i = currentHouseIndex(); if (decorating >= 0) exitDecorate(); else if (i >= 0) enterDecorate(i); }
+  if (e.code === 'Escape' && decorating >= 0) exitDecorate();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 
@@ -320,17 +352,22 @@ function nearestInteractable() {
   const px = player.pos.x, pz = player.pos.z;
   let best = null, bd = 25;   // 5^2
   for (const [id, c] of cars) { if (c.driver) continue; const d = (c.x - px) ** 2 + (c.z - pz) ** 2; if (d < bd) { bd = d; best = { kind: 'car', id, c, hint: '🚗 Press E to drive' }; } }
-  for (const j of JOBS) { const d = (j.x - px) ** 2 + (j.z - pz) ** 2; if (d < bd) { bd = d; best = { kind: 'job', job: j, hint: `${j.emoji} Press E to work as ${j.name} (+$${j.pay})` }; } }
+  if (!activeJob) for (const j of JOBS) { const d = (j.x - px) ** 2 + (j.z - pz) ** 2; if (d < bd) { bd = d; best = { kind: 'job', job: j, hint: `${j.emoji} Press E to start a ${j.name} shift` }; } }
   for (const b of BENCHES) { const d = (b.x - px) ** 2 + (b.z - pz) ** 2; if (d < 9) { best = { kind: 'bench', bench: b, hint: '🪑 Press E to sit' }; } }
   return best;
 }
 function interact() {
+  // deliver if on a shift and standing on the marker
+  if (activeJob && activeJob.target) {
+    const dx = activeJob.target.x - player.pos.x, dz = activeJob.target.z - player.pos.z;
+    if (dx * dx + dz * dz < 36) { deliverStep(); return; }
+  }
   if (game.car) { exitCar(); return; }
   if (sitting) { sitting = null; player.anim = 'idle'; return; }
   const t = nearestInteractable();
   if (!t) return;
   if (t.kind === 'car') enterCar(t.id, t.c);
-  else if (t.kind === 'job') doJob(t.job);
+  else if (t.kind === 'job') { if (!activeJob) startShift(t.job); }
   else if (t.kind === 'bench') sitBench(t.bench);
 }
 function doJob(job) {
@@ -494,10 +531,23 @@ function frame() {
   if (myAvatar.ctrl) {
     if (game.car) updateCar(dt); else updateWalk(dt);
     myAvatar.ctrl.update(dt);
-    // context interact hint
-    if (game.car) hint('🚗 Press E to exit');
-    else if (sitting) hint('🪑 Press E to stand');
-    else { const t = nearestInteractable(); hint(t ? t.hint : ''); }
+    // "Decorate" button when standing inside a house
+    const hi = currentHouseIndex();
+    $('#deco-open').classList.toggle('hidden', !(hi >= 0 && decorating < 0 && !game.car));
+    // interact hint (delivery takes priority when on the marker)
+    let near = false;
+    if (activeJob && activeJob.target) { const dx = activeJob.target.x - player.pos.x, dz = activeJob.target.z - player.pos.z; if (dx * dx + dz * dz < 36) { hint('📦 Press E to deliver here'); near = true; } }
+    if (!near) {
+      if (game.car) hint('🚗 Press E to exit');
+      else if (sitting) hint('🪑 Press E to stand');
+      else if (decorating < 0) { const t = nearestInteractable(); hint(t ? t.hint : ''); }
+      else hint('');
+    }
+  }
+  if (activeJob && jobMarker && jobMarker.visible) {
+    jobMarker.rotation.y += dt * 2; jobMarker.children[0].position.y = 3 + Math.sin(performance.now() / 300) * 0.3;
+    const dx = activeJob.target.x - player.pos.x, dz = activeJob.target.z - player.pos.z;
+    $('#job-task').textContent = `Deliver to ${activeJob.target.name} (${activeJob.count}/5) · ${Math.round(Math.hypot(dx, dz))}m away · $${activeJob.earned}`;
   }
   updateDayNight(dt);
   updateNPCs(dt);
@@ -639,6 +689,156 @@ function updateNPCs(dt) {
   }
 }
 
+// ================= HOUSE DECORATING =================
+const FURNITURE = [
+  { type: 'bed', emoji: '🛏️', label: 'Bed' }, { type: 'sofa', emoji: '🛋️', label: 'Sofa' },
+  { type: 'table', emoji: '🍽️', label: 'Table' }, { type: 'chair', emoji: '🪑', label: 'Chair' },
+  { type: 'tv', emoji: '📺', label: 'TV' }, { type: 'lamp', emoji: '💡', label: 'Lamp' },
+  { type: 'rug', emoji: '🟫', label: 'Rug' }, { type: 'plant', emoji: '🪴', label: 'Plant' },
+  { type: 'shelf', emoji: '📚', label: 'Shelf' }, { type: 'fridge', emoji: '🧊', label: 'Fridge' },
+  { type: 'stove', emoji: '🍳', label: 'Stove' }, { type: 'piano', emoji: '🎹', label: 'Piano' },
+];
+function makeFurniture(type) {
+  const g = new THREE.Group();
+  const add = (w, h, d, c, x, y, z) => g.add(box(w, h, d, c, x, y, z));
+  switch (type) {
+    case 'bed': add(1.7, 0.4, 2.3, '#6b4a2c', 0, 0.3, 0); add(1.55, 0.28, 2.1, '#dfe6ee', 0, 0.6, 0.05); add(1.4, 0.22, 0.5, '#ff9ab0', 0, 0.75, -0.8); break;
+    case 'sofa': add(2, 0.45, 0.9, '#4a6ea0', 0, 0.35, 0); add(2, 0.6, 0.22, '#3a5a88', 0, 0.7, -0.34); add(0.24, 0.55, 0.9, '#3a5a88', -0.88, 0.55, 0); add(0.24, 0.55, 0.9, '#3a5a88', 0.88, 0.55, 0); break;
+    case 'table': add(1.5, 0.14, 0.95, '#8a5a34', 0, 0.75, 0); for (const [x, z] of [[-0.6, -0.35], [0.6, -0.35], [-0.6, 0.35], [0.6, 0.35]]) add(0.12, 0.72, 0.12, '#6b4425', x, 0.36, z); break;
+    case 'chair': add(0.55, 0.1, 0.55, '#a06a3a', 0, 0.5, 0); add(0.55, 0.55, 0.12, '#8a5530', 0, 0.78, -0.22); for (const [x, z] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]) add(0.09, 0.5, 0.09, '#6b4425', x, 0.25, z); break;
+    case 'tv': add(1.5, 0.5, 0.45, '#4a3a2c', 0, 0.4, 0); add(1.5, 0.9, 0.12, '#101318', 0, 1.15, 0.02); g.add(box(1.3, 0.72, 0.05, '#2a6bd0', 0, 1.15, 0.1)); break;
+    case 'lamp': add(0.18, 1.6, 0.18, '#3a3e46', 0, 0.8, 0); { const s = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.5, 14), new THREE.MeshBasicMaterial({ color: '#ffe6a0' })); s.position.y = 1.75; g.add(s); } break;
+    case 'rug': add(2.6, 0.05, 1.8, '#b5495b', 0, 0.06, 0); add(2.2, 0.06, 1.4, '#d8737f', 0, 0.07, 0); break;
+    case 'plant': add(0.5, 0.5, 0.5, '#b5744a', 0, 0.25, 0); { const f = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), lam('#3f8a44')); f.position.y = 0.9; g.add(f); } break;
+    case 'shelf': add(1.4, 2, 0.4, '#6b4425', 0, 1, 0); for (const y of [0.5, 1, 1.5]) { add(1.3, 0.06, 0.36, '#4a2f18', 0, y, 0.02); add(0.9, 0.3, 0.28, ['#c74b4b', '#4a8a3a', '#3a6bd0'][Math.floor(y) % 3], -0.1, y + 0.2, 0.02); } break;
+    case 'fridge': add(0.95, 1.9, 0.85, '#dfe6ee', 0, 0.95, 0); add(0.1, 0.5, 0.1, '#9aa4b0', 0.38, 1.2, 0.45); break;
+    case 'stove': add(0.95, 0.9, 0.85, '#3a3e46', 0, 0.45, 0); add(0.95, 0.08, 0.85, '#1a1c22', 0, 0.92, 0); for (const [x, z] of [[-0.22, -0.2], [0.22, -0.2], [-0.22, 0.2], [0.22, 0.2]]) { const b = new THREE.Mesh(new THREE.CircleGeometry(0.14, 12), lam('#111')); b.rotation.x = -Math.PI / 2; b.position.set(x, 0.97, z); g.add(b); } break;
+    case 'piano': add(1.6, 1.1, 0.7, '#141418', 0, 0.55, 0); add(1.5, 0.12, 0.35, '#f4f4f4', 0, 0.8, 0.35); break;
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+const houseList = BUILDINGS.filter((b) => b.kind === 'house');
+const houses = houseList.map((spec) => { const group = new THREE.Group(); scene.add(group); return { spec, group, layout: [] }; });
+function currentHouseIndex() {
+  const px = player.pos.x, pz = player.pos.z;
+  for (let i = 0; i < houses.length; i++) { const b = houses[i].spec; if (Math.abs(px - b.x) < b.w / 2 - 0.4 && Math.abs(pz - b.z) < b.d / 2 - 0.4) return i; }
+  return -1;
+}
+function addFurniture(hi, type, x, z, ry, save = true) {
+  const m = makeFurniture(type); m.position.set(x, 0, z); m.rotation.y = ry; m.userData = { type, x, z, ry };
+  houses[hi].group.add(m); houses[hi].layout.push(m);
+  if (save) saveHouse(hi);
+}
+function saveHouse(hi) {
+  try { localStorage.setItem('brook.house.' + hi, JSON.stringify(houses[hi].layout.map((m) => m.userData))); } catch {}
+}
+function loadHouses() {
+  houses.forEach((h, hi) => { try { const arr = JSON.parse(localStorage.getItem('brook.house.' + hi) || '[]'); for (const it of arr) addFurniture(hi, it.type, it.x, it.z, it.ry, false); } catch {} });
+}
+
+let decorating = -1, decoType = null, decoRemove = false, decoRot = 0, ghost = null;
+const rc = new THREE.Raycaster();
+function floorPoint(cx, cy) {
+  rc.setFromCamera(new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
+  const pt = new THREE.Vector3();
+  if (!rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.1), pt)) return null;
+  const b = houses[decorating].spec;
+  pt.x = Math.max(b.x - b.w / 2 + 0.6, Math.min(b.x + b.w / 2 - 0.6, pt.x));
+  pt.z = Math.max(b.z - b.d / 2 + 0.6, Math.min(b.z + b.d / 2 - 0.6, pt.z));
+  return pt;
+}
+function makeGhost(type) {
+  clearGhost();
+  ghost = makeFurniture(type);
+  ghost.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; o.castShadow = false; } });
+  scene.add(ghost);
+}
+function clearGhost() { if (ghost) { scene.remove(ghost); ghost = null; } }
+function renderPalette() {
+  const host = $('#deco-palette'); host.innerHTML = '';
+  for (const f of FURNITURE) {
+    const b = document.createElement('button');
+    b.className = 'deco-item' + (decoType === f.type ? ' sel' : '');
+    b.innerHTML = `${f.emoji}<small>${f.label}</small>`;
+    b.addEventListener('click', () => { decoRemove = false; decoType = f.type; decoRot = 0; makeGhost(f.type); $('#deco-remove').classList.remove('on'); renderPalette(); });
+    host.appendChild(b);
+  }
+}
+function enterDecorate(hi) {
+  decorating = hi; decoType = null; decoRemove = false; decoRot = 0;
+  $('#decorate-bar').classList.remove('hidden'); $('#deco-open').classList.add('hidden');
+  document.exitPointerLock?.(); renderPalette(); sfx.ui();
+}
+function exitDecorate() { saveHouse(decorating); decorating = -1; decoType = null; clearGhost(); $('#decorate-bar').classList.add('hidden'); sfx.ui(); }
+function decoPlaceAt(cx, cy) {
+  if (decorating < 0) return;
+  if (decoRemove) {
+    rc.setFromCamera(new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
+    const hits = rc.intersectObjects(houses[decorating].group.children, true);
+    if (hits.length) { let o = hits[0].object; while (o.parent && o.parent !== houses[decorating].group) o = o.parent; houses[decorating].group.remove(o); houses[decorating].layout = houses[decorating].layout.filter((m) => m !== o); saveHouse(decorating); sfx.ui(); }
+    return;
+  }
+  if (!decoType) return;
+  const pt = floorPoint(cx, cy); if (!pt) return;
+  addFurniture(decorating, decoType, pt.x, pt.z, decoRot); sfx.enter();
+}
+$('#deco-open')?.addEventListener('click', () => { const i = currentHouseIndex(); if (i >= 0) enterDecorate(i); });
+$('#deco-done')?.addEventListener('click', exitDecorate);
+$('#deco-remove')?.addEventListener('click', () => { decoRemove = !decoRemove; decoType = null; clearGhost(); $('#deco-remove').classList.toggle('on', decoRemove); renderPalette(); });
+$('#deco-clear')?.addEventListener('click', () => { if (decorating < 0) return; const h = houses[decorating]; for (const m of h.layout) h.group.remove(m); h.layout = []; saveHouse(decorating); sfx.ui(); });
+
+// ================= INTERACTIVE JOBS (delivery shifts) =================
+let activeJob = null, jobMarker = null;
+function makeMarker() {
+  const g = new THREE.Group();
+  const dia = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshBasicMaterial({ color: '#ffd24a' }));
+  dia.position.y = 3; g.add(dia);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 6, 8), new THREE.MeshBasicMaterial({ color: '#ffd24a', transparent: true, opacity: 0.35 }));
+  beam.position.y = 3; g.add(beam);
+  scene.add(g); return g;
+}
+const DROPS = [
+  { name: 'the School', x: -54, z: -34 }, { name: 'the Hospital', x: 54, z: -34 },
+  { name: 'the Police Station', x: 56, z: 40 }, { name: 'the Market', x: -56, z: 40 },
+  { name: 'the Diner', x: 0, z: -62 }, { name: 'the Gas Station', x: 66, z: -8 },
+  { name: 'a house on Oak St', x: -24, z: -20 }, { name: 'a house on Pine St', x: 24, z: 30 },
+  { name: 'a house on Elm St', x: -78, z: 18 }, { name: 'the Town Plaza', x: 0, z: 16 },
+];
+function startShift(job) {
+  activeJob = { name: job.name, emoji: job.emoji, pay: job.pay, earned: 0, count: 0, target: null };
+  if (!jobMarker) jobMarker = makeMarker();
+  jobMarker.visible = true;
+  newDrop();
+  $('#job-hud').classList.remove('hidden');
+  addChat('💼', `Shift started as a ${job.name}! Head to the glowing marker to deliver.`, false);
+  updateJobHud();
+}
+function newDrop() {
+  let i = Math.floor(Math.random() * DROPS.length);
+  if (activeJob.target && DROPS[i].name === activeJob.target.name) i = (i + 1) % DROPS.length;
+  activeJob.target = DROPS[i]; jobMarker.position.set(DROPS[i].x, 0, DROPS[i].z);
+}
+function deliverStep() {
+  activeJob.count++; activeJob.earned += activeJob.pay; setMoney(money + activeJob.pay);
+  sfx.cash(); startEmote('cheer');
+  addChat('💼', `Delivered to ${activeJob.target.name}! +$${activeJob.pay}`, false);
+  window.ClaudeBox?.completeChallenge?.('brook-firstjob');
+  if (activeJob.count >= 5) { endShift(true); return; }
+  newDrop(); updateJobHud();
+}
+function endShift(done) {
+  if (activeJob) addChat('💼', done ? `Shift complete! You earned $${activeJob.earned} as a ${activeJob.name}. 🎉` : 'Shift ended.', false);
+  activeJob = null; if (jobMarker) jobMarker.visible = false; $('#job-hud').classList.add('hidden');
+}
+function updateJobHud() {
+  if (!activeJob) return;
+  $('#job-title').textContent = `${activeJob.emoji} ${activeJob.name}`;
+  $('#job-task').textContent = `Deliver to ${activeJob.target.name} (${activeJob.count}/5) · earned $${activeJob.earned}`;
+}
+$('#job-end')?.addEventListener('click', () => endShift(false));
+
 // ---------------- boot ----------------
 (async function boot() {
   status('Waking the town…');
@@ -648,7 +848,7 @@ function updateNPCs(dt) {
   myAvatar.ctrl = makeAvatar(identity.avatar || {});
   myAvatar.group = myAvatar.ctrl.group; scene.add(myAvatar.group);
   camera.position.set(SPAWN.x, 8, SPAWN.z + 12);
-  buildBenches(); spawnNPCs(); setMoney(money);
+  buildBenches(); spawnNPCs(); setMoney(money); loadHouses();
   net.connect();
   net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
   net.startMovementStream(() => game.car
