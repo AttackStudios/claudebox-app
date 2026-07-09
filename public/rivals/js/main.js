@@ -9,6 +9,7 @@ import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
 import { MAPS, LOBBY } from '/shared/rivals/maps.js';
+import { loadAudio, resumeAudio, playOne, playLoop, stopLoop } from './audio.js';
 
 const $ = (s) => document.querySelector(s);
 const status = (t) => { const el = $('#load-status'); if (el) el.textContent = t; };
@@ -96,7 +97,9 @@ const sfx = {
   lose() { [392, 330, 262].forEach((f, i) => tone(f, 0.3, 'sine', 0.12, 0, i * 0.12)); },
   click() { tone(900, 0.03, 'square', 0.05); },
 };
-addEventListener('pointerdown', () => A(), { once: true });
+addEventListener('pointerdown', () => { A(); resumeAudio(); }, { once: true });
+addEventListener('keydown', () => resumeAudio(), { once: true });
+loadAudio();
 
 // ============================ world building ============================
 const ambientLight = new THREE.AmbientLight('#c4ccd8', 1.35);
@@ -677,8 +680,8 @@ function switchWeapon(id) {
   me.weapon = id;
   vmAnim.equipT = 0;             // raise-with-flick
   net.send({ t: 'weapon', id });
-  sfx.click();
-  setTimeout(() => tone(1000, 0.05, 'square', 0.07), 220);  // the "chk" as hands seat
+  playOne('equip', 0.8);
+  stopLoop('ar');   // cancel any AR fire loop when swapping off
   updateAmmoHud(); updateLoadoutHud();
 }
 
@@ -691,7 +694,8 @@ function startReload() {
   vmAnim.reloadStart = clockNow();
   vmAnim.reloadDur = w.reload;
   $('#reload-hint').classList.remove('hidden');
-  sfx.reload();
+  stopLoop('ar');
+  playOne('reload', 0.85);
 }
 function finishReload() {
   const w = WEAPONS[me.weapon], a = me.ammo[me.weapon];
@@ -711,7 +715,7 @@ function tryFire() {
     if (now - me.swingAt < w.rate) return;
     me.swingAt = now;
     vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // arcs / alternating jabs
-    sfx.swing();
+    playOne(me.weapon === 'scythe' ? 'knife' : 'fists', 0.8);
     if (game.phase === 'live') net.send({ t: 'melee', weapon: me.weapon });
     return;
   }
@@ -734,7 +738,9 @@ function tryFire() {
   const d = aimDir(spread);
   recoil += me.weapon === 'sniper' ? 0.018 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
   vmKick = me.weapon === 'sniper' ? 1.25 : 1;
-  sfx.shot(me.weapon);
+  // AR fires a continuous loop (handled in the frame); other guns are one-shots.
+  if (me.weapon === 'handgun') playOne('handgun', 0.75);
+  else if (me.weapon === 'sniper') playOne('sniper', 1.6);   // sniper is loud
   muzzleFlash();
   localTracer(d);
   if (game.phase === 'live') net.send({ t: 'fire', dx: d.x, dy: d.y, dz: d.z, weapon: me.weapon });
@@ -1307,7 +1313,7 @@ net.on('shot', (msg) => { // someone else fired — tracer from their eye
   if (msg.id === net.id) return;
   const o = others.get(msg.id);
   if (!o) return;
-  sfx.distantShot();
+  if (msg.weapon === 'ar' || msg.weapon === 'handgun' || msg.weapon === 'sniper') playOne(msg.weapon, msg.weapon === 'sniper' ? 0.5 : 0.22);
   o.data.actionUntil = clockNow() + (msg.weapon === 'scythe' ? 0.7 : 0.3);
   o.data.actionAnim = msg.weapon === 'scythe' ? 'knifestab' : 'riflefire';
   if (msg.weapon === 'scythe') return;
@@ -1488,6 +1494,12 @@ function frame() {
 
   // auto fire
   if (mouseDown && WEAPONS[me.weapon]?.auto) tryFire();
+  // ---- real audio: AR fire loop (only while shooting) + footsteps ----
+  const firingAR = mouseDown && me.weapon === 'ar' && !me.reloading && !me.dead && me.ammo.ar.mag > 0 && (game.phase === 'live' || game.phase === 'lobby');
+  if (firingAR) playLoop('ar', 0.6); else stopLoop('ar');
+  const flatSpeed = Math.hypot(me.vel.x, me.vel.z);
+  if (me.grounded && !me.dead && flatSpeed > 1.8) playLoop('foot', 0.4, isSprinting() ? 1.75 : 1.05);
+  else stopLoop('foot');
   // reload finish
   if (me.reloading && cn >= me.reloading) finishReload();
   // flash + tracers + booms
