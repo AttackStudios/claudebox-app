@@ -292,7 +292,7 @@ function ensureGdEl() {
         </div>
         <div class="gd-info">
           <h1 class="gd-title"></h1>
-          <div class="gd-by">By <b class="gd-creator"></b><span class="gd-verify" title="Verified">✔</span></div>
+          <div class="gd-by">By <span class="gd-creators"></span></div>
           <div class="gd-maturity">Maturity: Mild</div>
           <button class="gd-play"><span class="gd-play-ico">▶</span></button>
           <div class="gd-actions">
@@ -378,7 +378,7 @@ function openGameDetail(game) {
   gdEl.querySelector('.gd-arrow.prev').style.display = showArrows;
   gdEl.querySelector('.gd-arrow.next').style.display = showArrows;
   gdEl.querySelector('.gd-title').textContent = `${t.emoji} ${game.title}`;
-  gdEl.querySelector('.gd-creator').textContent = game.creator || 'ClaudeBox Studios';
+  renderCreators(gdEl.querySelector('.gd-creators'), game.creators || [{ name: 'ClaudeBox Studios', badge: 'verified' }]);
   const likes = game.likes || 0, pct = approvalPct(game);
   gdEl.querySelector('.gd-likes').textContent = fmtNum(likes);
   gdEl.querySelector('.gd-dislikes').textContent = fmtNum(Math.round(likes * (100 - pct) / Math.max(1, pct)));
@@ -552,6 +552,111 @@ function showSkeletons() {
   fr.innerHTML = Array.from({ length: 5 }, () => '<div class="friend-circle"><span class="skeleton sk-circle"></span></div>').join('');
 }
 
+// ---------------- verification badges + profiles ----------------
+function badgeSvg(badge) {
+  if (badge !== 'verified' && badge !== 'owner') return '';
+  const col = badge === 'owner' ? '#e0393b' : '#1a9bf0';
+  const label = badge === 'owner' ? 'Owner' : 'Verified';
+  return `<svg class="vbadge ${badge}" viewBox="0 0 22 22" role="img" aria-label="${label}"><title>${label}</title><path fill="${col}" d="M11 1l2.7 1.9 3.3-.2 1 3.1 2.7 1.9-1 3.1 1 3.1-2.7 1.9-1 3.1-3.3-.2L11 21l-2.7-1.9-3.3.2-1-3.1L1.3 14.3l1-3.1-1-3.1 2.7-1.9 1-3.1 3.3.2z"/><path fill="#fff" d="M9.5 14.4l-2.6-2.6 1.2-1.2 1.4 1.4 3.6-3.6 1.2 1.2z"/></svg>`;
+}
+function renderCreators(container, creators) {
+  if (!container) return;
+  container.innerHTML = '';
+  creators.forEach((c, i) => {
+    if (i > 0) container.appendChild(document.createTextNode(' & '));
+    const a = document.createElement('span'); a.className = 'creator-link'; a.textContent = c.name;
+    a.addEventListener('click', (e) => { e.stopPropagation(); openProfile(c.name); });
+    container.appendChild(a);
+    if (c.badge) container.insertAdjacentHTML('beforeend', badgeSvg(c.badge));
+  });
+}
+
+// a lazy 3D avatar preview for the profile card (own renderer)
+const profileStage = (() => {
+  let renderer = null, scene, cam, ctrl = null, running = false, ready = false, pending = undefined;
+  const clock = new THREE.Clock();
+  async function init(canvas) {
+    try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch { return; }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    scene = new THREE.Scene();
+    cam = new THREE.PerspectiveCamera(30, 1, 0.1, 30); cam.position.set(0, 1.05, 4.8); cam.lookAt(0, 0.95, 0);
+    scene.add(new THREE.AmbientLight('#aab4c4', 1.5));
+    const key = new THREE.DirectionalLight('#fff4dc', 2.0); key.position.set(2, 4, 3); scene.add(key);
+    const rim = new THREE.DirectionalLight(settings.accent, 0.9); rim.position.set(-3, 2, -2); scene.add(rim);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 0.1, 40), new THREE.MeshLambertMaterial({ color: '#26282f' }));
+    disc.position.y = -0.05; scene.add(disc);
+    await preloadAvatars(['boy', 'girl']); ready = true;
+    if (pending !== undefined) { setAvatar(pending); pending = undefined; }
+  }
+  function setAvatar(av) {
+    if (!ready) { pending = av; return; }
+    if (ctrl) { scene.remove(ctrl.group); ctrl.dispose?.(); }
+    ctrl = makeAvatar(av || {}); ctrl.setAnim('idle'); scene.add(ctrl.group);
+  }
+  function frame(now) {
+    if (!running) return; requestAnimationFrame(frame);
+    const c = renderer.domElement, w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.floor(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+    const dt = clock.getDelta();
+    if (ctrl) { ctrl.update(dt); ctrl.group.rotation.y = settings.reduceMotion ? 0 : Math.sin(now / 1000 * 0.4) * 0.6; }
+    renderer.render(scene, cam);
+  }
+  return {
+    async start(canvas, av) { if (!renderer) await init(canvas); setAvatar(av); running = true; requestAnimationFrame(frame); },
+    stop() { running = false; },
+  };
+})();
+
+let pfName = null;
+function setFollowBtn(following) {
+  const fb = $('pf-follow');
+  fb.classList.toggle('following', following);
+  fb.textContent = following ? '✓ Following' : '+ Follow';
+}
+async function openProfile(name) {
+  if (!name) return;
+  $('profile-overlay').classList.remove('hidden');
+  $('pf-games').innerHTML = ''; $('pf-name').textContent = name;
+  let data;
+  try { data = await api('/profile/' + encodeURIComponent(name) + '?viewer=' + encodeURIComponent(stateHub.me.name)); }
+  catch { closeProfile(); return; }
+  pfName = data.name;
+  const nm = $('pf-name'); nm.innerHTML = '';
+  const t = document.createElement('span'); t.textContent = data.name; nm.appendChild(t);
+  applyNameCosmetic(t, data.nameColor, '');
+  nm.insertAdjacentHTML('beforeend', badgeSvg(data.badge));
+  const st = $('pf-status'); st.textContent = data.status && data.status !== 'offline' ? (data.status === 'hub' ? '🟢 Online' : '🎮 In a game') : (data.isUser ? '⚫ Offline' : '⭐ Creator');
+  $('pf-followers').textContent = fmtNum(data.followers);
+  $('pf-following').textContent = fmtNum(data.following);
+  $('pf-visits').textContent = fmtNum(data.totalVisits);
+  const fb = $('pf-follow');
+  if (data.isSelf) fb.classList.add('hidden');
+  else { fb.classList.remove('hidden'); setFollowBtn(data.isFollowing); }
+  fb.onclick = async () => {
+    const willFollow = !fb.classList.contains('following');
+    try {
+      const r = await api(willFollow ? '/follow' : '/unfollow', { name: stateHub.me.name, target: pfName });
+      if (r?.ok) { setFollowBtn(r.following); $('pf-followers').textContent = fmtNum(r.followers); (willFollow ? sfx.success : sfx.tap)(); }
+    } catch (e) { toast(e.message, '⚠️'); }
+  };
+  const gh = $('pf-games');
+  if (!data.games.length) gh.innerHTML = '<div class="empty-note">No experiences yet.</div>';
+  else for (const g of data.games) {
+    const th = themeOf(g.id), grad = `linear-gradient(150deg, ${th.from}, ${th.to})`;
+    const card = document.createElement('button'); card.className = 'pf-game';
+    const artBg = g.art ? `url('${g.art}') center/cover, ${grad}` : grad;
+    card.innerHTML = `<span class="pf-game-art" style="background:${artBg}">${g.art ? '' : th.emoji}</span>` +
+      `<span class="pf-game-info"><b>${escapeHtml(g.title)}</b><span class="pf-game-visits">${PC_ICON}${fmtNum(g.plays)} visits</span></span>`;
+    card.addEventListener('click', () => { const gm = stateHub.games.find((x) => x.id === g.id); if (gm) { closeProfile(); openGameDetail(gm); } });
+    gh.appendChild(card);
+  }
+  profileStage.start($('pf-canvas'), data.avatar);
+  sfx.select();
+}
+function closeProfile() { $('profile-overlay').classList.add('hidden'); profileStage.stop(); }
+$('pf-close')?.addEventListener('click', closeProfile);
+$('profile-overlay')?.addEventListener('click', (e) => { if (e.target.id === 'profile-overlay') closeProfile(); });
+
 // ---------------- direct messages ----------------
 let dmWith = null, dmPoll = null;
 function timeAgo(ts) {
@@ -652,6 +757,9 @@ function personRow(person, isFriend) {
   row.className = 'person-row';
   const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, person.avatar);
   const nm = document.createElement('span'); nm.className = 'pname'; nm.textContent = person.name;
+  nm.style.cursor = 'pointer'; nm.title = 'View profile';
+  nm.addEventListener('click', () => openProfile(person.name));
+  if (person.badge) nm.insertAdjacentHTML('beforeend', badgeSvg(person.badge));
   const st = document.createElement('span');
   st.className = 'pstatus ' + (person.status === 'hub' ? 'hub' : person.status.startsWith('game') ? 'game' : '');
   st.textContent = statusText(person.status);

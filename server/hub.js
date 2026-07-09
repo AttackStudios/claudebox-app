@@ -34,6 +34,7 @@ const GAMES = [
     tagline: 'Live your best bird life',
     art: '/icons/game-feather-friends.png',
     url: '/games/feather-friends',
+    creators: ['ClaudeBox Studios'],
     tags: ['Adventure', 'Animals', 'Multiplayer'],
     playable: true,
     maintenance: FF_MAINTENANCE,
@@ -44,6 +45,7 @@ const GAMES = [
     tagline: 'Pack up. Drive out. Camp under the stars.',
     art: '/icons/game-backpacking.png',
     url: '/games/backpacking',
+    creators: ['ClaudeBox Studios'],
     tags: ['Camping', 'Driving', 'Multiplayer'],
     playable: true,
     maintenance: BP_MAINTENANCE,
@@ -54,6 +56,7 @@ const GAMES = [
     tagline: 'Build it. Cook it. Deliver it.',
     art: '/icons/game-restaurant-sim-2.png',
     url: '/games/restaurant-sim-2',
+    creators: ['ClaudeBox Studios'],
     tags: ['Simulation', 'Cooking', 'Multiplayer'],
     playable: true,
   },
@@ -63,6 +66,7 @@ const GAMES = [
     tagline: 'Jump, climb, don\'t fall. Beat the tower.',
     art: '/icons/game-obby.png',
     url: '/games/obby',
+    creators: ['ClaudeBox Studios'],
     tags: ['Parkour', 'Obstacle', 'Multiplayer'],
     playable: true,
   },
@@ -72,6 +76,7 @@ const GAMES = [
     tagline: 'Live the town life. Drive cars, hang out, roleplay.',
     art: '/icons/game-brook.png',
     url: '/games/brook',
+    creators: ['ClaudeBox Studios'],
     tags: ['Roleplay', 'Town', 'Multiplayer'],
     playable: true,
   },
@@ -81,6 +86,7 @@ const GAMES = [
     tagline: 'Bounce, climb, splash. Survive the Wipeout.',
     art: '/icons/game-wibit.png',
     url: '/games/wibit',
+    creators: ['ClaudeBox Studios'],
     tags: ['Water Park', 'Physics', 'Multiplayer'],
     playable: true,
   },
@@ -90,6 +96,7 @@ const GAMES = [
     tagline: 'Lock in. First to five wins the duel.',
     art: '/icons/game-rivals.png',
     url: '/games/rivals',
+    creators: ['ClaudeBox Studios'],
     tags: ['FPS', 'PvP', 'Multiplayer'],
     playable: true,
   },
@@ -99,6 +106,7 @@ const GAMES = [
     tagline: 'Play levels built in ClaudeBox Studio.',
     art: '/icons/game-playground.png',
     url: '/games/playground?play=playground',
+    creators: ['ClaudeBox Studios'],
     tags: ['Sandbox', 'Custom Levels'],
     playable: true,
   },
@@ -108,6 +116,7 @@ const GAMES = [
     tagline: 'Build your own 3D levels with triggers.',
     art: '/icons/game-studio.png',
     url: '/studio',
+    creators: ['ClaudeBox Studios'],
     tags: ['Editor', 'Tools'],
     playable: true,
   },
@@ -148,8 +157,41 @@ function gameStat(id) {
 function gamesWithStats() {
   return GAMES.map((g) => {
     const s = gameStat(g.id);
-    return { ...g, plays: s.plays, likes: s.likes.length };
+    const creators = (g.creators || ['ClaudeBox Studios']).map((n) => ({ name: n, badge: badgeFor(n) }));
+    return { ...g, plays: s.plays, likes: s.likes.length, creators };
   });
+}
+const OWNER_NAME = 'attackface15';
+const OFFICIAL_NAME = 'claudebox studios';
+const STUDIO_AVATAR = { ...DEFAULT_AVATAR, body: 'boy', skin: '#93a1b5', shirtColor: '#38b6e8', hat: 'headphones', hatColor: '#1a1c22', face2: 'shades' };
+// games a creator is credited on (collaborators all count)
+function creatorGames(nameLower) {
+  return GAMES.filter((g) => (g.creators || ['ClaudeBox Studios']).some((c) => c.toLowerCase() === nameLower));
+}
+function creatorVisits(nameLower) {
+  return creatorGames(nameLower).reduce((sum, g) => sum + gameStat(g.id).plays, 0);
+}
+// verification: owner (red), official/150+-visit creators (blue), else none
+function badgeFor(name) {
+  const nl = String(name || '').toLowerCase();
+  if (nl === OWNER_NAME) return 'owner';
+  if (nl === OFFICIAL_NAME) return 'verified';
+  return creatorVisits(nl) >= 150 ? 'verified' : null;
+}
+function creatorDisplayName(nameLower) {
+  for (const g of GAMES) for (const c of (g.creators || [])) if (c.toLowerCase() === nameLower) return c;
+  const u = getUser(nameLower);
+  return u ? u.name : null;
+}
+function avatarForName(nameLower) {
+  const u = getUser(nameLower);
+  if (u) { ensureWallet(u); return u.avatar; }
+  return nameLower === OFFICIAL_NAME ? STUDIO_AVATAR : DEFAULT_AVATAR;
+}
+function followersOf(nameLower) {
+  let n = 0;
+  for (const u of Object.values(platform.users)) if (Array.isArray(u.following) && u.following.includes(nameLower)) n++;
+  return n;
 }
 function likedGamesOf(nameLower) {
   return GAMES.filter((g) => gameStat(g.id).likes.includes(nameLower)).map((g) => g.id);
@@ -174,6 +216,7 @@ function save() {
   }, 1200);
 }
 
+const cleanCreator = (v) => String(v ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40);
 const clean = (s, max = 20) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 // game ids contain hyphens (feather-friends), so they need a cleaner that
 // KEEPS hyphens — `clean` above strips them (its /[ -]/ is a space-to-hyphen range).
@@ -243,6 +286,7 @@ function ensureWallet(u) {
   if (!u.challenges || typeof u.challenges !== 'object') u.challenges = {};
   if (!Array.isArray(u.owned)) u.owned = [];
   if (!Array.isArray(u.ownedAvatar)) u.ownedAvatar = [];
+  if (!Array.isArray(u.following)) u.following = [];
   if (typeof u.title !== 'string') u.title = '';
   if (typeof u.nameColor !== 'string') u.nameColor = '';
   return u;
@@ -330,7 +374,7 @@ function publicUser(nameLower) {
   const u = getUser(nameLower);
   if (!u) return null;
   ensureWallet(u);
-  return { name: u.name, avatar: u.avatar, status: presenceOf(nameLower), title: u.title, nameColor: u.nameColor };
+  return { name: u.name, avatar: u.avatar, status: presenceOf(nameLower), title: u.title, nameColor: u.nameColor, badge: badgeFor(u.name) };
 }
 
 const LEVELS_DIR = path.join(DATA_DIR, 'levels');
@@ -595,6 +639,51 @@ export function hubRouter() {
       me: { name: me.name, avatar: me.avatar, recentGames: me.recentGames, wallet: walletOf(me), likedGames: likedGamesOf(nameLower) },
       friends,
       online,
+    });
+  });
+
+  // ---------------- follow / profiles ----------------
+  r.post('/follow', (req, res) => {
+    const name = clean(req.body?.name);
+    const target = cleanCreator(req.body?.target).toLowerCase();
+    if (!name || !target) return res.status(400).json({ ok: false });
+    const nl = name.toLowerCase();
+    if (nl === target) return res.status(400).json({ ok: false, error: "can't follow yourself" });
+    const u = ensureUser(name);
+    if (!u.following.includes(target)) u.following.push(target);
+    save();
+    res.json({ ok: true, following: true, followers: followersOf(target) });
+  });
+  r.post('/unfollow', (req, res) => {
+    const name = clean(req.body?.name);
+    const target = cleanCreator(req.body?.target).toLowerCase();
+    const u = getUser(name);
+    if (u) { u.following = (u.following || []).filter((t) => t !== target); save(); }
+    res.json({ ok: true, following: false, followers: followersOf(target) });
+  });
+  // A public profile: works for real users AND creator names (e.g. ClaudeBox Studios).
+  r.get('/profile/:name', (req, res) => {
+    const nameLower = cleanCreator(req.params.name).toLowerCase();
+    if (!nameLower) return res.status(400).json({ error: 'name required' });
+    const display = creatorDisplayName(nameLower) || cleanCreator(req.params.name);
+    const u = getUser(nameLower);
+    const games = creatorGames(nameLower).map((g) => ({ id: g.id, title: g.title, art: g.art, url: g.url, plays: gameStat(g.id).plays, likes: gameStat(g.id).likes.length, playable: !!g.playable }));
+    const totalVisits = games.reduce((sum, g) => sum + g.plays, 0);
+    const viewer = clean(req.query.viewer).toLowerCase();
+    const vu = viewer && getUser(viewer);
+    res.json({
+      name: display,
+      avatar: avatarForName(nameLower),
+      badge: badgeFor(display),
+      title: u?.title || '', nameColor: u?.nameColor || '',
+      status: presenceOf(nameLower),
+      followers: followersOf(nameLower),
+      following: (u?.following || []).length,
+      isFollowing: !!(vu && (vu.following || []).includes(nameLower)),
+      isSelf: viewer === nameLower,
+      isUser: !!u,
+      totalVisits,
+      games,
     });
   });
 
