@@ -128,7 +128,7 @@ function selectTab(name, withSound = true) {
   if (name === 'store') { renderStore(); storeStage.start(); } else storeStage.stop();
 }
 for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => selectTab(tab.dataset.tab));
-$('me-chip').addEventListener('click', () => selectTab('avatar'));
+$('me-chip').addEventListener('click', () => { if (stateHub.me?.name) openProfile(stateHub.me.name); });
 $('wallet-chip').addEventListener('click', () => selectTab('rewards'));
 window.addEventListener('resize', movePill);
 // keyboard: 1-4 jump to tabs
@@ -630,15 +630,20 @@ async function openProfile(name) {
   $('pf-following').textContent = fmtNum(data.following);
   $('pf-visits').textContent = fmtNum(data.totalVisits);
   const fb = $('pf-follow');
-  if (data.isSelf) fb.classList.add('hidden');
-  else { fb.classList.remove('hidden'); setFollowBtn(data.isFollowing); }
-  fb.onclick = async () => {
-    const willFollow = !fb.classList.contains('following');
-    try {
-      const r = await api(willFollow ? '/follow' : '/unfollow', { name: stateHub.me.name, target: pfName });
-      if (r?.ok) { setFollowBtn(r.following); $('pf-followers').textContent = fmtNum(r.followers); (willFollow ? sfx.success : sfx.tap)(); }
-    } catch (e) { toast(e.message, '⚠️'); }
-  };
+  fb.classList.remove('hidden');
+  if (data.isSelf) {
+    fb.classList.add('following'); fb.textContent = '✏️ Edit Avatar';
+    fb.onclick = () => { closeProfile(); selectTab('avatar'); };
+  } else {
+    setFollowBtn(data.isFollowing);
+    fb.onclick = async () => {
+      const willFollow = !fb.classList.contains('following');
+      try {
+        const r = await api(willFollow ? '/follow' : '/unfollow', { name: stateHub.me.name, target: pfName });
+        if (r?.ok) { setFollowBtn(r.following); $('pf-followers').textContent = fmtNum(r.followers); (willFollow ? sfx.success : sfx.tap)(); }
+      } catch (e) { toast(e.message, '⚠️'); }
+    };
+  }
   const gh = $('pf-games');
   if (!data.games.length) gh.innerHTML = '<div class="empty-note">No experiences yet.</div>';
   else for (const g of data.games) {
