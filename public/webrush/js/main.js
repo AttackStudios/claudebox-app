@@ -157,6 +157,7 @@ function update(dt) {
     const spd = RUN * ((keys.has('ShiftLeft') || keys.has('ShiftRight')) ? 1.5 : 1);
     player.vel.x = wishX * spd; player.vel.z = wishZ * spd;
     if (swingPressed || tWeb) { player.vel.y = JUMP; player.onGround = false; }   // jump into a swing
+    else player.vel.y = 0;   // don't let gravity accumulate while grounded
   } else if (player.swinging && player.anchor) {
     // pendulum + input pump
     player.vel.x += wishX * 20 * dt; player.vel.z += wishZ * 20 * dt;
@@ -177,7 +178,7 @@ function update(dt) {
     const drag = 0.6 * dt; player.vel.x -= player.vel.x * drag; player.vel.z -= player.vel.z * drag;
   }
 
-  if (!player.swinging && !player.onGround) player.pos.addScaledVector(player.vel, dt);
+  if (!player.swinging) player.pos.addScaledVector(player.vel, dt);   // integrate ground + air (swing integrates itself)
 
   // world bounds
   player.pos.x = clamp(player.pos.x, -GROUND, GROUND); player.pos.z = clamp(player.pos.z, -GROUND, GROUND);
