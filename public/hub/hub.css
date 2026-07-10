@@ -22,6 +22,10 @@
   --ink: #f2f4f8;
   --dim: #a7adba;
   --faint: #6c7280;
+  /* legacy aliases (used across the CSS) — flip automatically with the theme */
+  --text: var(--ink);
+  --text-2: var(--dim);
+  --muted: var(--dim);
 
   /* accent (user-tunable) — Roblox blue */
   --accent: #0a94ff;
