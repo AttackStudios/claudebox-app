@@ -69,8 +69,13 @@ async function api(path, body) {
     ? { method: 'POST', headers: { 'Content-Type': 'application/json', ...codeHdr }, body: JSON.stringify(body) }
     : { headers: codeHdr });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'request failed');
+  if (!res.ok) { const e = new Error(data.error || 'request failed'); e.data = data; throw e; }
   return data;
+}
+function bannedScreen(reason) {
+  document.body.innerHTML = `<div style="position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(800px 500px at 50% 0%,#2a1013,#0a0b12);color:#e9edf5;font-family:-apple-system,system-ui,sans-serif;text-align:center;padding:24px">
+    <div><div style="font-size:70px">🔨</div><h1 style="margin:10px 0 8px;font-size:30px">You're banned</h1>
+    <p style="color:#c99;max-width:440px;margin:0 auto;line-height:1.5">${(reason || 'You have been banned from ClaudeBox.')}</p></div></div>`;
 }
 
 // ---------------- login ----------------
@@ -78,8 +83,8 @@ async function ensureLogin() {
   const saved = localStorage.getItem(USER_KEY);
   if (saved) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      try { const { profile } = await api('/login', { name: saved }); stateHub.me = profile; return; }
-      catch { await new Promise((r) => setTimeout(r, 600)); }
+      try { const res = await api('/login', { name: saved }); stateHub.me = res.profile; return; }
+      catch (e) { if (e.data && e.data.banned) { bannedScreen(e.data.reason); return; } await new Promise((r) => setTimeout(r, 600)); }
     }
   }
   $('login').classList.remove('hidden');
@@ -90,15 +95,15 @@ async function ensureLogin() {
       const code = $('code-input')?.value.trim();
       if (code) localStorage.setItem('claudebox.code', code);
       try {
-        const { profile } = await api('/login', { name });
-        stateHub.me = profile;
-        localStorage.setItem(USER_KEY, profile.name);
+        const res = await api('/login', { name });
+        stateHub.me = res.profile;
+        localStorage.setItem(USER_KEY, res.profile.name);
         sfx.welcome();
         const card = $('login').querySelector('.login-card');
         card.style.transition = 'transform .4s var(--spring), opacity .4s';
         card.style.transform = 'scale(1.05)'; card.style.opacity = '0';
         setTimeout(() => { $('login').classList.add('hidden'); resolve(); }, 380);
-      } catch (e) { toast(e.message, '⚠️'); }
+      } catch (e) { if (e.data && e.data.banned) { bannedScreen(e.data.reason); return; } toast(e.message, '⚠️'); }
     };
     $('login-btn').addEventListener('click', go);
     $('login-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });

@@ -126,10 +126,14 @@
   function render() { ({ people: renderPeople, settings: renderSettings, report: renderReport, help: renderHelp }[tab] || renderPeople)(); }
 
   async function playerList() {
+    // ONLY players actually in this game session — never platform-wide online users.
     if (typeof game.players === 'function') { try { return (await game.players()) || []; } catch { return []; } }
-    // fallback: everyone currently online on ClaudeBox
-    const d = await getJSON('/social/' + encodeURIComponent(meName()));
-    return [...((d && d.friends) || []), ...((d && d.online) || [])];
+    // auto-detect the game's own remote-player roster (each game exposes it on window)
+    const w = window;
+    const m = (w.__rivals && w.__rivals.others) || (w.__brook && w.__brook.remotes) || (w.__wibit && w.__wibit.remotes) || (w.__obby && w.__obby.remotes) || (w.__game && w.__game.players);
+    const out = [];
+    if (m && typeof m.forEach === 'function') m.forEach((r) => { const n = r && r.data && r.data.name; if (n) out.push({ name: n, bot: r.data.bot }); });
+    return out;
   }
 
   async function renderPeople() {
@@ -137,7 +141,7 @@
     el.querySelector('.cbx-invite').addEventListener('click', invite);
     const me = meName().toLowerCase();
     const seen = new Set(), players = [];
-    for (const p of await playerList()) { const n = (p.name || p).toString(); const k = n.toLowerCase(); if (!n || k === me || seen.has(k)) continue; seen.add(k); players.push({ name: n, badge: p.badge }); }
+    for (const p of await playerList()) { const n = (p.name || p).toString(); const k = n.toLowerCase(); if (!n || k === me || seen.has(k) || p.bot || /^🤖/.test(n)) continue; seen.add(k); players.push({ name: n, badge: p.badge }); }
     const list = el.querySelector('#cbx-plist');
     if (!players.length) { list.innerHTML = `<div class="cbx-empty">No other players here right now.</div>`; return; }
     list.innerHTML = players.map((p) => `
@@ -196,7 +200,7 @@
   let reportTarget = '';
   async function renderReport(pre) {
     if (pre) reportTarget = pre;
-    const players = (await playerList()).map((p) => (p.name || p).toString()).filter((n) => n && n.toLowerCase() !== meName().toLowerCase());
+    const players = (await playerList()).filter((p) => !p.bot && !/^🤖/.test(p.name)).map((p) => (p.name || p).toString()).filter((n) => n && n.toLowerCase() !== meName().toLowerCase());
     const reasons = ['Cheating / exploiting', 'Harassment or bullying', 'Inappropriate username', 'Offensive language', 'Spamming', 'Other'];
     body().innerHTML = `
       <p class="cbx-h">Reports go to the ClaudeBox moderators. Only report real rule-breaking.</p>

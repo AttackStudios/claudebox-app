@@ -149,9 +149,9 @@ export const DEFAULT_AVATAR = {
 function loadPlatform() {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {}, reports: raw.reports || [] };
+    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {}, reports: raw.reports || [], bans: raw.bans || {} };
   } catch {
-    return { users: {}, gameStats: {}, dms: {}, reports: [] };
+    return { users: {}, gameStats: {}, dms: {}, reports: [], bans: {} };
   }
 }
 
@@ -218,6 +218,17 @@ function likedGamesOf(nameLower) {
 }
 
 const platform = loadPlatform();
+
+// ---- bans (owner-controlled; enforced at hub login and every game join) ----
+export function isBanned(name) {
+  const nl = String(name || '').toLowerCase();
+  return !!(platform.bans && platform.bans[nl]);
+}
+export function banInfo(name) { return platform.bans ? platform.bans[String(name || '').toLowerCase()] : null; }
+// games can register a live-kick fn; otherwise a ban simply blocks the next join
+const gameKickers = [];
+export function registerGameKicker(fn) { if (typeof fn === 'function') gameKickers.push(fn); }
+function kickFromGames(nameLower) { for (const k of gameKickers) { try { k(nameLower); } catch {} } }
 const lastHubSeen = new Map(); // nameLower -> ms timestamp (not persisted)
 
 let saveTimer = null;
@@ -481,6 +492,7 @@ export function hubRouter() {
   r.post('/login', (req, res) => {
     const name = clean(req.body?.name);
     if (!name) return res.status(400).json({ error: 'name required' });
+    if (isBanned(name)) { const b = banInfo(name); return res.status(403).json({ error: 'banned', banned: true, reason: (b && b.reason) || 'You are banned from ClaudeBox.' }); }
     const u = ensureUser(name);
     lastHubSeen.set(name.toLowerCase(), Date.now());
     res.json({ profile: { name: u.name, avatar: u.avatar, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(name.toLowerCase()) } });
@@ -713,6 +725,29 @@ export function hubRouter() {
   r.post('/reports/clear', (req, res) => {
     if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false });
     platform.reports = [];
+    save();
+    res.json({ ok: true });
+  });
+  // owner ban controls
+  r.get('/bans', (req, res) => {
+    if (badgeFor(clean(req.query.name)) !== 'owner') return res.status(403).json({ error: 'owner only' });
+    const bans = Object.entries(platform.bans || {}).map(([nl, b]) => ({ name: b.name || nl, ...b })).sort((a, b) => b.at - a.at);
+    res.json({ bans });
+  });
+  r.post('/ban', (req, res) => {
+    if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false });
+    const target = cleanCreator(req.body?.target); const nl = target.toLowerCase();
+    if (!nl || nl === OWNER_NAME) return res.json({ ok: false });   // can't ban the owner
+    if (!platform.bans) platform.bans = {};
+    platform.bans[nl] = { name: target, reason: cleanCreator(req.body?.reason).slice(0, 100) || 'No reason given', by: clean(req.body?.name), at: Date.now() };
+    kickFromGames(nl);
+    save();
+    res.json({ ok: true });
+  });
+  r.post('/unban', (req, res) => {
+    if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false });
+    const nl = cleanCreator(req.body?.target).toLowerCase();
+    if (platform.bans) delete platform.bans[nl];
     save();
     res.json({ ok: true });
   });

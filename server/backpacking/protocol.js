@@ -6,7 +6,7 @@ import { state, genId, save, publicPlayer, publicVan, clock01 } from './state.js
 import { sprayAt } from './bears.js';
 import { botItems } from './bots.js';
 import { WORLD, height, lavaAt } from '../../shared/bp/worldgen.js';
-import { ensurePlatformUser, BP_MAINTENANCE, checkAccess } from '../hub.js';
+import { ensurePlatformUser, BP_MAINTENANCE, checkAccess, isBanned } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 const cleanColor = (c, fb) => (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c.toLowerCase() : fb);
@@ -171,6 +171,7 @@ function onJoin(p, msg, { send, broadcast }) {
   p.vanId = null;
   p.seat = null;
   p.pos = { x: WORLD.spawn.x, y: height(WORLD.spawn.x, WORLD.spawn.z) + 1, z: WORLD.spawn.z };
+  if (isBanned(p.name)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'You are banned from ClaudeBox.' })); p.ws.close(4009, 'banned'); } catch {} return; }
   ensurePlatformUser(p.name);
 
   send({

@@ -4,7 +4,7 @@
 
 import { state, genId, save, roleOf, isStaff, publicPlayer, OWNER_DEFAULT } from './state.js';
 import { COURSE, START, checkpointById } from '../../shared/obby/course.js';
-import { ensurePlatformUser, checkAccess } from '../hub.js';
+import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 const TROLL_KINDS = new Set(['carry', 'drop', 'laser', 'fling', 'freeze', 'kill', 'tiny', 'giant', 'reset', 'bring']);
@@ -126,6 +126,7 @@ function onJoin(p, msg, ctx) {
   p.frozenUntil = 0;
   p.pos = { x: START.x + (Math.random() * 3 - 1.5), y: START.y, z: START.z + (Math.random() * 3 - 1.5) };
   p.ry = 0; p.anim = 'idle';
+  if (isBanned(p.name)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'You are banned from ClaudeBox.' })); p.ws.close(4009, 'banned'); } catch {} return; }
   ensurePlatformUser(p.name);
 
   send({

@@ -5,7 +5,7 @@ import { state, clock, publicPlayer, publicFighter } from './state.js';
 import { ROUND, MODES, WEAPONS, LOADOUT } from '../../shared/rivals/config.js';
 import { createMatch, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade } from './match.js';
 import { tickBots } from './bots.js';
-import { ensurePlatformUser, checkAccess } from '../hub.js';
+import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 
@@ -145,6 +145,7 @@ function onJoin(p, msg, ctx) {
   p.matchId = null;
   p.pos = { x: -6 + Math.random() * 2, y: 0, z: 8 + Math.random() * 2 };
   p.ry = -0.36; p.anim = 'idle';
+  if (isBanned(p.name)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'You are banned from ClaudeBox.' })); p.ws.close(4009, 'banned'); } catch {} return; }
   ensurePlatformUser(p.name);
   p.ws.send(JSON.stringify({
     t: 'welcome', id: p.id, you: publicPlayer(p),

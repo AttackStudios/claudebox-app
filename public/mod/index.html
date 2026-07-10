@@ -98,16 +98,37 @@ function render(reports) {
       <div class="r1"><span class="tgt">🚩 ${esc(x.target)}</span><span class="reason">${esc(x.reason || 'Report')}</span></div>
       <div class="meta">by <b>${esc(x.by)}</b> · ${x.game ? esc(x.game) + ' · ' : ''}${ago(x.at)} · <a href="/?u=${encodeURIComponent(x.target)}" target="_blank">view profile ↗</a></div>
       ${x.details ? `<div class="det">${esc(x.details)}</div>` : ''}
-      <div class="acts"><button class="btn dismiss">Dismiss</button></div>
+      <div class="acts"><button class="btn danger ban" data-t="${esc(x.target)}">🔨 Ban ${esc(x.target)}</button><button class="btn dismiss">Dismiss</button></div>
     </div>`).join('');
-  $('#main').innerHTML = bar + cards;
-  $('#refresh').onclick = load;
-  $('#clear').onclick = async () => { if (!confirm('Clear ALL reports?')) return; await api('/reports/clear', { method: 'POST', body: JSON.stringify({ name: me() }) }); load(); };
+  $('#main').innerHTML = bar + cards + `<div id="bans" style="margin-top:28px"></div>`;
+  $('#refresh').onclick = () => { load(); loadBans(); };
+  $('#clear').onclick = async () => { if (!confirm('Clear ALL reports?')) return; await api('/reports/clear', { method: 'POST', body: JSON.stringify({ name: me() }) }); load(); loadBans(); };
   document.querySelectorAll('.card .dismiss').forEach((b) => b.onclick = async (e) => {
     const at = +e.target.closest('.card').dataset.at;
     await api('/reports/dismiss', { method: 'POST', body: JSON.stringify({ name: me(), at }) });
     e.target.closest('.card').remove();
   });
+  document.querySelectorAll('.card .ban').forEach((b) => b.onclick = () => banPlayer(b.dataset.t));
+  loadBans();
+}
+async function banPlayer(target) {
+  const reason = prompt('Ban ' + target + ' from ClaudeBox?\n\nThey won\'t be able to log in or join any game.\nReason:', '');
+  if (reason === null) return;
+  await api('/ban', { method: 'POST', body: JSON.stringify({ name: me(), target, reason }) });
+  load();
+}
+async function loadBans() {
+  const box = document.getElementById('bans'); if (!box) return;
+  const r = await api('/bans?name=' + encodeURIComponent(me()));
+  if (!r.ok) return; const { bans } = await r.json();
+  if (!bans || !bans.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="top"><h3>🔨 Banned players · ${bans.length}</h3></div>` + bans.map((b) => `
+    <div class="card" style="border-color:rgba(224,80,60,.3)">
+      <div class="r1"><span class="tgt">🔨 ${esc(b.name)}</span><span class="reason">${esc(b.reason || '')}</span></div>
+      <div class="meta">banned by <b>${esc(b.by)}</b> · ${ago(b.at)}</div>
+      <div class="acts"><button class="btn unban" data-t="${esc(b.name)}">Unban</button></div>
+    </div>`).join('');
+  box.querySelectorAll('.unban').forEach((btn) => btn.onclick = async () => { await api('/unban', { method: 'POST', body: JSON.stringify({ name: me(), target: btn.dataset.t }) }); loadBans(); });
 }
 load();
 </script>

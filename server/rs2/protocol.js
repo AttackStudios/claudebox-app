@@ -5,7 +5,7 @@ import { state, genId, save, publicPlayer, publicOrder, publicRestaurants, resta
 import { ITEMS, DISHES, STAFF, WALL_COLORS, FLOOR_STYLES, tierPrice, FREE_DISHES } from '../../shared/rs2/catalog.js';
 import { PLOTS, HOUSES, EXPANSIONS, buildingFrame, SPAWN, groundAt } from '../../shared/rs2/world.js';
 import { createOrder, takeOrderFrom, serveCustomer, completeDelivery, ensureStaffBots, orderStepDone } from './sim.js';
-import { ensurePlatformUser, checkAccess } from '../hub.js';
+import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
 
@@ -405,6 +405,7 @@ function onJoin(p, msg, ctx) {
   p.avatar = msg.avatar && typeof msg.avatar === 'object' ? msg.avatar : {};
   p.joined = true;
   p.pos = { x: SPAWN.x, y: groundAt(SPAWN.x, SPAWN.z), z: SPAWN.z };
+  if (isBanned(p.name)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'You are banned from ClaudeBox.' })); p.ws.close(4009, 'banned'); } catch {} return; }
   ensurePlatformUser(p.name);
   const rec = ensurePlayer(p.name);
 
