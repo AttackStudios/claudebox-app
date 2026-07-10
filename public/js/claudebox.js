@@ -123,7 +123,7 @@
         toast({
           emoji: data.challenge.emoji || '⭐',
           title: data.challenge.title,
-          reward: `+${data.awarded} ⭐`,
+          reward: `+${data.awarded} <img src="/icons/credits.svg" alt="Credits" style="width:16px;height:16px;vertical-align:-3px">`,
         });
       }
       return data;

@@ -1011,7 +1011,7 @@ function renderChallenges() {
       card.innerHTML =
         `<span class="chal-emoji">${c.emoji}</span>` +
         `<div class="chal-body"><div class="ct"></div><div class="ch"></div></div>` +
-        `<div class="chal-reward">${isDone ? '<span class="cr-done">✓ Done</span>' : `<span class="cr-stars">+${c.stars} ⭐</span>`}</div>`;
+        `<div class="chal-reward">${isDone ? '<span class="cr-done">✓ Done</span>' : `<span class="cr-stars">+${c.stars} <img class="cur-ico" src="/icons/credits.svg" alt=""></span>`}</div>`;
       card.querySelector('.ct').textContent = c.title;
       card.querySelector('.ch').textContent = c.hint;
       grid.appendChild(card);
@@ -1041,7 +1041,7 @@ function renderShop() {
       `<div class="shop-preview">${preview}</div>`;
     const btn = document.createElement('button');
     btn.className = 'shop-btn' + (equipped ? ' equipped' : owned ? ' owned' : '');
-    btn.textContent = equipped ? '✓ Equipped' : owned ? 'Equip' : `${item.price} 🔷`;
+    btn.innerHTML = equipped ? '✓ Equipped' : owned ? 'Equip' : `${item.price} <img class="cur-ico" src="/icons/claudebux.svg" alt="">`;
     btn.addEventListener('click', () => {
       if (equipped) return;
       if (owned) equipItem(item);
@@ -1057,10 +1057,10 @@ function updateConvertPreview() {
   convAmount = Math.max(1, convAmount);
   $('conv-amount').textContent = convAmount;
   const cost = convAmount * CUBE_RATE;
-  $('conv-cost').textContent = `${cost} ⭐`;
+  $('conv-cost').innerHTML = `${cost} <img class="cur-ico" src="/icons/credits.svg" alt="">`;
   const btn = $('conv-do');
   btn.disabled = w.stars < cost;
-  btn.textContent = w.stars < cost ? `Not enough ${POINTS.name}` : `Convert to ${convAmount} ${CURRENCY.emoji}`;
+  btn.innerHTML = w.stars < cost ? `Not enough ${POINTS.name}` : `Convert to ${convAmount} <img class="cur-ico" src="/icons/claudebux.svg" alt="">`;
 }
 
 function syncRewards(flash) {
@@ -1172,7 +1172,7 @@ function renderStore() {
     let btn;
     if (isEquipped) btn = `<button class="store-btn on">✓ Equipped</button>`;
     else if (isOwned) btn = `<button class="store-btn equip">Equip</button>`;
-    else btn = `<button class="store-btn buy">🔷 ${it.price}</button>`;
+    else btn = `<button class="store-btn buy"><img class="cur-ico" src="/icons/claudebux.svg" alt=""> ${it.price}</button>`;
     card.innerHTML =
       `<div class="store-thumb">${it.emoji}</div>` +
       `<div class="store-name">${it.label}</div>` +
