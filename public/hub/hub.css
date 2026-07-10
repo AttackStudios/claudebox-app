@@ -860,3 +860,22 @@ h1 .vbadge, .pf-name .vbadge { width: 26px; height: 26px; vertical-align: -4px; 
 .cur-ico { width: 1em; height: 1em; vertical-align: -0.16em; display: inline-block; }
 img.wc-emoji { width: 17px; height: 17px; vertical-align: -3px; }
 img.bal-emoji { width: 34px; height: 34px; }
+
+/* ==================== theme select + LIGHT MODE ==================== */
+.theme-select { background: var(--glass-2); color: var(--ink); border: 1px solid var(--glass-brd-hi); border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 600; cursor: pointer; -webkit-appearance: none; appearance: none; }
+
+:root[data-theme="light"] {
+  --bg-0: #e9edf4; --bg-1: #f2f5fa; --bg-2: #ffffff;
+  --glass: rgba(255,255,255,0.80); --glass-2: rgba(255,255,255,0.92);
+  --glass-brd: rgba(15,25,45,0.10); --glass-brd-hi: rgba(15,25,45,0.20);
+  --ink: #131720; --dim: #4f5967; --faint: #8992a1;
+  --sh-1: 0 1px 2px rgba(20,30,55,.10), 0 4px 16px rgba(20,30,55,.09);
+  --sh-2: 0 2px 6px rgba(20,30,55,.12), 0 16px 40px rgba(20,30,55,.12);
+  --sh-3: 0 8px 24px rgba(20,30,55,.16), 0 30px 70px rgba(20,30,55,.16);
+}
+:root[data-theme="light"] #topbar::before { background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.62)); }
+:root[data-theme="light"] #aurora { opacity: 0.30; }
+:root[data-theme="light"] #grain { background-image: radial-gradient(rgba(10,15,35,.5) 1px, transparent 1px); opacity: 0.025; }
+/* subtle white-on-dark surfaces flip to faint dark tints so they read on light */
+:root[data-theme="light"] .tile, :root[data-theme="light"] .connect-card, :root[data-theme="light"] .wallet-card,
+:root[data-theme="light"] #wallet-hero, :root[data-theme="light"] .gt-foot, :root[data-theme="light"] .browse-bar { background: var(--glass); }

@@ -14,7 +14,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------------- per-device settings ----------------
 const settings = (() => {
-  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false };
+  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark' };
   try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
   catch { return d; }
 })();
@@ -33,8 +33,10 @@ function applyAccent() {
   root.setProperty('--accent-ink', lum > 0.62 ? '#06232e' : '#eafaff');
 }
 function applyMotion() { document.body.classList.toggle('reduce-motion', settings.reduceMotion); }
+function applyTheme() { document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark'); }
 applyAccent();
 applyMotion();
+applyTheme();
 sfx.setEnabled(settings.sound);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -1265,7 +1267,10 @@ function initSettingsTab() {
   $('motion-input').checked = settings.reduceMotion;
   $('sound-input').checked = settings.sound;
   $('ambient-input').checked = settings.ambient;
+  const themeSel = $('theme-input'); if (themeSel) themeSel.value = settings.theme;
   syncSoundBtn();
+
+  if (themeSel) themeSel.addEventListener('change', () => { settings.theme = themeSel.value === 'light' ? 'light' : 'dark'; applyTheme(); saveSettings(); sfx.tap && sfx.tap(); });
 
   $('accent-input').addEventListener('input', () => { settings.accent = $('accent-input').value; applyAccent(); saveSettings(); });
   $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
