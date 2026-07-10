@@ -194,14 +194,17 @@ function buildMap(def) {
     const mat = b.glow
       ? new THREE.MeshBasicMaterial({ color: b.color })
       : new THREE.MeshLambertMaterial({ color: b.color, map: panels && !b.plain ? panelTex(Math.max(b.sx, b.sz), Math.max(b.sy, 1)) : null });
-    if (b.ramp) {   // draw a tilted plank instead of a stack of steps
-      const len = b.ramp.axis === 'x' ? b.sx : b.sz, wid = b.ramp.axis === 'x' ? b.sz : b.sx;
-      const slopeLen = Math.hypot(len, b.ramp.rise);
-      const plank = new THREE.Mesh(new THREE.BoxGeometry(b.ramp.axis === 'x' ? slopeLen : wid, 0.4, b.ramp.axis === 'x' ? wid : slopeLen), mat);
-      plank.position.set(b.x, (b.y - b.sy / 2) + b.ramp.rise / 2, b.z);
-      const ang = Math.atan2(b.ramp.rise, len) * (b.ramp.up < 0 ? -1 : 1);
-      if (b.ramp.axis === 'x') plank.rotation.z = ang; else plank.rotation.x = -ang;
-      mapGroup.add(plank);
+    if (b.ramp) {   // a SOLID wedge (ramp with a base) — its top face is the slope
+      const axis = b.ramp.axis, up = b.ramp.up, rise = b.ramp.rise;
+      const len = axis === 'x' ? b.sx : b.sz, wid = axis === 'x' ? b.sz : b.sx;
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0); shape.lineTo(len, 0); shape.lineTo(up >= 0 ? len : 0, rise); shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: wid, bevelEnabled: false });
+      geo.translate(-len / 2, 0, -wid / 2);
+      const wedge = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: b.color }));
+      wedge.position.set(b.x, b.y - b.sy / 2, b.z);
+      if (axis === 'z') wedge.rotation.y = Math.PI / 2;
+      mapGroup.add(wedge);
       continue;
     }
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.sx, b.sy, b.sz), mat);

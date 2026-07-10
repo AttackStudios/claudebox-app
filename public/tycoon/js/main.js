@@ -181,8 +181,9 @@ function structureMesh(id) {
       // RAMP up through the roof's stairwell opening, plus railings. The ramp
       // collision is a chain of thin flat slabs so you can't get clipped sideways.
       const rx = 8.5, rz0 = -2, rz1 = 6.5, rlen = rz1 - rz0;
-      const plank = box(3.2, 0.4, Math.hypot(rlen, F2), rx, F2 / 2, (rz0 + rz1) / 2, smat(0xa0895f));
-      plank.rotation.x = -Math.atan2(F2, rlen); g.add(plank);
+      const shp = new THREE.Shape(); shp.moveTo(0, 0); shp.lineTo(rlen, 0); shp.lineTo(rlen, F2); shp.closePath();
+      const rgeo = new THREE.ExtrudeGeometry(shp, { depth: 3.2, bevelEnabled: false }); rgeo.translate(-rlen / 2, 0, -1.6);
+      const wedge = new THREE.Mesh(rgeo, smat(0xa0895f)); wedge.position.set(rx, 0, (rz0 + rz1) / 2); wedge.rotation.y = -Math.PI / 2; wedge.castShadow = true; g.add(wedge);
       const N = 16;
       for (let i = 0; i <= N; i++) { const tz = rz0 + (i / N) * rlen, h = (i / N) * F2; cols.push({ x0: rx - 1.55, x1: rx + 1.55, y0: h - 0.5, y1: h + 0.06, z0: tz - (rlen / N * 0.5 + 0.35), z1: tz + (rlen / N * 0.5 + 0.35), floor: true }); }
       for (let i = 0; i <= 5; i++) { const tz = rz0 + (i / 5) * rlen, h = (i / 5) * F2; g.add(box(0.16, 1.0, 0.16, rx + 1.75, h + 0.55, tz, smat(0x6b5a3a))); }
