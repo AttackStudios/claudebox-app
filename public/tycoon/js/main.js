@@ -105,9 +105,9 @@ function buildPlot(def) {
   g.position.set(def.x, 0, def.z); g.rotation.y = def.ry;
   g.add(box(22, 0.4, 22, 0, 0.2, 3, smat(0x222a4d, { roughness: 0.95 })));   // pad (local +Z=back, -Z=front)
   g.add(box(22.4, 0.5, 0.5, 0, 0.25, -8, smat(0x3a4680)));                    // front rim
-  const dropper = detailedDropper(); dropper.position.set(-7, 0, 9); g.add(dropper);
-  g.add(box(13, 0.5, 1.8, -0.5, 0.6, 9, smat(0x181d38)));                     // conveyor
-  const bin = detailedCollector(); bin.position.set(6.6, 0, 9); g.add(bin);
+  const dropper = detailedDropper(); dropper.position.set(-7, 0, 7); g.add(dropper);
+  g.add(box(13, 0.5, 1.8, -0.5, 0.6, 7, smat(0x181d38)));                     // conveyor (inset from the back wall)
+  const bin = detailedCollector(); bin.position.set(6.6, 0, 7); g.add(bin);
   const banner = makeSprite('Open Plot', 40, '#9fb0e0');
   banner.position.set(0, 6.2, 9.4); banner.scale.set(10, 2.4, 1); g.add(banner);
   scene.add(g);
@@ -116,7 +116,7 @@ function buildPlot(def) {
     sidePads: new Map(), unlocked: new Set(), crystals: [], colliders: [], _support: 0,
     ownerId: null, pad: null, padStep: null,
   };
-  plot.colliders.push(aabb(-7, 9, 1.4, 3.6, 1.4), aabb(6.6, 9, 1.45, 2.0, 1.45));  // starter machines
+  plot.colliders.push(aabb(-7, 7, 1.4, 3.6, 1.4), aabb(6.6, 7, 1.45, 2.0, 1.45));  // starter machines
   return plot;
 }
 
@@ -270,7 +270,7 @@ function plotReset(plot) {
   for (const [, p] of plot.sidePads) plot.group.remove(p.group);
   plot.builds.clear(); plot.sideBuilds.clear(); plot.sidePads.clear();
   plot.unlocked.clear(); plot.crystals = []; plot.colliders.length = 0;
-  plot.colliders.push(aabb(-7, 9, 1.4, 3.6, 1.4), aabb(6.6, 9, 1.45, 2.0, 1.45));
+  plot.colliders.push(aabb(-7, 7, 1.4, 3.6, 1.4), aabb(6.6, 7, 1.45, 2.0, 1.45));
   if (plot.pad) { plot.group.remove(plot.pad.group); plot.pad = null; }
   plot.padStep = null;
   for (const o of plot.orbs) plot.group.remove(o); plot.orbs = [];
@@ -556,7 +556,7 @@ function tickEconomy(dt) {
   for (let i = myPlot.orbs.length - 1; i >= 0; i--) {
     const o = myPlot.orbs[i]; o.userData.k += dt / 1.4;
     const k = o.userData.k;
-    o.position.set(-7 + k * 13.6, 1.4 + Math.sin(k * Math.PI) * 0.4, 9);
+    o.position.set(-7 + k * 13.6, 1.4 + Math.sin(k * Math.PI) * 0.4, 7);
     if (k >= 1) {
       myPlot.group.remove(o); myPlot.orbs.splice(i, 1);
       setCash(cash + income()); coinPop(myPlot); save();
@@ -564,7 +564,7 @@ function tickEconomy(dt) {
   }
 }
 function coinPop(plot) {
-  const wp = new THREE.Vector3(6.6, 2.4, 9).applyEuler(plot.group.rotation).add(plot.group.position);
+  const wp = new THREE.Vector3(6.6, 2.4, 7).applyEuler(plot.group.rotation).add(plot.group.position);
   const s = makeSprite('+' + income(), 30, '#ffe08a'); s.position.copy(wp); s.scale.set(2, 1, 1); scene.add(s);
   const t0 = performance.now();
   (function up() { const k = (performance.now() - t0) / 700; s.position.y = wp.y + k * 1.5; s.material.opacity = 1 - k; if (k < 1) requestAnimationFrame(up); else scene.remove(s); })();
