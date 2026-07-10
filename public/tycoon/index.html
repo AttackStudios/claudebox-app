@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b18">
+<title>Elemental Tycoon — ClaudeBox</title>
+<link rel="stylesheet" href="/tycoon/css/tycoon.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- crosshair -->
+<div id="crosshair" class="hidden"></div>
+
+<!-- top-left: cash + back -->
+<div id="hud" class="hidden">
+  <div id="topleft">
+    <a id="back" href="/" title="Back to ClaudeBox">‹</a>
+    <div id="cash-chip"><span class="ci">💰</span><b id="cash">0</b></div>
+  </div>
+
+  <!-- health -->
+  <div id="health-wrap">
+    <div id="health-bar"><i id="health-fill"></i></div>
+    <span id="health-num">100</span>
+  </div>
+
+  <!-- interaction prompt -->
+  <div id="prompt" class="hidden"></div>
+
+  <!-- power hotbar -->
+  <div id="hotbar"></div>
+
+  <!-- hit flash + kill feed -->
+  <div id="dmg-flash"></div>
+  <div id="feed"></div>
+
+  <!-- chat -->
+  <div id="chat">
+    <div id="chat-log"></div>
+    <input id="chat-input" maxlength="140" placeholder="Press Enter to chat…" autocomplete="off">
+  </div>
+
+  <!-- help -->
+  <div id="help">
+    <b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>Click</b> aim/fire · <b>1-5</b> powers · <b>E</b> buy
+  </div>
+</div>
+
+<!-- respawn overlay -->
+<div id="dead-overlay" class="hidden">
+  <div class="dead-card">
+    <h1>💀 You were defeated</h1>
+    <p id="dead-by"></p>
+    <div class="respawn-ring"><b id="respawn-n">3</b></div>
+    <small>Respawning…</small>
+  </div>
+</div>
+
+<!-- mobile controls -->
+<div id="touch" class="hidden">
+  <div id="stick"><i></i></div>
+  <button id="t-jump">⤒</button>
+  <button id="t-fire">🔥</button>
+</div>
+
+<div id="loading"><div class="spinner"></div><p id="load-msg">Charging the elements…</p></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/tycoon/js/main.js"></script>
+</body>
+</html>

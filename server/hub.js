@@ -101,6 +101,16 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'tycoon',
+    title: 'Elemental Powers Tycoon',
+    tagline: 'Build your plot, unlock the elements, battle for the arena.',
+    art: '/icons/game-tycoon.svg',
+    url: '/games/tycoon',
+    creators: ['Declan', 'ClaudeBox Studios'],
+    tags: ['Tycoon', 'PvP', 'Powers', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'playground',
     title: 'Playground',
     tagline: 'Play levels built in ClaudeBox Studio.',

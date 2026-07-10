@@ -43,6 +43,11 @@ export const CHALLENGES = [
 
   // Studio
   { id: 'studio-publish',game: 'studio',          emoji: '🛠️', title: 'Level Designer',     hint: 'Save a level in ClaudeBox Studio.',     stars: 60 },
+
+  // Elemental Tycoon
+  { id: 'tycoon-power',  game: 'tycoon',          emoji: '🔥', title: 'Awakened',           hint: 'Unlock your first elemental power.',    stars: 60 },
+  { id: 'tycoon-elim',   game: 'tycoon',          emoji: '⚔️', title: 'Elemental Duelist',  hint: 'Defeat another player in the arena.',   stars: 120 },
+  { id: 'tycoon-max',    game: 'tycoon',          emoji: '🌟', title: 'Grand Elementalist', hint: 'Unlock all five elemental powers.',     stars: 250 },
 ];
 
 export const CHALLENGE_BY_ID = Object.fromEntries(CHALLENGES.map((c) => [c.id, c]));

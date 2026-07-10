@@ -150,6 +150,7 @@ const GAME_THEME = {
   'wibit':           { emoji: '🌊', from: '#2ec5e0', to: '#144a70', accent: '#5be0ff' },
   'rivals':          { emoji: '🎯', from: '#e04b3c', to: '#3c1024', accent: '#ff6b5c' },
   'brook':           { emoji: '🏘️', from: '#4fae6a', to: '#173a24', accent: '#7fe0a0' },
+  'tycoon':          { emoji: '🔥', from: '#ff7a3a', to: '#2a1866', accent: '#ffb14a' },
   'playground':      { emoji: '🎡', from: '#ff5ca8', to: '#661650', accent: '#ff8fd0' },
   'studio':          { emoji: '🛠️', from: '#5c72ff', to: '#161f66', accent: '#8ba3ff' },
 };
