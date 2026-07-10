@@ -7,7 +7,7 @@ import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
 import {
   PLOTS, CENTER, GROUND, ARENA_RADIUS, ELEMENTS, ELEMENT_BY_ID, BUTTONS, BUTTON_BY_ID,
-  BASE_INCOME, DROP_INTERVAL, MAX_HP, RESPAWN,
+  SIDE_BUILDS, SIDE_BY_ID, BASE_INCOME, DROP_INTERVAL, MAX_HP, RESPAWN,
 } from '/shared/tycoon/world.js';
 
 const $ = (s) => document.querySelector(s);
@@ -62,93 +62,225 @@ arenaTxt.position.set(0, 6, 0); arenaTxt.scale.set(16, 4, 1); scene.add(arenaTxt
 const plots = PLOTS.map((def) => buildPlot(def));
 const ownerPlot = new Map(); // playerId -> plot index
 
+// mesh helpers (function declarations so they hoist above the plots = map() call)
+function smat(c, o = {}) { return new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...o }); }
+function box(w, h, d, x, y, z, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; }
+function cyl(rt, rb, h, x, y, z, mat, seg = 14) { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); m.position.set(x, y, z); m.castShadow = true; return m; }
+function aabb(x, z, rx, y1, rz, y0 = 0) { return { x0: x - rx, x1: x + rx, y0, y1, z0: z - rz, z1: z + rz }; }
+
+// ---- detailed machine models ----
+function detailedDropper() {
+  const g = new THREE.Group();
+  g.add(box(2.6, 2.0, 2.6, 0, 1.5, 0, smat(0x49527e, { metalness: 0.5, roughness: 0.4 })));
+  const hop = cyl(1.5, 0.65, 1.5, 0, 3.2, 0, smat(0x5b66a0, { metalness: 0.5, roughness: 0.4 }), 4); hop.rotation.y = Math.PI / 4; g.add(hop);
+  const rim = cyl(1.55, 1.55, 0.22, 0, 3.95, 0, smat(0x2a3358), 4); rim.rotation.y = Math.PI / 4; g.add(rim);
+  g.add(cyl(0.34, 0.5, 0.9, 0, 0.55, 1.35, smat(0x2a3358)));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(0.26, 1.1, 0.26, sx * 1.05, 0.55, sz * 1.05, smat(0x33384f)));
+  const led = box(0.55, 0.35, 0.08, 0.7, 2.3, 1.31, smat(0x0a0a0a, { emissive: 0x33ff88, emissiveIntensity: 1 })); g.add(led);
+  return g;
+}
+function detailedCollector() {
+  const g = new THREE.Group();
+  g.add(box(2.6, 1.7, 2.6, 0, 0.95, 0, smat(0xe0a92a, { metalness: 0.5, roughness: 0.4 })));
+  g.add(box(2.85, 0.3, 2.85, 0, 1.9, 0, smat(0xffe08a, { metalness: 0.4 })));
+  g.add(box(1.5, 0.12, 1.5, 0, 2.02, 0, smat(0x1a1200, { emissive: 0xffcf5c, emissiveIntensity: 0.8 })));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(0.24, 0.95, 0.24, sx * 1.05, 0.48, sz * 1.05, smat(0x8a6a12)));
+  return g;
+}
+function detailedPedestal(el) {
+  const g = new THREE.Group();
+  g.add(cyl(1.15, 1.35, 0.5, 0, 0.25, 0, smat(0x2b3160)));
+  g.add(cyl(0.55, 0.72, 1.5, 0, 1.25, 0, smat(0x3a4272)));
+  g.add(cyl(0.92, 0.72, 0.28, 0, 2.05, 0, smat(0x4a5490)));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.07, 8, 22), new THREE.MeshBasicMaterial({ color: el.color }));
+  ring.rotation.x = Math.PI / 2; ring.position.y = 2.4; g.add(ring);
+  const cry = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), new THREE.MeshStandardMaterial({ color: el.color, emissive: el.color, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.3 }));
+  cry.position.y = 3.05; g.add(cry); g.userData.crystal = cry;
+  const lp = new THREE.PointLight(el.color, 1.1, 7); lp.position.y = 3; g.add(lp);
+  return g;
+}
+
 function buildPlot(def) {
   const g = new THREE.Group();
   g.position.set(def.x, 0, def.z); g.rotation.y = def.ry;
-  // local +Z = back (starter machine), -Z = front (toward the arena)
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(22, 0.4, 22),
-    new THREE.MeshStandardMaterial({ color: 0x222a4d, roughness: 0.95 }));
-  pad.position.set(0, 0.2, 3); pad.receiveShadow = true; g.add(pad);
-  const rim = new THREE.Mesh(new THREE.BoxGeometry(22.4, 0.5, 0.5),
-    new THREE.MeshStandardMaterial({ color: 0x3a4680 }));
-  rim.position.set(0, 0.25, -8); g.add(rim);
-  // starter machine: dropper + conveyor + collector (always present)
-  const dropper = new THREE.Mesh(new THREE.BoxGeometry(3.2, 3.4, 3.2),
-    new THREE.MeshStandardMaterial({ color: 0x4a5488, metalness: 0.4, roughness: 0.5 }));
-  dropper.position.set(-7, 1.9, 9); dropper.castShadow = true; g.add(dropper);
-  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 1.2),
-    new THREE.MeshStandardMaterial({ color: 0x2a3358 }));
-  nozzle.position.set(-7, 0.7, 9); g.add(nozzle);
-  const conv = new THREE.Mesh(new THREE.BoxGeometry(13, 0.4, 1.8),
-    new THREE.MeshStandardMaterial({ color: 0x181d38 }));
-  conv.position.set(-0.5, 0.55, 9); g.add(conv);
-  const bin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2, 2.6),
-    new THREE.MeshStandardMaterial({ color: 0xffcf5c, emissive: 0x3a2a00, metalness: 0.3, roughness: 0.5 }));
-  bin.position.set(6.6, 1, 9); bin.castShadow = true; g.add(bin);
+  g.add(box(22, 0.4, 22, 0, 0.2, 3, smat(0x222a4d, { roughness: 0.95 })));   // pad (local +Z=back, -Z=front)
+  g.add(box(22.4, 0.5, 0.5, 0, 0.25, -8, smat(0x3a4680)));                    // front rim
+  const dropper = detailedDropper(); dropper.position.set(-7, 0, 9); g.add(dropper);
+  g.add(box(13, 0.5, 1.8, -0.5, 0.6, 9, smat(0x181d38)));                     // conveyor
+  const bin = detailedCollector(); bin.position.set(6.6, 0, 9); g.add(bin);
   const banner = makeSprite('Open Plot', 40, '#9fb0e0');
   banner.position.set(0, 6.2, 9.4); banner.scale.set(10, 2.4, 1); g.add(banner);
   scene.add(g);
-  return { def, group: g, dropper, conv, bin, banner, orbs: [], builds: new Map(), unlocked: new Set(), crystals: [], ownerId: null, pad: null, padStep: null };
+  const plot = {
+    def, group: g, dropper, bin, banner, orbs: [], builds: new Map(), sideBuilds: new Map(),
+    sidePads: new Map(), unlocked: new Set(), crystals: [], colliders: [], _support: 0,
+    ownerId: null, pad: null, padStep: null,
+  };
+  plot.colliders.push(aabb(-7, 9, 1.4, 3.6, 1.4), aabb(6.6, 9, 1.45, 2.0, 1.45));  // starter machines
+  return plot;
 }
 
-// the mesh a completed step leaves behind, placed at its (lx,lz)
+// the mesh a completed main-track step leaves behind → { group, colliders(plot-local) }
 function stepMesh(step) {
   const grp = new THREE.Group(); grp.position.set(step.lx, 0, step.lz);
+  let cols;
   if (step.build === 'pedestal') {
-    const el = ELEMENT_BY_ID[step.element];
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.1, 0.9, 12), new THREE.MeshStandardMaterial({ color: 0x2b3160, roughness: 0.7 }));
-    base.position.y = 0.45; base.castShadow = true; grp.add(base);
-    const cry = new THREE.Mesh(new THREE.OctahedronGeometry(0.62, 0), new THREE.MeshStandardMaterial({ color: el.color, emissive: el.color, emissiveIntensity: 0.85, roughness: 0.25 }));
-    cry.position.y = 1.7; grp.add(cry); grp.userData.crystal = cry;
-    const lp = new THREE.PointLight(el.color, 1.1, 6); lp.position.y = 1.7; grp.add(lp);
+    const ped = detailedPedestal(ELEMENT_BY_ID[step.element]); grp.add(ped); grp.userData.crystal = ped.userData.crystal;
+    cols = [aabb(step.lx, step.lz, 1.2, 2.2, 1.2)];
   } else if (step.build === 'collector') {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 2.4), new THREE.MeshStandardMaterial({ color: 0xffcf5c, emissive: 0x3a2a00, metalness: 0.4, roughness: 0.4 }));
-    b.position.y = 1.1; b.castShadow = true; grp.add(b);
+    grp.add(detailedCollector()); cols = [aabb(step.lx, step.lz, 1.45, 2.0, 1.45)];
   } else {
-    const box = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 2.4), new THREE.MeshStandardMaterial({ color: 0x4a5488, metalness: 0.4, roughness: 0.5 }));
-    box.position.y = 1.5; box.castShadow = true; grp.add(box);
-    const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.55, 1), new THREE.MeshStandardMaterial({ color: 0x2a3358 }));
-    noz.position.y = 0.6; grp.add(noz);
+    grp.add(detailedDropper()); cols = [aabb(step.lx, step.lz, 1.4, 3.6, 1.4)];
   }
-  return grp;
+  return { group: grp, colliders: cols };
 }
 
-// the glowing "buy me" pad for the next step
-function padMesh(step) {
+// ---- house structures → { group, colliders(plot-local) } ----
+const HX = 11, HZB = 9, HZF = -8, HW = 5, HT = 0.5;   // house extents / wall height
+const F2 = 5.9, HW2 = 4.3;                             // second-floor deck top, upper wall height
+function wallRing(g, cols, baseY, h, color, door) {
+  const m = smat(color); const yc = baseY + h / 2;
+  g.add(box(2 * HX + HT, h, HT, 0, yc, HZB, m)); cols.push({ x0: -HX, x1: HX, y0: baseY, y1: baseY + h, z0: HZB - 0.4, z1: HZB + 0.4 });
+  g.add(box(HT, h, HZB - HZF, -HX, yc, (HZB + HZF) / 2, m)); cols.push({ x0: -HX - 0.4, x1: -HX + 0.4, y0: baseY, y1: baseY + h, z0: HZF, z1: HZB });
+  g.add(box(HT, h, HZB - HZF, HX, yc, (HZB + HZF) / 2, m)); cols.push({ x0: HX - 0.4, x1: HX + 0.4, y0: baseY, y1: baseY + h, z0: HZF, z1: HZB });
+  if (door) {
+    g.add(box(9, h, HT, -6.5, yc, HZF, m)); cols.push({ x0: -HX, x1: -2, y0: baseY, y1: baseY + h, z0: HZF - 0.4, z1: HZF + 0.4 });
+    g.add(box(9, h, HT, 6.5, yc, HZF, m)); cols.push({ x0: 2, x1: HX, y0: baseY, y1: baseY + h, z0: HZF - 0.4, z1: HZF + 0.4 });
+    g.add(box(4.4, 1.2, HT, 0, baseY + h - 0.6, HZF, m));
+  } else {
+    g.add(box(2 * HX + HT, h, HT, 0, yc, HZF, m)); cols.push({ x0: -HX, x1: HX, y0: baseY, y1: baseY + h, z0: HZF - 0.4, z1: HZF + 0.4 });
+  }
+}
+function winPane(x, y, z, ry) { const w = new THREE.Group(); w.add(box(2, 2, 0.16, 0, 0, 0, smat(0x5a4632))); w.add(box(1.5, 1.5, 0.06, 0, 0, 0.09, smat(0x9fd4ff, { emissive: 0x203038, transparent: true, opacity: 0.85 }))); w.position.set(x, y, z); w.rotation.y = ry; return w; }
+function structureMesh(id) {
+  const g = new THREE.Group(); const cols = [];
+  const WALL = 0xcdb492, ROOF = 0x9c4a3a, WOOD = 0x6b4a2a;
+  switch (id) {
+    case 'walls': wallRing(g, cols, 0, HW, WALL, true); break;
+    case 'door': {
+      const d = box(3.7, 3.5, 0.28, 0, 1.75, HZF, smat(WOOD)); g.add(d);
+      g.add(box(0.16, 0.16, 0.2, 1.3, 1.8, HZF + 0.2, smat(0xffd23f)));
+      cols.push({ x0: -2, x1: 2, y0: 0, y1: 3.5, z0: HZF - 0.2, z1: HZF + 0.2 }); break;
+    }
+    case 'windows': g.add(winPane(-HX - 0.08, 2.7, -3, Math.PI / 2), winPane(-HX - 0.08, 2.7, 4, Math.PI / 2), winPane(HX + 0.08, 2.7, -3, Math.PI / 2), winPane(HX + 0.08, 2.7, 4, Math.PI / 2), winPane(-5, 2.7, HZB + 0.08, 0), winPane(5, 2.7, HZB + 0.08, 0)); break;
+    case 'roof': {
+      g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, HW + 0.25, (HZB + HZF) / 2, smat(ROOF)));
+      g.add(box(2 * HX + 1.6, 0.4, 0.6, 0, HW + 0.55, HZF - 0.4, smat(0x7a3a2e)));
+      g.add(box(2 * HX + 1.6, 0.4, 0.6, 0, HW + 0.55, HZB + 0.4, smat(0x7a3a2e)));
+      cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: HW, y1: HW + 0.5, z0: HZF - 0.6, z1: HZB + 0.6 }); break;
+    }
+    case 'chimney': { g.add(box(1.3, 3, 1.3, HX - 3, HW + 1.5, HZB - 3, smat(0x8a5a4a))); g.add(box(1.5, 0.4, 1.5, HX - 3, HW + 3, HZB - 3, smat(0x5a3a2e)));
+      for (let i = 0; i < 3; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.4 + i * 0.15, 8, 6), new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.35 - i * 0.08 })); s.position.set(HX - 3, HW + 3.6 + i * 0.9, HZB - 3); g.add(s); }
+      cols.push(aabb(HX - 3, HZB - 3, 0.7, HW + 3, 0.7)); break; }
+    case 'floor2': {
+      g.add(box(2 * HX - 0.4, 0.5, HZB - HZF - 0.4, 0, F2 - 0.25, (HZB + HZF) / 2, smat(0xb0a088)));
+      cols.push({ x0: -HX + 0.2, x1: HX - 0.2, y0: F2 - 0.5, y1: F2, z0: HZF + 0.2, z1: HZB - 0.2 });
+      // staircase up the right side (each step ≤ step-up height)
+      for (let i = 0; i < 7; i++) { const top = (i + 1) / 7 * F2; const z = HZF + 1.5 + i * 1.1; g.add(box(2.6, top, 1.1, HX - 2, top / 2, z, smat(0xa0895f))); cols.push({ x0: HX - 3.3, x1: HX - 0.7, y0: 0, y1: top, z0: z - 0.55, z1: z + 0.55 }); }
+      // railing posts around the deck
+      for (let x = -HX + 1; x <= HX - 1; x += 3) { g.add(box(0.18, 1.1, 0.18, x, F2 + 0.55, HZF + 0.3, smat(0x6b5a3a))); g.add(box(0.18, 1.1, 0.18, x, F2 + 0.55, HZB - 0.3, smat(0x6b5a3a))); }
+      break;
+    }
+    case 'walls2': wallRing(g, cols, F2, HW2, WALL, false); break;
+    case 'windows2': g.add(winPane(-HX - 0.08, F2 + 2.2, -3, Math.PI / 2), winPane(HX + 0.08, F2 + 2.2, 3, Math.PI / 2), winPane(-4, F2 + 2.2, HZB + 0.08, 0), winPane(4, F2 + 2.2, HZB + 0.08, 0)); break;
+    case 'roof2': { g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, F2 + HW2 + 0.25, (HZB + HZF) / 2, smat(ROOF))); cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: F2 + HW2, y1: F2 + HW2 + 0.5, z0: HZF - 0.6, z1: HZB + 0.6 }); break; }
+    case 'balcony': {
+      g.add(box(8, 0.4, 3.5, 0, F2 - 0.2, HZF - 1.7, smat(0xa08a6a)));
+      for (let x = -3.5; x <= 3.5; x += 1.75) g.add(box(0.16, 1.0, 0.16, x, F2 + 0.5, HZF - 3.4, smat(0x6b5a3a)));
+      g.add(box(8, 0.16, 0.16, 0, F2 + 1.0, HZF - 3.4, smat(0x6b5a3a)));
+      cols.push({ x0: -4, x1: 4, y0: F2 - 0.4, y1: F2, z0: HZF - 3.4, z1: HZF }); break;
+    }
+    case 'flag': { g.add(cyl(0.1, 0.1, 4, 0, F2 + HW2 + 2.5, 0, smat(0xcccccc))); const cloth = box(2.4, 1.4, 0.06, 1.2, F2 + HW2 + 3.8, 0, smat(0xff4a5a)); g.add(cloth); break; }
+    case 'fence': for (let i = -HX; i <= HX; i += 2.2) { g.add(box(0.2, 1.4, 0.2, i, 0.7, HZF - 0.8, smat(0x8a6a44))); g.add(box(0.2, 1.4, 0.2, i, 0.7, HZB + 0.8, smat(0x8a6a44))); }
+      g.add(box(2 * HX + 1.5, 0.16, 0.16, 0, 1.1, HZF - 0.8, smat(0x9a7a54))); g.add(box(2 * HX + 1.5, 0.16, 0.16, 0, 1.1, HZB + 0.8, smat(0x9a7a54))); break;
+    case 'garden': for (const [x, z] of [[-9, -6], [9, -6], [-9, 7], [9, 7]]) { g.add(cyl(0.25, 0.3, 1.2, x, 0.6, z, smat(0x6b4a2a))); const f = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), smat(0x3f8a3a)); f.position.set(x, 1.7, z); f.castShadow = true; g.add(f); }
+      break;
+    case 'lamps': for (const [x, z] of [[-10, -7], [10, -7], [-10, 8], [10, 8]]) { g.add(cyl(0.12, 0.16, 3, x, 1.5, z, smat(0x2a2a2a))); const h = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), smat(0x1a1a10, { emissive: 0xffe08a, emissiveIntensity: 1.1 })); h.position.set(x, 3.1, z); g.add(h); }
+      break;
+    case 'path': for (let i = 0; i < 6; i++) g.add(box(3, 0.1, 1.3, 0, 0.42, -6 + i * -0.0 + (-i * 1.5), smat(0x6a6f7a))); break;
+    default: break;
+  }
+  return { group: g, colliders: cols };
+}
+
+// the glowing "buy me" pad for a step
+function padMesh(step, side) {
   const grp = new THREE.Group(); grp.position.set(step.lx, 0, step.lz);
-  const col = step.kind === 'power' ? new THREE.Color(ELEMENT_BY_ID[step.element].color) : new THREE.Color(0xffd23f);
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 0.3, 24), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6, roughness: 0.5 }));
-  disc.position.y = 0.2; grp.add(disc);
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.0, 4.2, 18, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.14, side: THREE.DoubleSide }));
+  const col = side ? new THREE.Color(0x46c8a0) : step.kind === 'power' ? new THREE.Color(ELEMENT_BY_ID[step.element].color) : new THREE.Color(0xffd23f);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.3, 24), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6, roughness: 0.5 }));
+  disc.position.y = 0.22; grp.add(disc);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.95, 4.2, 18, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.13, side: THREE.DoubleSide }));
   beam.position.y = 2.1; grp.add(beam);
-  const label = makeSprite(`${step.emoji} ${step.label}\n💰${short(step.cost)}`, 28, '#ffffff');
-  label.position.y = 3.1; label.scale.set(3.7, 1.85, 1); grp.add(label);
+  const label = makeSprite(`${step.emoji} ${step.label}\n💰${short(step.cost)}`, 27, '#ffffff');
+  label.position.y = 3.0; label.scale.set(3.6, 1.8, 1); grp.add(label);
   return { group: grp, disc, beam };
+}
+
+// ---- endless main track: after the defined steps, generate more droppers ----
+const ENDLESS_SPOTS = [[-7, 6.5], [-4, 7], [2, 7], [-6, 5], [3, 5], [-8, 4], [8, 2], [6, 6], [-3, 6], [3, 3]];
+function endlessDef(n) {   // n = dropper ordinal (9, 10, 11, …)
+  const k = n - 8;
+  const [lx, lz] = ENDLESS_SPOTS[n % ENDLESS_SPOTS.length];
+  return { id: 'drop' + n, kind: 'income', label: 'Dropper ' + n, emoji: '⚙️', cost: Math.round(90000 * Math.pow(2.15, k)), income: Math.round(900 * Math.pow(1.7, k)), lx, lz, build: 'dropper', endless: true };
+}
+function stepDef(id) {
+  if (BUTTON_BY_ID[id]) return BUTTON_BY_ID[id];
+  if (SIDE_BY_ID[id]) return SIDE_BY_ID[id];
+  const m = /^drop(\d+)$/.exec(id); if (m && +m[1] >= 9) return endlessDef(+m[1]);
+  return null;
+}
+function nextMainStep(set) {
+  const s = BUTTONS.find((b) => !set.has(b.id)); if (s) return s;
+  let n = 9; while (set.has('drop' + n)) n++; return endlessDef(n);
 }
 
 function plotSetOwner(plot, name, mine) { setSprite(plot.banner, mine ? `⭐ ${name} (You)` : name, mine ? '#ffd76a' : '#cfe0ff'); }
 function plotBuild(plot, id) {
   if (plot.builds.has(id)) return;
-  const step = BUTTON_BY_ID[id]; if (!step) return;
-  const m = stepMesh(step); plot.builds.set(id, m); plot.group.add(m);
-  if (m.userData.crystal) plot.crystals.push(m.userData.crystal);
+  const step = stepDef(id); if (!step) return;
+  const { group, colliders } = stepMesh(step); plot.builds.set(id, group); plot.group.add(group);
+  if (group.userData.crystal) plot.crystals.push(group.userData.crystal);
+  plot.colliders.push(...colliders);
 }
-function plotSetUnlocks(plot, list) { for (const id of list) { plot.unlocked.add(id); plotBuild(plot, id); } }
-function plotShowPad(plot) {            // MINE only — reveal the next unbought step
+function plotBuildSide(plot, id) {
+  if (plot.sideBuilds.has(id) || !SIDE_BY_ID[id]) return;
+  const { group, colliders } = structureMesh(id); plot.sideBuilds.set(id, group); plot.group.add(group);
+  plot.colliders.push(...colliders);
+}
+function plotSetUnlocks(plot, list) {
+  for (const id of list) { plot.unlocked.add(id); if (SIDE_BY_ID[id]) plotBuildSide(plot, id); else plotBuild(plot, id); }
+}
+function plotShowPad(plot) {            // MINE only — reveal the next main-track step (endless)
   if (plot.pad) { plot.group.remove(plot.pad.group); plot.pad = null; }
-  const step = BUTTONS.find((b) => !plot.unlocked.has(b.id));
+  const step = nextMainStep(plot.unlocked);
   plot.padStep = step || null;
   if (step) { plot.pad = padMesh(step); plot.group.add(plot.pad.group); }
+}
+function updateSidePads(plot) {         // MINE only — show ALL available side builds at once
+  if (plot.ownerId !== net.id) return;
+  for (const [id, pad] of [...plot.sidePads]) {
+    const b = SIDE_BY_ID[id]; const avail = !plot.unlocked.has(id) && (!b.req || plot.unlocked.has(b.req));
+    if (!avail) { plot.group.remove(pad.group); plot.sidePads.delete(id); }
+  }
+  for (const b of SIDE_BUILDS) {
+    if (plot.unlocked.has(b.id) || plot.sidePads.has(b.id)) continue;
+    if (b.req && !plot.unlocked.has(b.req)) continue;
+    const pad = padMesh(b, true); plot.group.add(pad.group); plot.sidePads.set(b.id, pad);
+  }
 }
 function plotReset(plot) {
   plot.ownerId = null; setSprite(plot.banner, 'Open Plot', '#9fb0e0');
   for (const [, m] of plot.builds) plot.group.remove(m);
-  plot.builds.clear(); plot.unlocked.clear(); plot.crystals = [];
+  for (const [, m] of plot.sideBuilds) plot.group.remove(m);
+  for (const [, p] of plot.sidePads) plot.group.remove(p.group);
+  plot.builds.clear(); plot.sideBuilds.clear(); plot.sidePads.clear();
+  plot.unlocked.clear(); plot.crystals = []; plot.colliders.length = 0;
+  plot.colliders.push(aabb(-7, 9, 1.4, 3.6, 1.4), aabb(6.6, 9, 1.45, 2.0, 1.45));
   if (plot.pad) { plot.group.remove(plot.pad.group); plot.pad = null; }
   plot.padStep = null;
   for (const o of plot.orbs) plot.group.remove(o); plot.orbs = [];
 }
-function short(n) { return n >= 1000 ? (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k' : '' + n; }
+function short(n) { return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k' : '' + n; }
 
 // ---------------- sprites / tags ----------------
 function makeSprite(text, px, color) {
@@ -196,6 +328,7 @@ function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcT
 // ---------------- local player + camera ----------------
 const player = { pos: { x: 0, y: 0, z: 0 }, vy: 0, ry: 0, anim: 'idle', onGround: true, hp: MAX_HP, dead: false };
 let myAvatar = null;
+let spawned = false;   // becomes true on welcome; gates the movement stream
 let camYaw = 0, camPitch = -0.15;
 const keys = new Set();
 
@@ -207,25 +340,46 @@ let saveName = 'guest';
 
 function income() {
   let inc = BASE_INCOME;
-  for (const id of unlocks) { const b = BUTTON_BY_ID[id]; if (b?.income) inc = Math.max(inc, b.income); }
+  for (const id of unlocks) { const b = stepDef(id); if (b?.income) inc = Math.max(inc, b.income); }
   return inc;
 }
 function dropInterval() {
   let iv = DROP_INTERVAL;
-  for (const id of unlocks) { const b = BUTTON_BY_ID[id]; if (b?.interval) iv = Math.min(iv, b.interval); }
+  for (const id of unlocks) { const b = stepDef(id); if (b?.interval) iv = Math.min(iv, b.interval); }
   return iv;
 }
 function unlockedPowers() { return ELEMENTS.filter((e) => unlocks.has(powerBtnId(e.id))); }
 function powerBtnId(el) { return BUTTONS.find((b) => b.element === el)?.id; }
 
-function loadSave() {
-  try {
-    const raw = JSON.parse(localStorage.getItem('tycoon.save.' + saveName) || '{}');
-    if (typeof raw.cash === 'number') cash = raw.cash;
-    if (Array.isArray(raw.unlocks)) raw.unlocks.forEach((u) => { if (BUTTON_BY_ID[u]) unlocks.add(u); });
-  } catch {}
+function applySave(raw) {
+  if (!raw) return;
+  if (typeof raw.cash === 'number') cash = raw.cash;
+  if (Array.isArray(raw.unlocks)) raw.unlocks.forEach((u) => { if (stepDef(u) || SIDE_BY_ID[u]) unlocks.add(u); });
 }
-function save() { try { localStorage.setItem('tycoon.save.' + saveName, JSON.stringify({ cash, unlocks: [...unlocks] })); } catch {} }
+function loadSaveLocal() { try { applySave(JSON.parse(localStorage.getItem('tycoon.save.' + saveName) || '{}')); } catch {} }
+// Progress lives on the account (server) so it follows you across devices; the
+// server wins, with localStorage as an offline fallback / one-time migration.
+async function loadProgress(name) {
+  try {
+    const r = await fetch('/api/gamesave/tycoon?name=' + encodeURIComponent(name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } });
+    const j = await r.json();
+    if (j && j.data && (typeof j.data.cash === 'number' || Array.isArray(j.data.unlocks))) { applySave(j.data); return; }
+  } catch {}
+  loadSaveLocal(); saveServer();   // migrate any local progress up to the account
+}
+let saveDirty = false;
+function saveServer() { saveDirty = true; }
+function flushServer() {
+  if (!saveDirty) return; saveDirty = false;
+  fetch('/api/gamesave', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' },
+    body: JSON.stringify({ name: localStorage.getItem('claudebox.user'), game: 'tycoon', data: { cash, unlocks: [...unlocks] } }) }).catch(() => {});
+}
+setInterval(flushServer, 4000);            // periodic sync to the account
+addEventListener('pagehide', flushServer); // and a best-effort save on leave
+function save() {
+  try { localStorage.setItem('tycoon.save.' + saveName, JSON.stringify({ cash, unlocks: [...unlocks] })); } catch {}
+  saveServer();
+}
 function setCash(v) { cash = Math.max(0, Math.round(v)); $('#cash').textContent = short(cash); }
 
 // ---------------- remotes ----------------
@@ -339,15 +493,16 @@ function muzzle(el, dir) {
 
 // ---------------- buy interaction ----------------
 let hoverBtn = null;
+const _pv = new THREE.Vector3();
+function padDist2(mp, lx, lz) { _pv.set(lx, 0.35, lz).applyEuler(mp.group.rotation).add(mp.group.position); const dx = player.pos.x - _pv.x, dz = player.pos.z - _pv.z; return dx * dx + dz * dz; }
 function updatePrompt() {
   const el = $('#prompt');
   hoverBtn = null;
   const mp = plots.find((p) => p.ownerId === net.id);
-  if (mp && mp.padStep && !player.dead) {
-    const s = mp.padStep;
-    const wp = new THREE.Vector3(s.lx, 0.35, s.lz).applyEuler(mp.group.rotation).add(mp.group.position);
-    const dx = player.pos.x - wp.x, dz = player.pos.z - wp.z;
-    if (dx * dx + dz * dz < 12) hoverBtn = s;
+  if (mp && !player.dead) {
+    let best = 12;
+    if (mp.padStep) { const d = padDist2(mp, mp.padStep.lx, mp.padStep.lz); if (d < best) { best = d; hoverBtn = mp.padStep; } }
+    for (const [id] of mp.sidePads) { const s = SIDE_BY_ID[id]; const d = padDist2(mp, s.lx, s.lz); if (d < best) { best = d; hoverBtn = s; } }
   }
   if (hoverBtn) {
     const s = hoverBtn, ok = cash >= s.cost;
@@ -369,21 +524,26 @@ function updateObjective() {
 }
 function tryBuy() {
   if (!hoverBtn) return;
-  const mp = plots.find((p) => p.ownerId === net.id);
-  const s = mp?.padStep;
-  if (!s || s.id !== hoverBtn.id || unlocks.has(s.id)) return;
+  const mp = plots.find((p) => p.ownerId === net.id); if (!mp) return;
+  const s = hoverBtn;
+  if (unlocks.has(s.id)) return;
   if (cash < s.cost) { sfx('deny'); return; }
+  const isSide = !!SIDE_BY_ID[s.id];
   setCash(cash - s.cost); unlocks.add(s.id); mp.unlocked.add(s.id); save();
-  plotBuild(mp, s.id); plotShowPad(mp);          // build it → reveal the next step
-  net.send({ t: 'unlock', id: s.id });
-  sfx('buy');
-  if (s.kind === 'power') {
-    refreshHotbar();
-    const idx = ELEMENTS.findIndex((e) => e.id === s.element); if (idx >= 0) selectPower(idx);
-    window.ClaudeBox?.completeChallenge?.('tycoon-power');
-    if (unlockedPowers().length >= 5) window.ClaudeBox?.completeChallenge?.('tycoon-max');
-    feed(`Unlocked <b>${s.label}</b>! Press ${idx + 1} & click to blast rivals.`);
-  } else feed(`Built <b>${s.label}</b> — income now 💰${short(income())}/orb`);
+  net.send({ t: 'unlock', id: s.id }); sfx('buy');
+  if (isSide) {
+    plotBuildSide(mp, s.id); updateSidePads(mp);   // may reveal new side builds
+    feed(`Built <b>${s.label}</b> 🏠`);
+  } else {
+    plotBuild(mp, s.id); plotShowPad(mp);          // build it → reveal the next main step
+    if (s.kind === 'power') {
+      refreshHotbar();
+      const idx = ELEMENTS.findIndex((e) => e.id === s.element); if (idx >= 0) selectPower(idx);
+      window.ClaudeBox?.completeChallenge?.('tycoon-power');
+      if (unlockedPowers().length >= 5) window.ClaudeBox?.completeChallenge?.('tycoon-max');
+      feed(`Unlocked <b>${s.label}</b>! Press ${idx + 1} & click to blast rivals.`);
+    } else feed(`Built <b>${s.label}</b> — income now 💰${short(income())}/orb`);
+  }
 }
 
 // ---------------- economy tick ----------------
@@ -423,6 +583,40 @@ function moveInput() {
   if (touchVec.x || touchVec.y) { r = touchVec.x; f = -touchVec.y; }
   return { f, r };
 }
+
+// Collide the player against the plot they're standing on (in the plot's LOCAL
+// frame, so it stays axis-aligned despite the plot's rotation). Returns the
+// floor/support height under the player (0 = ground; higher = second floor).
+const _cv = new THREE.Vector3(), _cv2 = new THREE.Vector3();
+function resolveCollision() {
+  let plot = null;
+  for (const pl of plots) {
+    if (!pl.colliders.length) continue;
+    const dx = player.pos.x - pl.def.x, dz = player.pos.z - pl.def.z;
+    if (dx * dx + dz * dz > 20 * 20) continue;
+    _cv.set(player.pos.x, 0, player.pos.z); pl.group.worldToLocal(_cv);
+    if (_cv.x > -12 && _cv.x < 12 && _cv.z > -9 && _cv.z < 11) { plot = pl; break; }
+  }
+  if (!plot) return 0;
+  let lx = _cv.x, lz = _cv.z; const feet = player.pos.y;
+  const PR = 0.55, STEP = 0.9, PH = 1.5;
+  for (const c of plot.colliders) {
+    if (c.y1 <= feet + 0.02) continue;                          // below the feet (it's a floor)
+    if (c.y0 >= feet + PH) continue;                            // above the head
+    if (c.y1 - feet <= STEP && c.y0 <= feet + 0.05) continue;   // low step → walk up, don't block
+    const cx = clamp(lx, c.x0, c.x1), cz = clamp(lz, c.z0, c.z1);
+    const ddx = lx - cx, ddz = lz - cz, d2 = ddx * ddx + ddz * ddz;
+    if (d2 < PR * PR) {
+      if (d2 > 1e-6) { const d = Math.sqrt(d2); const push = PR - d; lx += ddx / d * push; lz += ddz / d * push; }
+      else { const dl = lx - c.x0, dr = c.x1 - lx, db = lz - c.z0, df = c.z1 - lz, mn = Math.min(dl, dr, db, df); if (mn === dl) lx = c.x0 - PR; else if (mn === dr) lx = c.x1 + PR; else if (mn === db) lz = c.z0 - PR; else lz = c.z1 + PR; }
+    }
+  }
+  let support = 0;
+  for (const c of plot.colliders) { if (lx > c.x0 - PR && lx < c.x1 + PR && lz > c.z0 - PR && lz < c.z1 + PR && c.y1 <= feet + STEP && c.y1 > support) support = c.y1; }
+  _cv2.set(lx, 0, lz); plot.group.localToWorld(_cv2); player.pos.x = _cv2.x; player.pos.z = _cv2.z;
+  return support;
+}
+
 function updatePlayer(dt) {
   const { f, r } = moveInput();
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight') || touchRun;
@@ -440,10 +634,12 @@ function updatePlayer(dt) {
   if (kb.x || kb.z) { player.pos.x += kb.x * dt; player.pos.z += kb.z * dt; kb.x *= 0.86; kb.z *= 0.86; if (Math.abs(kb.x) < 0.1) kb.x = 0; if (Math.abs(kb.z) < 0.1) kb.z = 0; }
   // bounds
   const lim = GROUND - 4; player.pos.x = clamp(player.pos.x, -lim, lim); player.pos.z = clamp(player.pos.z, -lim, lim);
+  // structure collisions (walls/machines) + floor support (second floor / stairs)
+  const groundY = resolveCollision();
   // jump / gravity
-  if ((keys.has('Space') || touchJump) && player.onGround && !player.dead) { player.vy = 9.2; player.onGround = false; touchJump = false; }
-  player.vy -= 24 * dt; player.pos.y += player.vy * dt;
-  if (player.pos.y <= 0) { player.pos.y = 0; player.vy = 0; player.onGround = true; }
+  if ((keys.has('Space') || touchJump) && player.onGround && !player.dead) { player.vy = 9.5; player.onGround = false; touchJump = false; }
+  player.vy -= 26 * dt; player.pos.y += player.vy * dt;
+  if (player.pos.y <= groundY) { player.pos.y = groundY; player.vy = 0; player.onGround = true; } else player.onGround = false;
   player.ry = camYaw;
   player.anim = !moving ? 'idle' : running ? 'run' : 'walk';
   if (myAvatar) {
@@ -454,10 +650,20 @@ function updatePlayer(dt) {
     myAvatar.group.visible = !player.dead;
   }
 }
+const camRay = new THREE.Raycaster(); const _camDir = new THREE.Vector3(), _camOrigin = new THREE.Vector3();
 function updateCamera() {
   const tx = player.pos.x, ty = player.pos.y + 1.7, tz = player.pos.z;
   const dist = 6.8, cp = Math.cos(camPitch);
-  camera.position.set(tx - Math.sin(camYaw) * cp * dist, ty - Math.sin(camPitch) * dist + 0.2, tz - Math.cos(camYaw) * cp * dist);
+  _camDir.set(-Math.sin(camYaw) * cp, -Math.sin(camPitch) + 0.03, -Math.cos(camYaw) * cp).normalize();
+  let d = dist;
+  // pull the camera in if a wall/roof is between it and the player
+  const mp = plots.find((p) => p.ownerId === net.id);
+  if (mp && mp.sideBuilds.size) {
+    _camOrigin.set(tx, ty, tz); camRay.set(_camOrigin, _camDir); camRay.far = dist;
+    const hits = camRay.intersectObjects([...mp.sideBuilds.values()], true);
+    if (hits.length) d = Math.max(1.6, hits[0].distance - 0.4);
+  }
+  camera.position.set(tx + _camDir.x * d, ty + _camDir.y * d, tz + _camDir.z * d);
   if (camera.position.y < 0.8) camera.position.y = 0.8;
   camera.lookAt(tx, ty, tz);
 }
@@ -557,12 +763,13 @@ net.on('welcome', (msg) => {
   if (msg.you.plot != null && plots[msg.you.plot]) {
     const mp = plots[msg.you.plot];
     mp.ownerId = net.id; plotSetOwner(mp, msg.you.name, true);
-    plotSetUnlocks(mp, [...unlocks]); plotShowPad(mp); ownerPlot.set(net.id, msg.you.plot);
+    plotSetUnlocks(mp, [...unlocks]); plotShowPad(mp); updateSidePads(mp); ownerPlot.set(net.id, msg.you.plot);
     // face our plot's build area (toward the centre arena)
     camYaw = PLOTS[msg.you.plot].ry + Math.PI;
     // replay saved unlocks to the server so others see my built plot
     for (const u of unlocks) net.send({ t: 'unlock', id: u });
   }
+  spawned = true;   // now it's safe to stream our real position (fixes join damage)
   refreshHotbar();
   // pick a default selected power if any owned
   const firstOwned = ELEMENTS.findIndex((e) => unlocks.has(powerBtnId(e.id))); if (firstOwned >= 0) selected = firstOwned;
@@ -571,7 +778,7 @@ net.on('welcome', (msg) => {
 });
 net.on('player.join', (m) => { if (m.player.id !== net.id && !remotes.has(m.player.id)) { makeRemote(m.player); addChat('System', `${m.player.name} joined`, false, true); } });
 net.on('player.leave', (m) => dropRemote(m.id));
-net.on('player.unlock', (m) => { const pi = ownerPlot.get(m.id); if (pi != null && plots[pi]) { plots[pi].unlocked.add(m.btn); plotBuild(plots[pi], m.btn); } });
+net.on('player.unlock', (m) => { const pi = ownerPlot.get(m.id); if (pi != null && plots[pi]) { const pl = plots[pi]; pl.unlocked.add(m.btn); if (SIDE_BY_ID[m.btn]) plotBuildSide(pl, m.btn); else plotBuild(pl, m.btn); } });
 net.on('snapshot', (m) => {
   for (const row of m.players) { const [id, x, y, z, ry, anim, hp, dead] = row; if (id === net.id) { if (typeof hp === 'number' && !player.dead) setHealth(hp); continue; } const r = remotes.get(id); if (r) { r.interp.push([x, y, z, ry, anim]); if (r.hp !== hp) { r.hp = hp; r.tag.setHp(hp, !!dead); } r.dead = !!dead; r.group.visible = !dead; } }
   // projectiles
@@ -606,7 +813,14 @@ net.on('respawn', (m) => {
 });
 net.on('chat', (m) => addChat(m.name, m.text, m.id === net.id));
 net.on('toast', (m) => addChat('System', m.text, false, true));
-net.on('_disconnect', () => feed('Disconnected — refresh to rejoin.'));
+let kicked = false;
+net.on('kicked', (m) => {
+  kicked = true; spawned = false;
+  const o = document.createElement('div'); o.id = 'kicked-overlay';
+  o.innerHTML = `<div class="kick-card"><div class="kick-emoji">🚪💥</div><h1>Kicked out!</h1><p>${(m.reason || 'You joined from another device.')}</p><button onclick="location.reload()">Reload to play here</button></div>`;
+  document.body.appendChild(o);
+});
+net.on('_disconnect', () => { if (!kicked) feed('Disconnected — refresh to rejoin.'); });
 function tagName(id) { const cvs = remotes.get(id); return cvs ? 'a rival' : 'Someone'; }
 
 // ---------------- loop ----------------
@@ -659,14 +873,14 @@ async function boot() {
   $('#load-msg').textContent = 'Loading avatars…';
   await preloadAvatars(['boy', 'girl']);
   myAvatar = makeAvatar(profile); scene.add(myAvatar.group);
-  loadSave(); setCash(cash); buildHotbar();
+  await loadProgress(localStorage.getItem('claudebox.user')); setCash(cash); buildHotbar();
   // buying works by tapping/clicking the prompt (so phones can buy too) or pressing E
   $('#prompt').addEventListener('click', () => tryBuy());
   $('#prompt').addEventListener('touchend', (e) => { e.preventDefault(); tryBuy(); });
   if (isTouch) setupTouch();
   net.connect();
   net.join({ name: localStorage.getItem('claudebox.user'), avatar: profile, code: localStorage.getItem('claudebox.code') || '' });
-  net.startMovementStream(() => ({ t: 'move', x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), ry: +player.ry.toFixed(3), anim: player.anim }));
+  net.startMovementStream(() => spawned ? ({ t: 'move', x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), ry: +player.ry.toFixed(3), anim: player.anim }) : null);
   requestAnimationFrame(frame);
   window.__tycoon = { player, plots, remotes, net, scene };
 }

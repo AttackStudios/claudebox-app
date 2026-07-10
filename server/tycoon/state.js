@@ -55,7 +55,7 @@ function makeBot(i) {
     name, nameLower: name.toLowerCase(), avatar: BOT_LOOKS[i % BOT_LOOKS.length],
     pos: { x: Math.random() * 40 - 20, y: 0, z: Math.random() * 40 - 20 }, ry: 0, anim: 'idle',
     plot: null, unlocks: [el], element: el,
-    hp: MAX_HP, dead: false, respawnAt: 0, lastCast: {},
+    hp: MAX_HP, dead: false, respawnAt: 0, invulnUntil: 0, lastCast: {},
     ai: { seed: Math.random() * 6.28, tWander: 0, tx: 0, tz: 0 },
   };
   return b;
@@ -82,7 +82,7 @@ export function makePlayer(ws) {
     name: '', nameLower: '', avatar: null,
     pos: { x: 0, y: 0, z: 0 }, ry: 0, anim: 'idle',
     plot: null, unlocks: [], element: null,
-    hp: MAX_HP, dead: false, respawnAt: 0,
+    hp: MAX_HP, dead: false, respawnAt: 0, invulnUntil: 0,
     lastCast: {},   // element id -> clock of last cast (server-side cooldown)
   };
 }

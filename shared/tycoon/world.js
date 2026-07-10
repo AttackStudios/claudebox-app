@@ -58,6 +58,29 @@ export const BUTTONS = [
 export const BUTTON_BY_ID = Object.fromEntries(BUTTONS.map((b) => [b.id, b]));
 export const POWER_STEPS = BUTTONS.filter((b) => b.kind === 'power');
 
+// SIDE builds — a parallel construction track that turns your plot into a
+// house. Unlike the main track, ALL side builds whose prerequisite (`req`) is
+// met show at once, so several buy-pads can be available alongside the main
+// upgrade. Each pad sits at (lx,lz); buying it constructs the structure.
+export const SIDE_BUILDS = [
+  { id: 'path',     label: 'Stone Path',   emoji: '🪨', cost: 120,  req: null,     lx: 3,   lz: -7 },
+  { id: 'fence',    label: 'Fence',        emoji: '🚧', cost: 160,  req: null,     lx: 10,  lz: -2 },
+  { id: 'garden',   label: 'Garden',       emoji: '🌳', cost: 240,  req: null,     lx: -10, lz: -2 },
+  { id: 'lamps',    label: 'Lamp Posts',   emoji: '💡', cost: 360,  req: null,     lx: -10, lz: 7.5 },
+  { id: 'walls',    label: 'Walls',        emoji: '🧱', cost: 220,  req: null,     lx: 10,  lz: 1 },
+  { id: 'door',     label: 'Front Door',   emoji: '🚪', cost: 180,  req: 'walls',  lx: 0,   lz: -7 },
+  { id: 'windows',  label: 'Windows',      emoji: '🪟', cost: 300,  req: 'walls',  lx: 10,  lz: -5 },
+  { id: 'roof',     label: 'Roof',         emoji: '🏠', cost: 750,  req: 'walls',  lx: 10,  lz: 4.5 },
+  { id: 'chimney',  label: 'Chimney',      emoji: '🏭', cost: 500,  req: 'roof',   lx: 6,   lz: 6 },
+  { id: 'floor2',   label: 'Second Floor', emoji: '🏢', cost: 1800, req: 'roof',   lx: -10, lz: 4.5 },
+  { id: 'walls2',   label: '2F Walls',     emoji: '🧱', cost: 1300, req: 'floor2', lx: -10, lz: 1 },
+  { id: 'windows2', label: '2F Windows',   emoji: '🪟', cost: 950,  req: 'walls2', lx: -10, lz: -5 },
+  { id: 'balcony',  label: 'Balcony',      emoji: '🛖', cost: 1200, req: 'floor2', lx: -3,  lz: -7 },
+  { id: 'roof2',    label: '2F Roof',      emoji: '🏠', cost: 2400, req: 'walls2', lx: -6,  lz: 7.5 },
+  { id: 'flag',     label: 'Rooftop Flag', emoji: '🚩', cost: 1500, req: 'roof2',  lx: 0,   lz: 8 },
+];
+export const SIDE_BY_ID = Object.fromEntries(SIDE_BUILDS.map((b) => [b.id, b]));
+
 export const BASE_INCOME = 3;      // cash per orb at the start
 export const DROP_INTERVAL = 0.95; // seconds between orbs (before speed upgrades)
 export const START_CASH = 55;

@@ -683,6 +683,25 @@ export function hubRouter() {
     res.json({ ok: true });
   });
 
+  // ---- cross-device per-account game saves (so progress follows you) ----
+  r.get('/gamesave/:game', (req, res) => {
+    const u = getUser(clean(req.query.name).toLowerCase());
+    const game = cleanGameId(req.params.game);
+    res.json({ data: (u && u.gameSaves && u.gameSaves[game]) || null });
+  });
+  r.post('/gamesave', (req, res) => {
+    const name = clean(req.body?.name);
+    const game = cleanGameId(req.body?.game);
+    if (!name || !game) return res.json({ ok: false });
+    const json = JSON.stringify(req.body?.data ?? null);
+    if (json.length > 40000) return res.json({ ok: false, error: 'save too large' });
+    const u = ensureUser(name);
+    if (!u.gameSaves) u.gameSaves = {};
+    u.gameSaves[game] = req.body?.data ?? null;
+    save();
+    res.json({ ok: true });
+  });
+
   // The dashboard polls this — it doubles as the hub presence heartbeat.
   r.get('/social/:name', (req, res) => {
     const nameLower = clean(req.params.name).toLowerCase();
