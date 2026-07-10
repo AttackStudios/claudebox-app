@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b0f">
+<title>Moderation · ClaudeBox</title>
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { color-scheme: dark; }
+  body { background: radial-gradient(1200px 600px at 50% -10%, #17203a, #0a0b12 60%); min-height: 100vh; color: #e9edf5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  header .logo { width: 40px; height: 40px; }
+  header h1 { font-size: 24px; font-weight: 800; }
+  header .badge { background: linear-gradient(135deg,#e0503c,#b0261a); color:#fff; font-size:11px; font-weight:800; padding:3px 9px; border-radius:20px; letter-spacing:.4px; }
+  .sub { color: #8a94a8; font-size: 14px; margin: 4px 0 20px 54px; }
+  .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .count { font-size: 15px; font-weight: 700; }
+  .count b { color: #ff8a7a; }
+  .btn { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: #e9edf5; font-weight: 700; font-size: 13px; padding: 9px 15px; border-radius: 10px; cursor: pointer; }
+  .btn:hover { background: rgba(255,255,255,.13); }
+  .btn.danger:hover { background: rgba(224,80,60,.28); border-color: rgba(224,80,60,.5); }
+  .btn.ghost { margin-left: auto; }
+  .top { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); border-radius: 14px; padding: 14px 16px; margin-bottom: 20px; }
+  .top h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: #8a94a8; margin-bottom: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: rgba(224,80,60,.16); border: 1px solid rgba(224,80,60,.3); color: #ffb0a4; font-weight: 700; font-size: 13px; padding: 6px 12px; border-radius: 20px; }
+  .chip b { color: #fff; }
+  .card { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .card .r1 { display: flex; align-items: center; gap: 10px; }
+  .card .tgt { font-size: 18px; font-weight: 800; }
+  .card .reason { background: rgba(224,80,60,.2); color: #ffb0a4; font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 8px; }
+  .card .meta { color: #8a94a8; font-size: 13px; margin: 8px 0 0; }
+  .card .meta a { color: #7fbcff; text-decoration: none; }
+  .card .det { margin-top: 10px; background: rgba(0,0,0,.25); border-radius: 9px; padding: 10px 12px; font-size: 14px; color: #cfd6e4; white-space: pre-wrap; }
+  .card .acts { margin-top: 12px; display: flex; gap: 8px; }
+  .empty, .locked { text-align: center; padding: 70px 20px; color: #8a94a8; }
+  .empty .em, .locked .em { font-size: 52px; margin-bottom: 12px; }
+  .locked h2 { color: #e9edf5; margin-bottom: 6px; }
+  a.back { color: #7fbcff; text-decoration: none; font-size: 14px; display: inline-block; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img class="logo" src="/icons/logo-mark.svg" alt="">
+    <h1>Moderation</h1>
+    <span class="badge">OWNER</span>
+  </header>
+  <div class="sub">Player reports from the in-game menu, newest first.</div>
+  <div id="main"></div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const code = () => localStorage.getItem('claudebox.code') || '';
+const me = () => localStorage.getItem('claudebox.user') || '';
+const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+function ago(t) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+async function api(path, opts) {
+  return fetch('/api' + path, Object.assign({ headers: { 'Content-Type': 'application/json', 'x-cbx-code': code() } }, opts || {}));
+}
+async function load() {
+  const r = await api('/reports?name=' + encodeURIComponent(me()));
+  if (r.status === 403) return locked();
+  const { reports } = await r.json();
+  render(reports || []);
+}
+function locked() {
+  $('#main').innerHTML = `<div class="locked"><div class="em">🔒</div><h2>Owner only</h2>
+    <p>This dashboard is for the ClaudeBox owner. Sign in as the owner in the hub first.</p>
+    <a class="back" href="/">← Back to ClaudeBox</a></div>`;
+}
+function render(reports) {
+  if (!reports.length) {
+    $('#main').innerHTML = `<div class="empty"><div class="em">✅</div><p>No reports right now. All clear!</p><a class="back" href="/">← Back to ClaudeBox</a></div>`;
+    return;
+  }
+  const counts = {};
+  reports.forEach((x) => { counts[x.target] = (counts[x.target] || 0) + 1; });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const bar = `<div class="bar">
+      <span class="count"><b>${reports.length}</b> report${reports.length === 1 ? '' : 's'}</span>
+      <button class="btn ghost" id="refresh">↻ Refresh</button>
+      <button class="btn danger" id="clear">Clear all</button>
+    </div>
+    <div class="top"><h3>Most reported</h3><div class="chips">${top.map(([n, c]) => `<span class="chip"><b>${esc(n)}</b> · ${c}</span>`).join('')}</div></div>`;
+  const cards = reports.map((x) => `
+    <div class="card" data-at="${x.at}">
+      <div class="r1"><span class="tgt">🚩 ${esc(x.target)}</span><span class="reason">${esc(x.reason || 'Report')}</span></div>
+      <div class="meta">by <b>${esc(x.by)}</b> · ${x.game ? esc(x.game) + ' · ' : ''}${ago(x.at)} · <a href="/?u=${encodeURIComponent(x.target)}" target="_blank">view profile ↗</a></div>
+      ${x.details ? `<div class="det">${esc(x.details)}</div>` : ''}
+      <div class="acts"><button class="btn dismiss">Dismiss</button></div>
+    </div>`).join('');
+  $('#main').innerHTML = bar + cards;
+  $('#refresh').onclick = load;
+  $('#clear').onclick = async () => { if (!confirm('Clear ALL reports?')) return; await api('/reports/clear', { method: 'POST', body: JSON.stringify({ name: me() }) }); load(); };
+  document.querySelectorAll('.card .dismiss').forEach((b) => b.onclick = async (e) => {
+    const at = +e.target.closest('.card').dataset.at;
+    await api('/reports/dismiss', { method: 'POST', body: JSON.stringify({ name: me(), at }) });
+    e.target.closest('.card').remove();
+  });
+}
+load();
+</script>
+</body>
+</html>

@@ -698,6 +698,24 @@ export function hubRouter() {
     save();
     res.json({ ok: true });
   });
+  // owner-only moderation dashboard feed
+  r.get('/reports', (req, res) => {
+    if (badgeFor(clean(req.query.name)) !== 'owner') return res.status(403).json({ error: 'owner only' });
+    res.json({ reports: (platform.reports || []).slice(-500).reverse() });
+  });
+  r.post('/reports/dismiss', (req, res) => {
+    if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false });
+    const at = +req.body?.at;
+    platform.reports = (platform.reports || []).filter((x) => x.at !== at);
+    save();
+    res.json({ ok: true });
+  });
+  r.post('/reports/clear', (req, res) => {
+    if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false });
+    platform.reports = [];
+    save();
+    res.json({ ok: true });
+  });
 
   // ---- cross-device per-account game saves (so progress follows you) ----
   r.get('/gamesave/:game', (req, res) => {

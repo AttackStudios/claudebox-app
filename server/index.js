@@ -72,6 +72,7 @@ app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wi
 app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));
 app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
 app.get('/games/tycoon', (req, res) => res.sendFile(path.join(ROOT, 'public', 'tycoon', 'index.html')));
+app.get('/mod', (req, res) => res.sendFile(path.join(ROOT, 'public', 'mod', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.use('/api', hubRouter());
