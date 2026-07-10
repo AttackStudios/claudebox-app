@@ -4,15 +4,14 @@
 
 const B = (x, y, z, sx, sy, sz, color, opts = {}) => ({ x, y, z, sx, sy, sz, color, ...opts });
 
-// stairs from (x,z) rising toward +dir ('x'|'z'), w wide, each step 0.5 tall/1 deep
-function ramp(x, y0, z, dir, steps, w, color) {
-  const out = [];
-  for (let i = 0; i < steps; i++) {
-    const h = 0.5 * (i + 1);
-    if (dir === 'x') out.push(B(x + i, y0 + h / 2, z, 1, h, w, color));
-    else out.push(B(x, y0 + h / 2, z + i, w, h, 1, color));
-  }
-  return out;
+// A SLOPE (smooth ramp) centred at (cx,cz), base height y0, `len` long along
+// `axis` ('x'|'z'), `rise` tall, `w` wide. up=+1 rises toward +axis, -1 toward
+// -axis. One box carrying `ramp` metadata; collision interpolates the floor
+// height along it and the client renders a tilted plank.
+function slope(cx, y0, cz, axis, len, rise, w, up, color) {
+  const sx = axis === 'x' ? len : w;
+  const sz = axis === 'z' ? len : w;
+  return B(cx, y0 + rise / 2, cz, sx, rise, sz, color, { ramp: { axis, up, rise } });
 }
 
 // ================= ARENA — bright white box with team-colour trim =====
@@ -35,8 +34,8 @@ export const ARENA = {
     // side platforms + their stairs
     B(-26, 1.5, 0, 10, 3, 14, AR_W2, { walk: true }),
     B(26, 1.5, 0, 10, 3, 14, AR_W2, { walk: true }),
-    ...ramp(-19.5, 0, -12, 'x', 6, 5, AR_ACC).map((b) => ({ ...b, x: -19.5 - (b.x + 19.5) })),
-    ...ramp(19.5, 0, 12, 'x', 6, 5, AR_ACC),
+    slope(-22, 0, -12, 'x', 6, 3, 5, -1, AR_ACC),
+    slope(22, 0, 12, 'x', 6, 3, 5, 1, AR_ACC),
     // scattered cover across the bigger floor
     B(-6, 0.75, 15, 4, 1.5, 2, AR_ACC), B(6, 0.75, -15, 4, 1.5, 2, AR_ACC),
     B(0, 0.6, -11, 2.5, 1.2, 2.5, AR_W2), B(0, 0.6, 11, 2.5, 1.2, 2.5, AR_W2),
@@ -77,8 +76,8 @@ export const BATTLEGROUND = {
     B(-21, 3, -15, 16, 6, 12, BG_G, { walk: true }),
     B(21, 3, 15, 16, 6, 12, BG_G, { walk: true }),
     B(-21, 6.6, -15, 17, 1.2, 13, BG_B), B(21, 6.6, 15, 17, 1.2, 13, BG_B),
-    ...ramp(-11, 0, -21, 'x', 12, 3.5, BG_B),
-    ...ramp(11, 0, 21, 'x', 12, 3.5, BG_B).map((b) => ({ ...b, x: 11 - (b.x - 11) })),
+    slope(-5.5, 0, -21, 'x', 12, 6, 3.5, 1, BG_B),
+    slope(5.5, 0, 21, 'x', 12, 6, 3.5, -1, BG_B),
     // central crate yards
     B(0, 1, 0, 2.6, 2, 2.6, BG_C), B(3, 0.75, 0.8, 1.6, 1.5, 1.6, BG_C),
     B(-4.5, 1.4, 4.5, 2.2, 2.8, 2.2, BG_C), B(9, 1, -7.5, 2.6, 2, 2.6, BG_C),

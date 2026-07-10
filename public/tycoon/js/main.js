@@ -137,7 +137,7 @@ function stepMesh(step) {
 
 // ---- house structures → { group, colliders(plot-local) } ----
 const HX = 11, HZB = 9, HZF = -8, HW = 5, HT = 0.5;   // house extents / wall height
-const F2 = 5.9, HW2 = 4.3;                             // second-floor deck top, upper wall height
+const F2 = HW + 0.5, HW2 = 4.3;                        // second-floor surface = roof top; upper wall height
 function wallRing(g, cols, baseY, h, color, door) {
   const m = smat(color); const yc = baseY + h / 2;
   g.add(box(2 * HX + HT, h, HT, 0, yc, HZB, m)); cols.push({ x0: -HX, x1: HX, y0: baseY, y1: baseY + h, z0: HZB - 0.4, z1: HZB + 0.4 });
@@ -159,27 +159,37 @@ function structureMesh(id) {
     case 'walls': wallRing(g, cols, 0, HW, WALL, true); break;
     case 'windows': g.add(winPane(-HX - 0.08, 2.7, -3, Math.PI / 2), winPane(-HX - 0.08, 2.7, 4, Math.PI / 2), winPane(HX + 0.08, 2.7, -3, Math.PI / 2), winPane(HX + 0.08, 2.7, 4, Math.PI / 2), winPane(-5, 2.7, HZB + 0.08, 0), winPane(5, 2.7, HZB + 0.08, 0)); break;
     case 'roof': {
-      g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, HW + 0.25, (HZB + HZF) / 2, smat(ROOF)));
+      // a frame with a stairwell opening (HOLE) at the ramp mouth, so the ramp
+      // to the 2nd floor comes up through it instead of clipping the slab. The
+      // roof top (HW+0.5) doubles as the walkable second-floor surface.
+      const RX0 = -HX - 0.6, RX1 = HX + 0.6, RZ0 = HZF - 0.6, RZ1 = HZB + 0.6;
+      const hx0 = 6.4, hx1 = 10.6, hz0 = 4.8, hz1 = 8;
+      const piece = (x0, x1, z0, z1) => { g.add(box(x1 - x0, 0.5, z1 - z0, (x0 + x1) / 2, HW + 0.25, (z0 + z1) / 2, smat(ROOF))); cols.push({ x0, x1, y0: HW, y1: HW + 0.5, z0, z1, floor: true }); };
+      piece(RX0, hx0, RZ0, RZ1);   // left of the opening
+      piece(hx1, RX1, RZ0, RZ1);   // right of the opening
+      piece(hx0, hx1, RZ0, hz0);   // in front of the opening
+      piece(hx0, hx1, hz1, RZ1);   // behind the opening
       g.add(box(2 * HX + 1.6, 0.4, 0.6, 0, HW + 0.55, HZF - 0.4, smat(0x7a3a2e)));
       g.add(box(2 * HX + 1.6, 0.4, 0.6, 0, HW + 0.55, HZB + 0.4, smat(0x7a3a2e)));
-      cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: HW, y1: HW + 0.5, z0: HZF - 0.6, z1: HZB + 0.6, floor: true }); break;
+      break;
     }
     case 'chimney': { g.add(box(1.3, 3, 1.3, HX - 3, HW + 1.5, HZB - 3, smat(0x8a5a4a))); g.add(box(1.5, 0.4, 1.5, HX - 3, HW + 3, HZB - 3, smat(0x5a3a2e)));
       for (let i = 0; i < 3; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.4 + i * 0.15, 8, 6), new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.35 - i * 0.08 })); s.position.set(HX - 3, HW + 3.6 + i * 0.9, HZB - 3); g.add(s); }
       cols.push(aabb(HX - 3, HZB - 3, 0.7, HW + 3, 0.7)); break; }
     case 'floor2': {
-      g.add(box(2 * HX - 0.4, 0.5, HZB - HZF - 0.4, 0, F2 - 0.25, (HZB + HZF) / 2, smat(0xb0a088)));
-      cols.push({ x0: -HX + 0.2, x1: HX - 0.2, y0: F2 - 0.5, y1: F2, z0: HZF + 0.2, z1: HZB - 0.2, floor: true });
-      // a RAMP up to the second floor — a smooth slope, set clear of the walls.
-      // Collision is a chain of thin flat slabs (no tall boxes) so you can't get
-      // pushed sideways / clipped out while walking up.
+      // The roof (required first) IS the second-floor surface. This just adds the
+      // RAMP up through the roof's stairwell opening, plus railings. The ramp
+      // collision is a chain of thin flat slabs so you can't get clipped sideways.
       const rx = 8.5, rz0 = -2, rz1 = 6.5, rlen = rz1 - rz0;
       const plank = box(3.2, 0.4, Math.hypot(rlen, F2), rx, F2 / 2, (rz0 + rz1) / 2, smat(0xa0895f));
       plank.rotation.x = -Math.atan2(F2, rlen); g.add(plank);
       const N = 16;
       for (let i = 0; i <= N; i++) { const tz = rz0 + (i / N) * rlen, h = (i / N) * F2; cols.push({ x0: rx - 1.55, x1: rx + 1.55, y0: h - 0.5, y1: h + 0.06, z0: tz - (rlen / N * 0.5 + 0.35), z1: tz + (rlen / N * 0.5 + 0.35), floor: true }); }
-      for (let i = 0; i <= 5; i++) { const tz = rz0 + (i / 5) * rlen, h = (i / 5) * F2; g.add(box(0.16, 1.0, 0.16, rx + 1.65, h + 0.55, tz, smat(0x6b5a3a))); }
-      // railing posts around the deck
+      for (let i = 0; i <= 5; i++) { const tz = rz0 + (i / 5) * rlen, h = (i / 5) * F2; g.add(box(0.16, 1.0, 0.16, rx + 1.75, h + 0.55, tz, smat(0x6b5a3a))); }
+      // guard rails around the rooftop opening (leave the ramp mouth clear) + deck perimeter
+      g.add(box(4.4, 1.0, 0.16, 8.5, F2 + 0.55, 8, smat(0x6b5a3a)));
+      g.add(box(0.16, 1.0, 3.4, 6.4, F2 + 0.55, 6.3, smat(0x6b5a3a)));
+      g.add(box(0.16, 1.0, 3.4, 10.6, F2 + 0.55, 6.3, smat(0x6b5a3a)));
       for (let x = -HX + 1; x <= HX - 1; x += 3) { g.add(box(0.18, 1.1, 0.18, x, F2 + 0.55, HZF + 0.3, smat(0x6b5a3a))); g.add(box(0.18, 1.1, 0.18, x, F2 + 0.55, HZB - 0.3, smat(0x6b5a3a))); }
       break;
     }

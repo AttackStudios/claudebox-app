@@ -194,6 +194,16 @@ function buildMap(def) {
     const mat = b.glow
       ? new THREE.MeshBasicMaterial({ color: b.color })
       : new THREE.MeshLambertMaterial({ color: b.color, map: panels && !b.plain ? panelTex(Math.max(b.sx, b.sz), Math.max(b.sy, 1)) : null });
+    if (b.ramp) {   // draw a tilted plank instead of a stack of steps
+      const len = b.ramp.axis === 'x' ? b.sx : b.sz, wid = b.ramp.axis === 'x' ? b.sz : b.sx;
+      const slopeLen = Math.hypot(len, b.ramp.rise);
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(b.ramp.axis === 'x' ? slopeLen : wid, 0.4, b.ramp.axis === 'x' ? wid : slopeLen), mat);
+      plank.position.set(b.x, (b.y - b.sy / 2) + b.ramp.rise / 2, b.z);
+      const ang = Math.atan2(b.ramp.rise, len) * (b.ramp.up < 0 ? -1 : 1);
+      if (b.ramp.axis === 'x') plank.rotation.z = ang; else plank.rotation.x = -ang;
+      mapGroup.add(plank);
+      continue;
+    }
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.sx, b.sy, b.sz), mat);
     mesh.position.set(b.x, b.y, b.z);
     mapGroup.add(mesh);
@@ -421,6 +431,7 @@ function collideMove(nx, ny, nz) {
   // horizontal push-out per axis
   const solveAxis = (x, z) => {
     for (const b of mapBoxes) {
+      if (b.ramp) continue;   // slopes are walkable floors — never block horizontally
       const top = b.y + b.sy / 2, bot = b.y - b.sy / 2;
       if (ny + h < bot + 0.01 || ny > top - 0.28) continue;   // can step onto low tops
       const minX = b.x - b.sx / 2 - r, maxX = b.x + b.sx / 2 + r;
@@ -440,6 +451,16 @@ function groundAt(x, z, fromY) {
   let g = 0;
   const r = MOVE.radius * 0.8;
   for (const b of mapBoxes) {
+    if (b.ramp) {   // interpolate the slope height under the player
+      if (x > b.x - b.sx / 2 - r && x < b.x + b.sx / 2 + r && z > b.z - b.sz / 2 - r && z < b.z + b.sz / 2 + r) {
+        const len = b.ramp.axis === 'x' ? b.sx : b.sz;
+        let f = ((b.ramp.axis === 'x' ? x - b.x : z - b.z) + len / 2) / len;
+        if (b.ramp.up < 0) f = 1 - f;
+        const hh = (b.y - b.sy / 2) + Math.max(0, Math.min(1, f)) * b.ramp.rise;
+        if (hh <= fromY + 0.45 && hh > g) g = hh;
+      }
+      continue;
+    }
     const top = b.y + b.sy / 2;
     if (top > fromY + 0.45) continue;
     if (x > b.x - b.sx / 2 - r && x < b.x + b.sx / 2 + r &&

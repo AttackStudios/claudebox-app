@@ -17,6 +17,7 @@ function collideXZ(boxes, x, z, y) {
   const r = MOVE.radius;
   for (let pass = 0; pass < 2; pass++) {
     for (const b of boxes) {
+      if (b.ramp) continue;   // slopes are walkable — don't wedge bots on them
       if (y + 1.6 < b.y - b.sy / 2 || y > b.y + b.sy / 2) continue;
       const minX = b.x - b.sx / 2 - r, maxX = b.x + b.sx / 2 + r;
       const minZ = b.z - b.sz / 2 - r, maxZ = b.z + b.sz / 2 + r;
