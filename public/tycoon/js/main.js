@@ -317,19 +317,33 @@ function updatePrompt() {
   hoverBtn = null;
   const myPlot = plots.find((p) => p.ownerId === net.id);
   if (myPlot && !player.dead) {
-    // buttons are at local (x, .., -4.5); convert player pos to plot-local
+    // find the nearest not-yet-owned pad within reach
+    let best = 99;
     for (const [id, pd] of myPlot.pads) {
       if (unlocks.has(id)) continue;
       const wp = new THREE.Vector3(pd.x, 0.35, -4.5).applyEuler(myPlot.group.rotation).add(myPlot.group.position);
       const dx = player.pos.x - wp.x, dz = player.pos.z - wp.z;
-      if (dx * dx + dz * dz < 5.3) { hoverBtn = { id, b: pd.b }; break; }
+      const d2 = dx * dx + dz * dz;
+      if (d2 < 11 && d2 < best) { best = d2; hoverBtn = { id, b: pd.b }; }
     }
   }
   if (hoverBtn) {
     const b = hoverBtn.b, ok = cash >= b.cost;
     el.classList.remove('hidden'); el.classList.toggle('cant', !ok);
-    el.innerHTML = `${b.emoji} <b>${b.label}</b> — 💰${short(b.cost)} ${ok ? `· press <span class="buy-key">E</span>` : '· not enough cash'}`;
+    el.innerHTML = ok
+      ? `${b.emoji} <b>${b.label}</b> · 💰${short(b.cost)} — <span class="buy-key">TAP</span> or press <span class="buy-key">E</span>`
+      : `${b.emoji} <b>${b.label}</b> · need 💰${short(b.cost)} (you have ${short(cash)})`;
   } else el.classList.add('hidden');
+  updateObjective();
+}
+function updateObjective() {
+  const ob = $('#objective'); if (!ob) return;
+  const powers = unlockedPowers().length;
+  let txt;
+  if (powers === 0) txt = '🏗️ Stand on a glowing pad and TAP to buy your first power';
+  else if (powers < 5) txt = `⚔️ Press 1-${ELEMENTS.length}${isTouch ? ' / tap a slot' : ''} to pick a power, then ${isTouch ? 'tap 🔥' : 'click'} to blast rivals — buy more powers to get stronger`;
+  else txt = '🌟 All powers unlocked! Rule the arena.';
+  if (ob.textContent !== txt) ob.textContent = txt;
 }
 function tryBuy() {
   if (!hoverBtn) return;
@@ -391,7 +405,8 @@ function updatePlayer(dt) {
   const spd = running ? RUN : WALK;
   const len = Math.hypot(f, r) || 1;
   const fx = Math.sin(camYaw), fz = Math.cos(camYaw);
-  const rx = Math.sin(camYaw + Math.PI / 2), rz = Math.cos(camYaw + Math.PI / 2);
+  // right vector (D = strafe right). Uses -90° so A/D aren't inverted.
+  const rx = Math.sin(camYaw - Math.PI / 2), rz = Math.cos(camYaw - Math.PI / 2);
   let moving = (f || r) && !player.dead;
   if (moving) {
     const vx = (fx * f + rx * r) / len * spd, vz = (fz * f + rz * r) / len * spd;
@@ -512,10 +527,14 @@ function setupTouch() {
 const net = new Net();
 net.on('welcome', (msg) => {
   for (const d of msg.players) makeRemote(d);
+  // spawn where the server put us (at our own plot) — not stuck at world origin
+  if (msg.you.pos) { player.pos.x = msg.you.pos.x; player.pos.y = msg.you.pos.y || 0; player.pos.z = msg.you.pos.z; }
   // my plot
   if (msg.you.plot != null && plots[msg.you.plot]) {
     plots[msg.you.plot].ownerId = net.id; plots[msg.you.plot].setOwner(msg.you.name, true);
     plots[msg.you.plot].setUnlocks([...unlocks]); ownerPlot.set(net.id, msg.you.plot);
+    // face our plot's buy pads (toward the centre arena)
+    camYaw = PLOTS[msg.you.plot].ry + Math.PI;
     // replay saved unlocks to the server so others see my built plot
     for (const u of unlocks) net.send({ t: 'unlock', id: u });
   }
@@ -607,6 +626,9 @@ async function boot() {
   await preloadAvatars(['boy', 'girl']);
   myAvatar = makeAvatar(profile); scene.add(myAvatar.group);
   loadSave(); setCash(cash); buildHotbar();
+  // buying works by tapping/clicking the prompt (so phones can buy too) or pressing E
+  $('#prompt').addEventListener('click', () => tryBuy());
+  $('#prompt').addEventListener('touchend', (e) => { e.preventDefault(); tryBuy(); });
   if (isTouch) setupTouch();
   net.connect();
   net.join({ name: localStorage.getItem('claudebox.user'), avatar: profile, code: localStorage.getItem('claudebox.code') || '' });

@@ -89,3 +89,15 @@ html, body { height: 100%; overflow: hidden; background: #0a0b18; font-family: -
   #health-wrap { bottom: 12px; }
   #health-bar { width: 200px; }
 }
+
+/* prompt is now a real (tappable) button — works on phone */
+#prompt { font: inherit; color: #fff; cursor: pointer; -webkit-appearance: none; appearance: none; }
+#prompt:active { transform: translateX(-50%) scale(0.95); }
+#prompt:not(.cant) { border-color: rgba(255,215,106,.7); box-shadow: 0 6px 22px rgba(255,207,92,.35); }
+
+/* objective banner */
+#objective { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); z-index: 7;
+  background: linear-gradient(135deg, rgba(255,122,58,.92), rgba(138,58,208,.92)); color: #fff;
+  font-weight: 700; font-size: 14px; padding: 9px 20px; border-radius: 22px; text-align: center;
+  box-shadow: 0 6px 22px rgba(0,0,0,.45); max-width: 92vw; border: 1px solid rgba(255,255,255,.25); }
+@media (max-width: 720px) { #objective { top: 46px; font-size: 12.5px; padding: 7px 14px; } #prompt { bottom: 168px; font-size: 16px; padding: 13px 22px; } }
