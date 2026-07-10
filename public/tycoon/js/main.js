@@ -351,16 +351,22 @@ function applySave(raw) {
   if (typeof raw.cash === 'number') cash = raw.cash;
   if (Array.isArray(raw.unlocks)) raw.unlocks.forEach((u) => { if (stepDef(u) || SIDE_BY_ID[u]) unlocks.add(u); });
 }
-function loadSaveLocal() { try { applySave(JSON.parse(localStorage.getItem('tycoon.save.' + saveName) || '{}')); } catch {} }
-// Progress lives on the account (server) so it follows you across devices; the
-// server wins, with localStorage as an offline fallback / one-time migration.
+function readLocal() { try { return JSON.parse(localStorage.getItem('tycoon.save.' + saveName) || 'null'); } catch { return null; } }
+// Progress follows you across devices. We MERGE the account (server) save with
+// this device's local save — union the unlocks, keep the higher cash — so a
+// stale/empty save on either side can never wipe your progress. Then we push
+// the merged result back so both converge.
 async function loadProgress(name) {
+  let server = null;
   try {
     const r = await fetch('/api/gamesave/tycoon?name=' + encodeURIComponent(name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } });
-    const j = await r.json();
-    if (j && j.data && (typeof j.data.cash === 'number' || Array.isArray(j.data.unlocks))) { applySave(j.data); return; }
+    const j = await r.json(); if (j && j.data) server = j.data;
   } catch {}
-  loadSaveLocal(); saveServer();   // migrate any local progress up to the account
+  const local = readLocal();
+  const cashes = [server?.cash, local?.cash].filter((c) => typeof c === 'number');
+  const allUnlocks = [...new Set([...(server?.unlocks || []), ...(local?.unlocks || [])])];
+  applySave({ cash: cashes.length ? Math.max(...cashes) : undefined, unlocks: allUnlocks });
+  if (server || local) save();   // write the merged result to BOTH sides
 }
 let saveDirty = false;
 function saveServer() { saveDirty = true; }
