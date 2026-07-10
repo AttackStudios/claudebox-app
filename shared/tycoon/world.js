@@ -28,21 +28,37 @@ export const ELEMENTS = [
 ];
 export const ELEMENT_BY_ID = Object.fromEntries(ELEMENTS.map((e) => [e.id, e]));
 
-// Unlock tree on each plot. `income` buttons raise your cash-per-orb; `power`
-// buttons unlock an element you can then use in PvP.
+// The unlock tree is an ORDERED sequence: only the next unbought step is shown,
+// and its pad sits at the local (lx,lz) spot on the plot where that thing gets
+// built. Buy it → the build appears there → the next step's pad appears.
+//   kind 'income' raises cash-per-orb (income = max owned).
+//   kind 'speed'  lowers the drop interval (interval = min owned).
+//   kind 'power'  unlocks an element you can use in PvP; builds a crystal pedestal.
+// Local coords: +Z is the back (dropper/conveyor), -Z is the front (facing the
+// arena) where the power pedestals line up.
 export const BUTTONS = [
-  { id: 'drop2', label: 'Dropper II',    emoji: '⚙️', cost: 60,   kind: 'income', income: 3 },
-  { id: 'fire',  label: 'Fire Power',    emoji: '🔥', cost: 120,  kind: 'power', element: 'fire' },
-  { id: 'water', label: 'Water Power',   emoji: '💧', cost: 260,  kind: 'power', element: 'water' },
-  { id: 'drop3', label: 'Dropper III',   emoji: '⚙️', cost: 420,  kind: 'income', income: 8 },
-  { id: 'earth', label: 'Earth Power',   emoji: '🪨', cost: 560,  kind: 'power', element: 'earth' },
-  { id: 'drop4', label: 'Dropper IV',    emoji: '⚙️', cost: 900,  kind: 'income', income: 18 },
-  { id: 'air',   label: 'Air Power',     emoji: '💨', cost: 1200, kind: 'power', element: 'air' },
-  { id: 'light', label: 'Lightning',     emoji: '⚡', cost: 2000, kind: 'power', element: 'lightning' },
+  { id: 'drop2',    kind: 'income', label: 'Dropper II',       emoji: '⚙️', cost: 45,    income: 6,   lx: -7,  lz: 6.5, build: 'dropper' },
+  { id: 'fire',     kind: 'power',  label: 'Fire Crystal',     emoji: '🔥', cost: 110,   element: 'fire',      lx: -8, lz: -4, build: 'pedestal' },
+  { id: 'drop3',    kind: 'income', label: 'Dropper III',      emoji: '⚙️', cost: 260,   income: 14,  lx: -4,  lz: 7,   build: 'dropper' },
+  { id: 'speed1',   kind: 'speed',  label: 'Faster Belt',      emoji: '💨', cost: 480,   interval: 0.75, lx: -1, lz: 7,  build: 'dropper' },
+  { id: 'water',    kind: 'power',  label: 'Water Crystal',    emoji: '💧', cost: 800,   element: 'water',     lx: -4, lz: -4, build: 'pedestal' },
+  { id: 'drop4',    kind: 'income', label: 'Dropper IV',       emoji: '⚙️', cost: 1300,  income: 34,  lx: 2,   lz: 7,   build: 'dropper' },
+  { id: 'collect2', kind: 'income', label: 'Golden Collector', emoji: '🏆', cost: 2100,  income: 52,  lx: 6.6, lz: 6,   build: 'collector' },
+  { id: 'earth',    kind: 'power',  label: 'Earth Crystal',    emoji: '🪨', cost: 3200,  element: 'earth',     lx: 0,  lz: -4, build: 'pedestal' },
+  { id: 'drop5',    kind: 'income', label: 'Dropper V',        emoji: '⚙️', cost: 5000,  income: 95,  lx: -6,  lz: 5,   build: 'dropper' },
+  { id: 'speed2',   kind: 'speed',  label: 'Turbo Belt',       emoji: '💨', cost: 7500,  interval: 0.55, lx: -2, lz: 5,  build: 'dropper' },
+  { id: 'air',      kind: 'power',  label: 'Air Crystal',      emoji: '💨', cost: 11000, element: 'air',       lx: 4,  lz: -4, build: 'pedestal' },
+  { id: 'drop6',    kind: 'income', label: 'Dropper VI',       emoji: '⚙️', cost: 16000, income: 210, lx: 3,   lz: 5,   build: 'dropper' },
+  { id: 'vault',    kind: 'income', label: 'Cash Vault',       emoji: '🏦', cost: 24000, income: 330, lx: 7.5, lz: 4,   build: 'collector' },
+  { id: 'lightning',kind: 'power',  label: 'Lightning Crystal',emoji: '⚡', cost: 36000, element: 'lightning', lx: 8,  lz: -4, build: 'pedestal' },
+  { id: 'drop7',    kind: 'income', label: 'Dropper VII',      emoji: '⚙️', cost: 55000, income: 540, lx: -8,  lz: 4,   build: 'dropper' },
+  { id: 'drop8',    kind: 'income', label: 'Dropper VIII',     emoji: '⚙️', cost: 90000, income: 900, lx: 8,   lz: 2,   build: 'dropper' },
 ];
 export const BUTTON_BY_ID = Object.fromEntries(BUTTONS.map((b) => [b.id, b]));
+export const POWER_STEPS = BUTTONS.filter((b) => b.kind === 'power');
 
-export const BASE_INCOME = 1;      // cash per orb at the start
-export const DROP_INTERVAL = 1.1;  // seconds between orbs
+export const BASE_INCOME = 3;      // cash per orb at the start
+export const DROP_INTERVAL = 0.95; // seconds between orbs (before speed upgrades)
+export const START_CASH = 55;
 export const MAX_HP = 100;
 export const RESPAWN = 3;           // seconds

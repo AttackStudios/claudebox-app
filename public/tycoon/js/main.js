@@ -12,7 +12,7 @@ import {
 
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const START_CASH = 80;
+const START_CASH = 55;   // mirrors world.js
 const WALK = 4.4, RUN = 8.0;
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
@@ -53,78 +53,96 @@ const arenaTxt = makeSprite('⚔ BATTLE ARENA ⚔', 46, '#aab6ff');
 arenaTxt.position.set(0, 6, 0); arenaTxt.scale.set(16, 4, 1); scene.add(arenaTxt);
 
 // ---------------- plots ----------------
-// Each plot renders locally; interaction is enabled only on the player's own.
+// Each plot shows ONE build pad at a time (the next step), sitting where that
+// thing gets built. Buying it constructs the mesh there and reveals the next.
 const plots = PLOTS.map((def) => buildPlot(def));
 const ownerPlot = new Map(); // playerId -> plot index
 
 function buildPlot(def) {
   const g = new THREE.Group();
   g.position.set(def.x, 0, def.z); g.rotation.y = def.ry;
-  // local +Z = outward (back), -Z = toward centre (front)
+  // local +Z = back (starter machine), -Z = front (toward the arena)
   const pad = new THREE.Mesh(new THREE.BoxGeometry(22, 0.4, 22),
     new THREE.MeshStandardMaterial({ color: 0x222a4d, roughness: 0.95 }));
   pad.position.set(0, 0.2, 3); pad.receiveShadow = true; g.add(pad);
   const rim = new THREE.Mesh(new THREE.BoxGeometry(22.4, 0.5, 0.5),
     new THREE.MeshStandardMaterial({ color: 0x3a4680 }));
   rim.position.set(0, 0.25, -8); g.add(rim);
-
-  // dropper machine (back)
+  // starter machine: dropper + conveyor + collector (always present)
   const dropper = new THREE.Mesh(new THREE.BoxGeometry(3.2, 3.4, 3.2),
     new THREE.MeshStandardMaterial({ color: 0x4a5488, metalness: 0.4, roughness: 0.5 }));
   dropper.position.set(-7, 1.9, 9); dropper.castShadow = true; g.add(dropper);
   const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 1.2),
     new THREE.MeshStandardMaterial({ color: 0x2a3358 }));
   nozzle.position.set(-7, 0.7, 9); g.add(nozzle);
-  // conveyor
   const conv = new THREE.Mesh(new THREE.BoxGeometry(13, 0.4, 1.8),
     new THREE.MeshStandardMaterial({ color: 0x181d38 }));
   conv.position.set(-0.5, 0.55, 9); g.add(conv);
-  // collector bin (front-ish)
   const bin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2, 2.6),
     new THREE.MeshStandardMaterial({ color: 0xffcf5c, emissive: 0x3a2a00, metalness: 0.3, roughness: 0.5 }));
   bin.position.set(6.6, 1, 9); bin.castShadow = true; g.add(bin);
-
-  // name banner
   const banner = makeSprite('Open Plot', 40, '#9fb0e0');
   banner.position.set(0, 6.2, 9.4); banner.scale.set(10, 2.4, 1); g.add(banner);
-
-  // button discs — row across the front (local -Z)
-  const pads = new Map();
-  BUTTONS.forEach((b, i) => {
-    const x = -8.4 + i * 2.4;
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.3, 24),
-      new THREE.MeshStandardMaterial({ color: 0x39406e, emissive: 0x11142c, roughness: 0.6 }));
-    disc.position.set(x, 0.35, -4.5); g.add(disc);
-    const label = makeSprite(`${b.emoji}\n${short(b.cost)}`, 34, '#ffffff');
-    label.position.set(x, 2.1, -4.5); label.scale.set(2.4, 2.4, 1); g.add(label);
-    pads.set(b.id, { disc, label, b, x });
-  });
-
   scene.add(g);
-  return {
-    def, group: g, dropper, conv, bin, banner, pads,
-    ownerId: null, orbs: [],
-    setOwner(name, mine) {
-      setSprite(banner, mine ? `⭐ ${name} (You)` : name, mine ? '#ffd76a' : '#cfe0ff');
-    },
-    reset() {
-      this.ownerId = null; setSprite(banner, 'Open Plot', '#9fb0e0');
-      for (const [, p] of pads) markPad(p, false);
-      for (const o of this.orbs) g.remove(o); this.orbs = [];
-    },
-    setUnlocks(list) { for (const id of list) { const p = pads.get(id); if (p) markPad(p, true); } },
-    markUnlock(id) { const p = pads.get(id); if (p) markPad(p, true); },
-  };
+  return { def, group: g, dropper, conv, bin, banner, orbs: [], builds: new Map(), unlocked: new Set(), crystals: [], ownerId: null, pad: null, padStep: null };
 }
-function markPad(p, done) {
-  p.disc.material.color.set(done ? colorFor(p.b) : 0x39406e);
-  p.disc.material.emissive.set(done ? colorFor(p.b) : 0x11142c);
-  p.disc.material.emissiveIntensity = done ? 0.5 : 1;
-  setSprite(p.label, done ? `${p.b.emoji}\n✓` : `${p.b.emoji}\n${short(p.cost || p.b.cost)}`, done ? '#8affa0' : '#ffffff');
+
+// the mesh a completed step leaves behind, placed at its (lx,lz)
+function stepMesh(step) {
+  const grp = new THREE.Group(); grp.position.set(step.lx, 0, step.lz);
+  if (step.build === 'pedestal') {
+    const el = ELEMENT_BY_ID[step.element];
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.1, 0.9, 12), new THREE.MeshStandardMaterial({ color: 0x2b3160, roughness: 0.7 }));
+    base.position.y = 0.45; base.castShadow = true; grp.add(base);
+    const cry = new THREE.Mesh(new THREE.OctahedronGeometry(0.62, 0), new THREE.MeshStandardMaterial({ color: el.color, emissive: el.color, emissiveIntensity: 0.85, roughness: 0.25 }));
+    cry.position.y = 1.7; grp.add(cry); grp.userData.crystal = cry;
+    const lp = new THREE.PointLight(el.color, 1.1, 6); lp.position.y = 1.7; grp.add(lp);
+  } else if (step.build === 'collector') {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 2.4), new THREE.MeshStandardMaterial({ color: 0xffcf5c, emissive: 0x3a2a00, metalness: 0.4, roughness: 0.4 }));
+    b.position.y = 1.1; b.castShadow = true; grp.add(b);
+  } else {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 2.4), new THREE.MeshStandardMaterial({ color: 0x4a5488, metalness: 0.4, roughness: 0.5 }));
+    box.position.y = 1.5; box.castShadow = true; grp.add(box);
+    const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.55, 1), new THREE.MeshStandardMaterial({ color: 0x2a3358 }));
+    noz.position.y = 0.6; grp.add(noz);
+  }
+  return grp;
 }
-function colorFor(b) {
-  if (b.kind === 'power') return new THREE.Color(ELEMENT_BY_ID[b.element].color);
-  return new THREE.Color(0xffcf5c);
+
+// the glowing "buy me" pad for the next step
+function padMesh(step) {
+  const grp = new THREE.Group(); grp.position.set(step.lx, 0, step.lz);
+  const col = step.kind === 'power' ? new THREE.Color(ELEMENT_BY_ID[step.element].color) : new THREE.Color(0xffd23f);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 0.3, 24), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6, roughness: 0.5 }));
+  disc.position.y = 0.2; grp.add(disc);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.0, 4.2, 18, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.14, side: THREE.DoubleSide }));
+  beam.position.y = 2.1; grp.add(beam);
+  const label = makeSprite(`${step.emoji} ${step.label}\n💰${short(step.cost)}`, 28, '#ffffff');
+  label.position.y = 3.1; label.scale.set(3.7, 1.85, 1); grp.add(label);
+  return { group: grp, disc, beam };
+}
+
+function plotSetOwner(plot, name, mine) { setSprite(plot.banner, mine ? `⭐ ${name} (You)` : name, mine ? '#ffd76a' : '#cfe0ff'); }
+function plotBuild(plot, id) {
+  if (plot.builds.has(id)) return;
+  const step = BUTTON_BY_ID[id]; if (!step) return;
+  const m = stepMesh(step); plot.builds.set(id, m); plot.group.add(m);
+  if (m.userData.crystal) plot.crystals.push(m.userData.crystal);
+}
+function plotSetUnlocks(plot, list) { for (const id of list) { plot.unlocked.add(id); plotBuild(plot, id); } }
+function plotShowPad(plot) {            // MINE only — reveal the next unbought step
+  if (plot.pad) { plot.group.remove(plot.pad.group); plot.pad = null; }
+  const step = BUTTONS.find((b) => !plot.unlocked.has(b.id));
+  plot.padStep = step || null;
+  if (step) { plot.pad = padMesh(step); plot.group.add(plot.pad.group); }
+}
+function plotReset(plot) {
+  plot.ownerId = null; setSprite(plot.banner, 'Open Plot', '#9fb0e0');
+  for (const [, m] of plot.builds) plot.group.remove(m);
+  plot.builds.clear(); plot.unlocked.clear(); plot.crystals = [];
+  if (plot.pad) { plot.group.remove(plot.pad.group); plot.pad = null; }
+  plot.padStep = null;
+  for (const o of plot.orbs) plot.group.remove(o); plot.orbs = [];
 }
 function short(n) { return n >= 1000 ? (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k' : '' + n; }
 
@@ -185,8 +203,13 @@ let saveName = 'guest';
 
 function income() {
   let inc = BASE_INCOME;
-  for (const id of unlocks) { const b = BUTTON_BY_ID[id]; if (b?.kind === 'income') inc = Math.max(inc, b.income); }
+  for (const id of unlocks) { const b = BUTTON_BY_ID[id]; if (b?.income) inc = Math.max(inc, b.income); }
   return inc;
+}
+function dropInterval() {
+  let iv = DROP_INTERVAL;
+  for (const id of unlocks) { const b = BUTTON_BY_ID[id]; if (b?.interval) iv = Math.min(iv, b.interval); }
+  return iv;
 }
 function unlockedPowers() { return ELEMENTS.filter((e) => unlocks.has(powerBtnId(e.id))); }
 function powerBtnId(el) { return BUTTONS.find((b) => b.element === el)?.id; }
@@ -211,12 +234,12 @@ function makeRemote(d) {
   const rec = { ctrl, group: ctrl.group, tag, interp: new InterpBuffer(), hp: d.hp ?? MAX_HP, dead: !!d.dead };
   remotes.set(d.id, rec);
   // plot ownership
-  if (d.plot != null && plots[d.plot]) { plots[d.plot].ownerId = d.id; plots[d.plot].setOwner(d.name, false); plots[d.plot].setUnlocks(d.unlocks || []); ownerPlot.set(d.id, d.plot); }
+  if (d.plot != null && plots[d.plot]) { const pl = plots[d.plot]; pl.ownerId = d.id; plotSetOwner(pl, d.name, false); plotSetUnlocks(pl, d.unlocks || []); ownerPlot.set(d.id, d.plot); }
   return rec;
 }
 function dropRemote(id) {
   const r = remotes.get(id); if (r) { scene.remove(r.group); remotes.delete(id); }
-  const pi = ownerPlot.get(id); if (pi != null && plots[pi]?.ownerId === id) plots[pi].reset();
+  const pi = ownerPlot.get(id); if (pi != null && plots[pi]?.ownerId === id) plotReset(plots[pi]);
   ownerPlot.delete(id);
 }
 
@@ -315,24 +338,19 @@ let hoverBtn = null;
 function updatePrompt() {
   const el = $('#prompt');
   hoverBtn = null;
-  const myPlot = plots.find((p) => p.ownerId === net.id);
-  if (myPlot && !player.dead) {
-    // find the nearest not-yet-owned pad within reach
-    let best = 99;
-    for (const [id, pd] of myPlot.pads) {
-      if (unlocks.has(id)) continue;
-      const wp = new THREE.Vector3(pd.x, 0.35, -4.5).applyEuler(myPlot.group.rotation).add(myPlot.group.position);
-      const dx = player.pos.x - wp.x, dz = player.pos.z - wp.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < 11 && d2 < best) { best = d2; hoverBtn = { id, b: pd.b }; }
-    }
+  const mp = plots.find((p) => p.ownerId === net.id);
+  if (mp && mp.padStep && !player.dead) {
+    const s = mp.padStep;
+    const wp = new THREE.Vector3(s.lx, 0.35, s.lz).applyEuler(mp.group.rotation).add(mp.group.position);
+    const dx = player.pos.x - wp.x, dz = player.pos.z - wp.z;
+    if (dx * dx + dz * dz < 12) hoverBtn = s;
   }
   if (hoverBtn) {
-    const b = hoverBtn.b, ok = cash >= b.cost;
+    const s = hoverBtn, ok = cash >= s.cost;
     el.classList.remove('hidden'); el.classList.toggle('cant', !ok);
     el.innerHTML = ok
-      ? `${b.emoji} <b>${b.label}</b> · 💰${short(b.cost)} — <span class="buy-key">TAP</span> or press <span class="buy-key">E</span>`
-      : `${b.emoji} <b>${b.label}</b> · need 💰${short(b.cost)} (you have ${short(cash)})`;
+      ? `${s.emoji} <b>${s.label}</b> · 💰${short(s.cost)} — <span class="buy-key">TAP</span> or press <span class="buy-key">E</span>`
+      : `${s.emoji} <b>${s.label}</b> · need 💰${short(s.cost)} (you have ${short(cash)})`;
   } else el.classList.add('hidden');
   updateObjective();
 }
@@ -347,19 +365,21 @@ function updateObjective() {
 }
 function tryBuy() {
   if (!hoverBtn) return;
-  const b = BUTTON_BY_ID[hoverBtn.id];
-  if (unlocks.has(b.id) || cash < b.cost) { sfx('deny'); return; }
-  setCash(cash - b.cost); unlocks.add(b.id); save();
-  const myPlot = plots.find((p) => p.ownerId === net.id); myPlot?.markUnlock(b.id);
-  net.send({ t: 'unlock', id: b.id });
+  const mp = plots.find((p) => p.ownerId === net.id);
+  const s = mp?.padStep;
+  if (!s || s.id !== hoverBtn.id || unlocks.has(s.id)) return;
+  if (cash < s.cost) { sfx('deny'); return; }
+  setCash(cash - s.cost); unlocks.add(s.id); mp.unlocked.add(s.id); save();
+  plotBuild(mp, s.id); plotShowPad(mp);          // build it → reveal the next step
+  net.send({ t: 'unlock', id: s.id });
   sfx('buy');
-  if (b.kind === 'power') {
+  if (s.kind === 'power') {
     refreshHotbar();
-    const idx = ELEMENTS.findIndex((e) => e.id === b.element); if (idx >= 0) selectPower(idx);
+    const idx = ELEMENTS.findIndex((e) => e.id === s.element); if (idx >= 0) selectPower(idx);
     window.ClaudeBox?.completeChallenge?.('tycoon-power');
     if (unlockedPowers().length >= 5) window.ClaudeBox?.completeChallenge?.('tycoon-max');
-    feed(`You unlocked <b>${b.label}</b>!`);
-  } else feed(`You upgraded to <b>${b.label}</b> (+income)`);
+    feed(`Unlocked <b>${s.label}</b>! Press ${idx + 1} & click to blast rivals.`);
+  } else feed(`Built <b>${s.label}</b> — income now 💰${short(income())}/orb`);
 }
 
 // ---------------- economy tick ----------------
@@ -367,7 +387,7 @@ function tickEconomy(dt) {
   const myPlot = plots.find((p) => p.ownerId === net.id);
   if (!myPlot) return;
   dropTimer += dt;
-  if (dropTimer >= DROP_INTERVAL) {
+  if (dropTimer >= dropInterval()) {
     dropTimer = 0;
     // spawn an orb at the dropper, slide it to the bin
     const orb = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 12),
@@ -531,9 +551,10 @@ net.on('welcome', (msg) => {
   if (msg.you.pos) { player.pos.x = msg.you.pos.x; player.pos.y = msg.you.pos.y || 0; player.pos.z = msg.you.pos.z; }
   // my plot
   if (msg.you.plot != null && plots[msg.you.plot]) {
-    plots[msg.you.plot].ownerId = net.id; plots[msg.you.plot].setOwner(msg.you.name, true);
-    plots[msg.you.plot].setUnlocks([...unlocks]); ownerPlot.set(net.id, msg.you.plot);
-    // face our plot's buy pads (toward the centre arena)
+    const mp = plots[msg.you.plot];
+    mp.ownerId = net.id; plotSetOwner(mp, msg.you.name, true);
+    plotSetUnlocks(mp, [...unlocks]); plotShowPad(mp); ownerPlot.set(net.id, msg.you.plot);
+    // face our plot's build area (toward the centre arena)
     camYaw = PLOTS[msg.you.plot].ry + Math.PI;
     // replay saved unlocks to the server so others see my built plot
     for (const u of unlocks) net.send({ t: 'unlock', id: u });
@@ -546,7 +567,7 @@ net.on('welcome', (msg) => {
 });
 net.on('player.join', (m) => { if (m.player.id !== net.id && !remotes.has(m.player.id)) { makeRemote(m.player); addChat('System', `${m.player.name} joined`, false, true); } });
 net.on('player.leave', (m) => dropRemote(m.id));
-net.on('player.unlock', (m) => { const pi = ownerPlot.get(m.id); if (pi != null) plots[pi].markUnlock(m.btn); });
+net.on('player.unlock', (m) => { const pi = ownerPlot.get(m.id); if (pi != null && plots[pi]) { plots[pi].unlocked.add(m.btn); plotBuild(plots[pi], m.btn); } });
 net.on('snapshot', (m) => {
   for (const row of m.players) { const [id, x, y, z, ry, anim, hp, dead] = row; if (id === net.id) { if (typeof hp === 'number' && !player.dead) setHealth(hp); continue; } const r = remotes.get(id); if (r) { r.interp.push([x, y, z, ry, anim]); if (r.hp !== hp) { r.hp = hp; r.tag.setHp(hp, !!dead); } r.dead = !!dead; r.group.visible = !dead; } }
   // projectiles
@@ -600,6 +621,8 @@ function frame() {
     if (s) { r.group.position.set(s[0], s[1], s[2]); r.group.rotation.y = s[3]; r.ctrl.setAnim(s[4]); r.ctrl.moveSpeed = s[4] === 'run' ? RUN : s[4] === 'walk' ? WALK : 0; }
     r.ctrl.update(dt);
   }
+  // spin power crystals
+  for (const pl of plots) for (const c of pl.crystals) c.rotation.y += dt * 1.3;
   // projectiles extrapolate
   const tnow = performance.now() / 1000;
   for (const [, p] of projMeshes) {
