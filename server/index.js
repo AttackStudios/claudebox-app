@@ -33,6 +33,8 @@ import { state as bkState, genId as bkGenId, publicPlayer as bkPublicPlayer, clo
 import { handleMessage as bkHandle, onDisconnect as bkDisconnect, makeBroadcaster as bkBroadcaster } from './brook/protocol.js';
 import { state as tyState, makePlayer as tyMakePlayer } from './tycoon/state.js';
 import { handleMessage as tyHandle, onDisconnect as tyDisconnect, makeBroadcaster as tyBroadcaster, simulate as tySimulate, snapshot as tySnapshot } from './tycoon/protocol.js';
+import { state as wrState, genId as wrGenId, publicPlayer as wrPublicPlayer, clock as wrClock } from './webrush/state.js';
+import { handleMessage as wrHandle, onDisconnect as wrDisconnect, makeBroadcaster as wrBroadcaster } from './webrush/protocol.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8787;
@@ -72,6 +74,7 @@ app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wi
 app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));
 app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
 app.get('/games/tycoon', (req, res) => res.sendFile(path.join(ROOT, 'public', 'tycoon', 'index.html')));
+app.get('/games/webrush', (req, res) => res.sendFile(path.join(ROOT, 'public', 'webrush', 'index.html')));
 app.get('/mod', (req, res) => res.sendFile(path.join(ROOT, 'public', 'mod', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
@@ -90,6 +93,7 @@ const wbWss = new WebSocketServer({ noServer: true });
 const rvWss = new WebSocketServer({ noServer: true });
 const bkWss = new WebSocketServer({ noServer: true });
 const tyWss = new WebSocketServer({ noServer: true });
+const wrWss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://x');
   if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -100,6 +104,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/rivals-ws') rvWss.handleUpgrade(req, socket, head, (ws) => rvWss.emit('connection', ws, req));
   else if (pathname === '/brook-ws') bkWss.handleUpgrade(req, socket, head, (ws) => bkWss.emit('connection', ws, req));
   else if (pathname === '/tycoon-ws') tyWss.handleUpgrade(req, socket, head, (ws) => tyWss.emit('connection', ws, req));
+  else if (pathname === '/webrush-ws') wrWss.handleUpgrade(req, socket, head, (ws) => wrWss.emit('connection', ws, req));
   else socket.destroy();
 });
 
@@ -405,3 +410,19 @@ tyWss.on('connection', (ws) => {
 });
 setInterval(() => { tySimulate(tyCtx); }, 1000 / 30);      // projectiles + hits + respawns
 setInterval(() => { tyBroadcast(tySnapshot()); }, 1000 / 18); // positions + projectiles
+
+// ====================== Web Rush (web-swinging) ======================
+const wrJoined = () => [...wrState.players.values()].filter((p) => p.joined);
+const wrBroadcast = wrBroadcaster(wrJoined);
+wrWss.on('connection', (ws) => {
+  const p = { id: wrGenId('p'), ws, joined: false, name: '', nameLower: '', avatar: null, pos: { x: 0, y: 0, z: 0 }, ry: 0, anim: 'idle', web: null };
+  wrState.players.set(p.id, p);
+  const ctx = { broadcast: wrBroadcast, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
+  ws.on('message', (raw) => { if (raw.length > 4096) return; let msg; try { msg = JSON.parse(raw); } catch { return; } try { wrHandle(p, msg, ctx); } catch (err) { console.error('[webrush]', msg?.t, err); } });
+  ws.on('close', () => wrDisconnect(p, ctx));
+  ws.on('error', () => {});
+});
+setInterval(() => {
+  const players = wrJoined().map((p) => [p.id, +p.pos.x.toFixed(2), +p.pos.y.toFixed(2), +p.pos.z.toFixed(2), +p.ry.toFixed(3), p.anim, p.web ? +p.web.x.toFixed(1) : null, p.web ? +p.web.y.toFixed(1) : null, p.web ? +p.web.z.toFixed(1) : null]);
+  wrBroadcast({ t: 'snapshot', players, clock: wrClock() });
+}, 1000 / 16);

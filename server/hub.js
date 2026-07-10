@@ -102,6 +102,16 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'webrush',
+    title: 'Web Rush',
+    tagline: 'Web-swing across the city and stop the crime wave.',
+    art: '/icons/game-webrush.svg',
+    url: '/games/webrush',
+    creators: ['ClaudeBox Studios', 'KitKat', 'EmGamerOG'],
+    tags: ['Superhero', 'Web Swing', 'Open World', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'tycoon',
     title: 'Elemental Powers Tycoon',
     tagline: 'Build your plot, unlock the elements, battle for the arena.',

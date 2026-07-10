@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<title>Web Rush — ClaudeBox</title>
+<link rel="stylesheet" href="/webrush/css/webrush.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+<div id="reticle" class="hidden"></div>
+
+<div id="hud" class="hidden">
+  <div id="objective"><span class="ob-emoji">🎯</span><span id="ob-text">Swing to the crime scene!</span></div>
+  <div id="waypoint" class="hidden"><span id="wp-arrow">▲</span><span id="wp-dist">0m</span></div>
+  <div id="health-wrap"><div id="health-bar"><i id="health-fill"></i></div><span id="health-num">100</span></div>
+  <div id="speed-chip"><span class="si">💨</span><b id="speed">0</b> mph</div>
+  <div id="feed"></div>
+  <div id="dmg-flash"></div>
+  <div id="help"><b>Hold Space</b> web-swing · <b>WASD</b> steer/run · <b>Click</b> punch · <b>Shift</b> web-zip · <b>Esc</b> menu</div>
+</div>
+
+<div id="dead-overlay" class="hidden">
+  <div class="dead-card"><h1>💥 Knocked out</h1><p id="dead-by"></p><div class="ring"><b id="respawn-n">3</b></div><small>Respawning…</small></div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><i></i></div>
+  <button id="t-web">🕸️</button>
+  <button id="t-punch">👊</button>
+</div>
+
+<div id="loading"><div class="spinner"></div><p id="load-msg">Spinning up the city…</p></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/webrush/js/main.js"></script>
+</body>
+</html>
