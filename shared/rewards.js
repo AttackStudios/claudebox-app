@@ -12,8 +12,8 @@
 // server validates the id and awards the Stars.
 
 // Currency identity, in ONE place so a rename is a one-line change everywhere.
-export const POINTS = { name: 'Stars', one: 'Star', emoji: '⭐' };   // earned from challenges
-export const CURRENCY = { name: 'Bits', one: 'Bit', emoji: '🔷' };   // the spendable "Robux"
+export const POINTS = { name: 'Credits', one: 'Credit', emoji: '⭐' };   // earned from challenges (was Stars)
+export const CURRENCY = { name: 'ClaudeBux', one: 'ClaudeBux', emoji: '🔷' };   // the spendable premium currency (was Bits)
 
 export const CUBE_RATE = 10; // Stars per 1 Bit when converting
 

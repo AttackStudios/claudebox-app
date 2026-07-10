@@ -274,7 +274,7 @@ function toggleFav(id) { const f = favGames(); const i = f.indexOf(id); if (i >=
 function themeGrad(g) { const t = themeOf(g.id); return `linear-gradient(150deg, ${t.from}, ${t.to})`; }
 function gdDescription(g) {
   const tags = (g.tags || []).join(', ');
-  return `${g.tagline || ''} ${g.title} is a ${tags ? tags.toLowerCase() + ' ' : ''}experience on ClaudeBox. Jump in with friends, climb the leaderboards, and earn Stars to spend in the Store. Welcome — have fun!`;
+  return `${g.tagline || ''} ${g.title} is a ${tags ? tags.toLowerCase() + ' ' : ''}experience on ClaudeBox. Jump in with friends, climb the leaderboards, and earn Credits to spend in the Store. Welcome — have fun!`;
 }
 let gdEl = null, gdShots = [], gdShot = 0, gdGame = null;
 function ensureGdEl() {
@@ -1060,7 +1060,7 @@ function updateConvertPreview() {
   $('conv-cost').textContent = `${cost} ⭐`;
   const btn = $('conv-do');
   btn.disabled = w.stars < cost;
-  btn.textContent = w.stars < cost ? 'Not enough Stars' : `Convert to ${convAmount} 🔷`;
+  btn.textContent = w.stars < cost ? `Not enough ${POINTS.name}` : `Convert to ${convAmount} ${CURRENCY.emoji}`;
 }
 
 function syncRewards(flash) {

@@ -23,7 +23,7 @@
 <div id="grain"></div>
 
 <header id="topbar">
-  <div class="brand"><img class="logo" src="/icons/icon.svg" alt="ClaudeBox" width="30" height="30"><span>Claude<b>Box</b></span></div>
+  <div class="brand"><img class="logo" src="/icons/icon.svg" alt="ClaudeBox" width="44" height="44"></div>
   <nav id="tabs">
     <span class="pill"></span>
     <button class="tab selected" data-tab="home"><span class="ti">🏠</span><span class="tl">Home</span></button>
@@ -34,7 +34,7 @@
     <button class="tab" data-tab="settings"><span class="ti">⚙️</span><span class="tl">Settings</span></button>
   </nav>
   <div class="top-right">
-    <button id="wallet-chip" title="Your Stars & Bits">
+    <button id="wallet-chip" title="Your Credits & ClaudeBux">
       <span class="wc-part"><span class="wc-emoji">⭐</span><span id="wc-stars">0</span></span>
       <span class="wc-sep"></span>
       <span class="wc-part"><span class="wc-emoji">🔷</span><span id="wc-cubes">0</span></span>
@@ -85,17 +85,17 @@
       <div class="wallet-balances">
         <div class="bal bal-stars">
           <span class="bal-emoji">⭐</span>
-          <div><b id="bal-stars">0</b><small id="lbl-stars">Stars</small></div>
+          <div><b id="bal-stars">0</b><small id="lbl-stars">Credits</small></div>
         </div>
         <div class="bal bal-cubes">
           <span class="bal-emoji">🔷</span>
-          <div><b id="bal-cubes">0</b><small id="lbl-cubes">Bits</small></div>
+          <div><b id="bal-cubes">0</b><small id="lbl-cubes">ClaudeBux</small></div>
         </div>
       </div>
-      <p class="wallet-tag" id="wallet-tag">Complete challenges in games to earn Stars, then convert them into Bits to spend.</p>
+      <p class="wallet-tag" id="wallet-tag">Complete challenges in games to earn Credits, then convert them into ClaudeBux to spend.</p>
       <div class="wallet-actions">
         <div class="wallet-card">
-          <h3 id="convert-title">Convert Stars → Bits</h3>
+          <h3 id="convert-title">Convert Credits → ClaudeBux</h3>
           <div class="stepper">
             <button class="step-btn" id="conv-minus">–</button>
             <div class="step-val"><b id="conv-amount">1</b><small id="conv-cost">10 ⭐</small></div>
@@ -104,7 +104,7 @@
           <button class="primary-btn wide" id="conv-do">Convert</button>
         </div>
         <div class="wallet-card">
-          <h3 id="send-title">Send Bits to a friend</h3>
+          <h3 id="send-title">Send ClaudeBux to a friend</h3>
           <input id="send-to" maxlength="20" placeholder="Their name…" autocomplete="off">
           <div class="send-row">
             <input id="send-amount" type="number" min="1" value="1" inputmode="numeric">
@@ -117,7 +117,7 @@
     <div class="row-head"><span class="row-title">Challenges</span><span class="row-sub" id="challenge-progress"></span></div>
     <div id="challenge-list"></div>
 
-    <div class="row-head"><span class="row-title">Shop</span><span class="row-sub">Spend Bits on cosmetics</span></div>
+    <div class="row-head"><span class="row-title">Shop</span><span class="row-sub">Spend ClaudeBux on cosmetics</span></div>
     <div id="shop-grid"></div>
   </section>
 
@@ -137,7 +137,7 @@
     <div class="store-head">
       <div>
         <h1 class="store-title">Avatar Shop</h1>
-        <p class="store-sub">Deck out your character with cosmetics — buy with <b id="store-cur">Bits</b>.</p>
+        <p class="store-sub">Deck out your character with cosmetics — buy with <b id="store-cur">ClaudeBux</b>.</p>
       </div>
       <div class="store-head-right">
         <div id="store-search-wrap"><span>🔍</span><input id="store-search" placeholder="Search items…" autocomplete="off"></div>
