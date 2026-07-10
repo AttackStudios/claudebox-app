@@ -478,11 +478,27 @@ function buildClothing(item, head) {
     }
     // ---- back items: origin is the chest, +Z*F is forward so back = -Z*F ----
     case 'backpack': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.22), lam(c));
-      body.position.set(0, 0.05, -0.26 * F); g.add(body);
-      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.1), lam(c).clone());
-      pocket.material = lam('#00000022', { transparent: true, opacity: 0.18 });
-      pocket.position.set(0, -0.03, -0.38 * F); g.add(pocket); break;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.24, 2, 2, 2), lam(c));
+      body.position.set(0, 0.02, -0.3 * F); g.add(body);
+      // top flap
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.18, 0.27), lam(c).clone());
+      flap.material.color.multiplyScalar(0.82);
+      flap.position.set(0, 0.22, -0.29 * F); flap.rotation.x = -0.16 * F; g.add(flap);
+      // front pocket + buckles
+      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.12), lam(c).clone());
+      pocket.material.color.multiplyScalar(0.9);
+      pocket.position.set(0, -0.13, -0.42 * F); g.add(pocket);
+      for (const y of [0.12, -0.05]) {
+        const bk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.05), lam('#3a3a3a'));
+        bk.position.set(0, y, -0.44 * F); g.add(bk);
+      }
+      // shoulder straps arcing to the front
+      for (const s of [-1, 1]) {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 0.045), lam(c).clone());
+        strap.material.color.multiplyScalar(0.78);
+        strap.position.set(s * 0.16, 0.0, 0.15 * F); strap.rotation.x = 0.22 * F; g.add(strap);
+      }
+      break;
     }
     case 'wings': {
       for (const s of [-1, 1]) {
@@ -492,50 +508,79 @@ function buildClothing(item, head) {
       break;
     }
     case 'cape': {
-      const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.0), lam(c, { side: THREE.DoubleSide }));
-      cape.position.set(0, -0.2, -0.24 * F); cape.rotation.x = 0.12 * F; g.add(cape); break;
+      const mat = lam(c, { side: THREE.DoubleSide });
+      // flowing cloth: several tall panels fanned into a curved drape (the seams
+      // between panels read as folds), wrapping convex around the back
+      const N = 7, spanW = 0.62;
+      for (let i = 0; i < N; i++) {
+        const t = i / (N - 1) - 0.5;                 // -0.5..0.5 across the back
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(spanW / N + 0.03, 1.02), mat);
+        panel.position.set(t * spanW, -0.22, (-0.2 - Math.cos(t * Math.PI) * 0.07) * F);
+        panel.rotation.y = -t * 0.55 * F;            // fan outward
+        panel.rotation.x = 0.1 * F;                  // drape backward
+        g.add(panel);
+      }
+      // rolled collar around the shoulders + a clasp at the throat
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.11, 0.16), lam(c));
+      collar.position.set(0, 0.28, -0.05 * F); collar.rotation.x = 0.1 * F; g.add(collar);
+      const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), lam('#ffd23f'));
+      clasp.position.set(0, 0.25, 0.13 * F); g.add(clasp);
+      break;
     }
     case 'jetpack': {
-      const tank = (s) => { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 10), lam(c)); t.position.set(s * 0.16, 0.05, -0.28 * F); return t; };
-      g.add(tank(-1), tank(1)); break;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.08), lam('#565b66'));
+      plate.position.set(0, 0.03, -0.26 * F); g.add(plate);
+      for (const s of [-1, 1]) {
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.46, 14), lam(c));
+        tank.position.set(s * 0.15, 0.05, -0.33 * F); g.add(tank);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(c).clone());
+        cap.material.color.multiplyScalar(0.9); cap.position.set(s * 0.15, 0.28, -0.33 * F); g.add(cap);
+        const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.085, 0.1, 12), lam('#33363d'));
+        nozzle.position.set(s * 0.15, -0.22, -0.33 * F); g.add(nozzle);
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 10), new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.85 }));
+        flame.position.set(s * 0.15, -0.36, -0.33 * F); flame.rotation.x = Math.PI; g.add(flame);
+      }
+      break;
     }
     case 'sword': {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.02), lam('#cdd3da'));
-      const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.05), lam('#6b4a2a'));
-      hilt.position.y = -0.3; const grp = new THREE.Group(); grp.add(blade, hilt);
-      grp.position.set(-0.24, 0.1, -0.26 * F); grp.rotation.z = 0.5; g.add(grp); break;
+      const grp = new THREE.Group();
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 0.016), lam('#d7dce3')); blade.position.y = 0.06; grp.add(blade);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.031, 0.12, 4), lam('#d7dce3')); tip.position.y = 0.38; tip.rotation.y = Math.PI / 4; grp.add(tip);
+      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.5, 0.022), lam('#b3b8c0')); fuller.position.y = 0.06; grp.add(fuller);
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.06), lam('#ffd23f')); guard.position.y = -0.22; grp.add(guard);
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.17, 10), lam('#5a3d22')); grip.position.y = -0.32; grp.add(grip);
+      const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.037, 10, 8), lam('#ffd23f')); pommel.position.y = -0.42; grp.add(pommel);
+      grp.position.set(-0.24, 0.12, -0.26 * F); grp.rotation.z = 0.5; g.add(grp); break;
     }
     // ---- outfits: anchored on the body (Hips for shorts, Torso for one-piece) ----
     case 'swimshorts': {        // boys: coloured board shorts around hips + thighs
       const sc = c || '#19a3d6';
-      const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.36, 0.34), lam(sc));
-      trunk.position.y = 0.03; g.add(trunk);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.31, 0.4, 18), lam(sc));
+      trunk.scale.z = 1.12; trunk.position.y = 0.02; g.add(trunk);
       for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.165, 0.4, 14), lam(sc));
-        leg.position.set(s * 0.135, -0.27, 0.01); g.add(leg);
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.17, 0.42, 16), lam(sc));
+        leg.position.set(s * 0.135, -0.26, 0.01); g.add(leg);
+        const hem = new THREE.Mesh(new THREE.TorusGeometry(0.172, 0.022, 8, 16), lam('#ffffff'));
+        hem.rotation.x = Math.PI / 2; hem.position.set(s * 0.135, -0.46, 0.01); g.add(hem);
       }
-      const band = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.07, 0.36), lam('#ffffff'));
-      band.position.y = 0.2; g.add(band);
-      // a little side stripe so it reads as swimwear
-      for (const s of [-1, 1]) {
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.4, 0.36), lam('#ffffff'));
-        stripe.position.set(s * 0.27, -0.05, 0); g.add(stripe);
-      }
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 8, 22), lam('#ffffff'));
+      band.rotation.x = Math.PI / 2; band.scale.z = 1.12; band.position.y = 0.19; g.add(band);
+      const knot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), lam('#ffffff'));
+      knot.position.set(0, 0.15, 0.33 * F); g.add(knot);
       break;
     }
     case 'swimsuit': {          // girls: a full one-piece over torso + hips
       const sc = c || '#e23b6d';
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.34), lam(sc));
-      torso.position.y = 0.0; g.add(torso);
-      const briefs = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.32), lam(sc));
-      briefs.position.y = -0.44; g.add(briefs);
-      for (const s of [-1, 1]) {                 // shoulder straps
-        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.36, 0.1), lam(sc));
-        strap.position.set(s * 0.18, 0.32, -0.03 * F); g.add(strap);
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.27, 0.6, 18), lam(sc));
+      torso.scale.z = 1.2; torso.position.y = 0.02; g.add(torso);
+      const hips = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), lam(sc));
+      hips.scale.set(1, 0.72, 1.16); hips.position.y = -0.36; g.add(hips);
+      for (const s of [-1, 1]) {                 // shoulder straps (curved)
+        const strap = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.026, 8, 12, Math.PI * 0.9), lam(sc));
+        strap.position.set(s * 0.17, 0.3, 0); strap.rotation.y = Math.PI / 2; strap.rotation.z = -0.15; g.add(strap);
       }
-      // a contrasting waist trim
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.06, 0.36), lam('#ffffff'));
-      trim.position.y = -0.2; g.add(trim);
+      const trim = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.02, 8, 22), lam('#ffffff'));
+      trim.rotation.x = Math.PI / 2; trim.scale.z = 1.2; trim.position.y = -0.17; g.add(trim);
       break;
     }
     // ---------- premium hats ----------
@@ -613,10 +658,25 @@ function buildClothing(item, head) {
       g.add(str, ball); break;
     }
     case 'guitar': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.08), lam(c || '#c0392b')); body.position.set(0.1, -0.15, -0.26 * F); body.scale.x = 0.85;
-      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.09, 14), basic('#1a1a1a')); hole.position.set(0.1, -0.15, -0.215 * F);
-      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.05), lam('#6b4a2a')); neck.position.set(-0.02, 0.32, -0.26 * F); neck.rotation.z = 0.35;
-      g.add(body, hole, neck); break;
+      const bodyMat = lam(c || '#c0392b');
+      // figure-8 body from two flattened discs
+      const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.09, 22), bodyMat);
+      lower.rotation.x = Math.PI / 2; lower.position.set(0.1, -0.26, -0.26 * F); g.add(lower);
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.09, 22), bodyMat);
+      upper.rotation.x = Math.PI / 2; upper.position.set(0.1, -0.02, -0.26 * F); g.add(upper);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), basic('#141414'));
+      hole.position.set(0.1, -0.13, -0.213 * F); g.add(hole);
+      const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.03), lam('#241a12'));
+      bridge.position.set(0.1, -0.33, -0.21 * F); g.add(bridge);
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.05), lam('#6b4a2a'));
+      neck.position.set(-0.05, 0.34, -0.26 * F); neck.rotation.z = 0.34; g.add(neck);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.035), lam('#3a2a1a'));
+      head.position.set(-0.28, 0.64, -0.26 * F); head.rotation.z = 0.34; g.add(head);
+      for (let i = -1; i <= 1; i++) {              // strings
+        const str = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.78, 4), basic('#e0e0e0'));
+        str.position.set(0.08 + i * 0.022, 0.04, -0.205 * F); str.rotation.z = 0.34; g.add(str);
+      }
+      break;
     }
     default: return null;
   }
