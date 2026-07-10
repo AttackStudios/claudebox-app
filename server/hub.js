@@ -149,9 +149,9 @@ export const DEFAULT_AVATAR = {
 function loadPlatform() {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {} };
+    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {}, reports: raw.reports || [] };
   } catch {
-    return { users: {}, gameStats: {}, dms: {} };
+    return { users: {}, gameStats: {}, dms: {}, reports: [] };
   }
 }
 
@@ -679,6 +679,22 @@ export function hubRouter() {
     const u = ensureUser(name);
     u.recentGames = [gameId, ...u.recentGames.filter((g) => g !== gameId)].slice(0, 8);
     gameStat(gameId).plays++;
+    save();
+    res.json({ ok: true });
+  });
+
+  // ---- in-game player reports (from the shared game menu) ----
+  r.post('/report', (req, res) => {
+    const by = clean(req.body?.name), target = cleanCreator(req.body?.target);
+    if (!by || !target) return res.json({ ok: false });
+    if (!Array.isArray(platform.reports)) platform.reports = [];
+    platform.reports.push({
+      by, target,
+      reason: cleanCreator(req.body?.reason).slice(0, 60),
+      details: String(req.body?.details || '').replace(/[ -]/g, ' ').slice(0, 300),
+      game: cleanGameId(req.body?.game), at: Date.now(),
+    });
+    if (platform.reports.length > 1000) platform.reports = platform.reports.slice(-1000);
     save();
     res.json({ ok: true });
   });

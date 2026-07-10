@@ -146,4 +146,12 @@
   };
 
   window.ClaudeBox = ClaudeBox;
+
+  // Load the shared in-game menu (top-left logo → People / Settings / Report /
+  // Leave / Reset Character). Appears in every game that loads this SDK.
+  try {
+    const gm = document.createElement('script');
+    gm.src = '/js/gamemenu.js'; gm.async = true;
+    (document.head || document.documentElement).appendChild(gm);
+  } catch {}
 })();

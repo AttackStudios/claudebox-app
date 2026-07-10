@@ -408,7 +408,7 @@ function makeRemote(d) {
   const tag = makeTag(d.name);
   ctrl.group.add(tag.sprite);
   scene.add(ctrl.group);
-  const rec = { ctrl, group: ctrl.group, tag, interp: new InterpBuffer(), hp: d.hp ?? MAX_HP, dead: !!d.dead };
+  const rec = { ctrl, group: ctrl.group, tag, interp: new InterpBuffer(), hp: d.hp ?? MAX_HP, dead: !!d.dead, name: d.name };
   remotes.set(d.id, rec);
   // plot ownership
   if (d.plot != null && plots[d.plot]) { const pl = plots[d.plot]; pl.ownerId = d.id; plotSetOwner(pl, d.name, false); plotSetUnlocks(pl, d.unlocks || []); ownerPlot.set(d.id, d.plot); }
@@ -452,7 +452,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (e.button === 0) castSelected();
 });
 addEventListener('mousemove', (e) => {
-  if (document.pointerLockElement === canvas) { camYaw -= e.movementX * 0.0026; camPitch = clamp(camPitch - e.movementY * 0.0022, -1.15, 0.85); }
+  if (document.pointerLockElement === canvas) { const sn = (window.ClaudeBox?.settings?.sensitivity) || 1; camYaw -= e.movementX * 0.0026 * sn; camPitch = clamp(camPitch - e.movementY * 0.0022 * sn, -1.15, 0.85); }
 });
 // drag-look fallback (no pointer lock)
 let dragId = null, lastX = 0, lastY = 0;
@@ -903,5 +903,15 @@ async function boot() {
   net.startMovementStream(() => spawned ? ({ t: 'move', x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), ry: +player.ry.toFixed(3), anim: player.anim }) : null);
   requestAnimationFrame(frame);
   window.__tycoon = { player, plots, remotes, net, scene };
+
+  // shared in-game menu hooks (player list, reset character, settings, help)
+  window.ClaudeBox?.registerGame?.({
+    players: () => [{ name: localStorage.getItem('claudebox.user') }, ...[...remotes.values()].map((r) => ({ name: r.name }))].filter((p) => p.name && !/^🤖/.test(p.name)),
+    resetCharacter: () => { const mp = plots.find((p) => p.ownerId === net.id); const pl = mp?.def || PLOTS[0]; player.pos.x = pl.x + (Math.random() * 4 - 2); player.pos.z = pl.z + (Math.random() * 4 - 2); player.pos.y = 0; player.vy = 0; player.dead = false; setHealth(MAX_HP); $('#dead-overlay')?.classList.add('hidden'); },
+    keybinds: [{ keys: 'WASD', action: 'Move' }, { keys: 'Shift', action: 'Run' }, { keys: 'Space', action: 'Jump' }, { keys: 'Mouse', action: 'Aim' }, { keys: 'Click', action: 'Fire power' }, { keys: '1–5', action: 'Pick power' }, { keys: 'E', action: 'Buy / build' }, { keys: 'Enter', action: 'Chat' }],
+    help: 'Grow your plot to earn cash, buy elemental powers, then fight in the arena. Build a house with the side pads. You can only be hurt inside the red arena.',
+  });
+  const applyFov = (s) => { camera.fov = clamp(s.fov || 64, 60, 100); camera.updateProjectionMatrix(); };
+  window.ClaudeBox?.onSettingsChange?.(applyFov);
 }
 boot();

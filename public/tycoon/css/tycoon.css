@@ -118,3 +118,6 @@ html, body { height: 100%; overflow: hidden; background: #0a0b18; font-family: -
 .kick-card h1 { font-size: 30px; margin-bottom: 8px; }
 .kick-card p { color: #ffb3b3; margin-bottom: 22px; max-width: 420px; }
 .kick-card button { background: linear-gradient(135deg,#ff7a3a,#e0503c); color: #fff; border: 0; font-weight: 800; font-size: 15px; padding: 12px 22px; border-radius: 12px; cursor: pointer; }
+
+/* leave room for the shared menu button (top-left) */
+#topleft { padding-left: 52px; }
