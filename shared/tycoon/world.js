@@ -68,7 +68,6 @@ export const SIDE_BUILDS = [
   { id: 'garden',   label: 'Garden',       emoji: '🌳', cost: 240,  req: null,     lx: -10, lz: -2 },
   { id: 'lamps',    label: 'Lamp Posts',   emoji: '💡', cost: 360,  req: null,     lx: -10, lz: 7.5 },
   { id: 'walls',    label: 'Walls',        emoji: '🧱', cost: 220,  req: null,     lx: 10,  lz: 1 },
-  { id: 'door',     label: 'Front Door',   emoji: '🚪', cost: 180,  req: 'walls',  lx: 0,   lz: -7 },
   { id: 'windows',  label: 'Windows',      emoji: '🪟', cost: 300,  req: 'walls',  lx: 10,  lz: -5 },
   { id: 'roof',     label: 'Roof',         emoji: '🏠', cost: 750,  req: 'walls',  lx: 10,  lz: 4.5 },
   { id: 'chimney',  label: 'Chimney',      emoji: '🏭', cost: 500,  req: 'roof',   lx: 6,   lz: 6 },

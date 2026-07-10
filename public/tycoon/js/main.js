@@ -157,11 +157,6 @@ function structureMesh(id) {
   const WALL = 0xcdb492, ROOF = 0x9c4a3a, WOOD = 0x6b4a2a;
   switch (id) {
     case 'walls': wallRing(g, cols, 0, HW, WALL, true); break;
-    case 'door': {
-      const d = box(3.7, 3.5, 0.28, 0, 1.75, HZF, smat(WOOD)); g.add(d);
-      g.add(box(0.16, 0.16, 0.2, 1.3, 1.8, HZF + 0.2, smat(0xffd23f)));
-      cols.push({ x0: -2, x1: 2, y0: 0, y1: 3.5, z0: HZF - 0.2, z1: HZF + 0.2 }); break;
-    }
     case 'windows': g.add(winPane(-HX - 0.08, 2.7, -3, Math.PI / 2), winPane(-HX - 0.08, 2.7, 4, Math.PI / 2), winPane(HX + 0.08, 2.7, -3, Math.PI / 2), winPane(HX + 0.08, 2.7, 4, Math.PI / 2), winPane(-5, 2.7, HZB + 0.08, 0), winPane(5, 2.7, HZB + 0.08, 0)); break;
     case 'roof': {
       g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, HW + 0.25, (HZB + HZF) / 2, smat(ROOF)));
