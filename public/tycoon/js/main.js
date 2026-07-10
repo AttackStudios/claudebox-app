@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
 import {
-  PLOTS, CENTER, GROUND, ELEMENTS, ELEMENT_BY_ID, BUTTONS, BUTTON_BY_ID,
+  PLOTS, CENTER, GROUND, ARENA_RADIUS, ELEMENTS, ELEMENT_BY_ID, BUTTONS, BUTTON_BY_ID,
   BASE_INCOME, DROP_INTERVAL, MAX_HP, RESPAWN,
 } from '/shared/tycoon/world.js';
 
@@ -44,10 +44,14 @@ ground.receiveShadow = true; scene.add(ground);
 const grid = new THREE.GridHelper(GROUND * 2, 60, 0x33407a, 0x232a52);
 grid.material.transparent = true; grid.material.opacity = 0.35; grid.position.y = 0.02; scene.add(grid);
 
-// center arena ring
+// center arena — a red-tinted danger disc (you can only be hit inside it) + ring
+const arenaFloor = new THREE.Mesh(
+  new THREE.CircleGeometry(ARENA_RADIUS, 64).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xff4a5a, transparent: true, opacity: 0.08, side: THREE.DoubleSide }));
+arenaFloor.position.y = 0.03; scene.add(arenaFloor);
 const ring = new THREE.Mesh(
-  new THREE.RingGeometry(40, 44, 64).rotateX(-Math.PI / 2),
-  new THREE.MeshBasicMaterial({ color: 0x5a6cff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+  new THREE.RingGeometry(ARENA_RADIUS - 1.5, ARENA_RADIUS + 1.5, 72).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xff5a6c, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
 ring.position.y = 0.05; scene.add(ring);
 const arenaTxt = makeSprite('⚔ BATTLE ARENA ⚔', 46, '#aab6ff');
 arenaTxt.position.set(0, 6, 0); arenaTxt.scale.set(16, 4, 1); scene.add(arenaTxt);
@@ -630,8 +634,15 @@ function frame() {
     p.mesh.position.set(p.x + p.vx * e, p.y + p.vy * e, p.z + p.vz * e);
     p.mesh.rotation.x += dt * 6; p.mesh.rotation.y += dt * 5;
   }
+  updateZone();
   updateCamera();
   renderer.render(scene, camera);
+}
+function updateZone() {
+  const z = $('#zone'); if (!z) return;
+  const inArena = (player.pos.x * player.pos.x + player.pos.z * player.pos.z) <= ARENA_RADIUS * ARENA_RADIUS;
+  if (inArena && !z.classList.contains('arena')) { z.className = 'arena'; z.textContent = '⚔️ Battle Arena — PvP ON'; }
+  else if (!inArena && !z.classList.contains('safe')) { z.className = 'safe'; z.textContent = '🛡️ Safe Zone'; }
 }
 
 // ---------------- boot ----------------

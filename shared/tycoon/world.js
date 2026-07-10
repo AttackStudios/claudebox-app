@@ -4,6 +4,7 @@
 
 export const GROUND = 260;
 export const CENTER = { x: 0, z: 0 };   // PvP battle area
+export const ARENA_RADIUS = 46;         // you can only be damaged inside this ring; plots are a safe zone
 
 // 8 plots in a ring facing the centre. ry so the plot's front (buttons/machine)
 // faces inward toward the arena.
