@@ -88,7 +88,7 @@ export function createMatch(mode, playerIds, botsNeeded, botSkill) {
   playerIds.forEach((pid, i) => {
     const p = state.players.get(pid);
     if (!p) return;
-    const f = makeFighter({ id: p.id, name: p.name, avatar: p.avatar, team: i % 2 === 0 ? 'A' : 'B' });
+    const f = makeFighter({ id: p.id, name: p.name, avatar: p.avatar, skins: p.skins, team: i % 2 === 0 ? 'A' : 'B' });
     m.fighters.set(f.id, f);
     p.matchId = m.id;
   });

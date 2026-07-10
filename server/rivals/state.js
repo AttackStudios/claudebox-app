@@ -13,7 +13,7 @@ export function clock() { return Date.now() / 1000; }
 
 // what other clients need to render someone in the LOBBY
 export function publicPlayer(p) {
-  return { id: p.id, name: p.name, avatar: p.avatar, pos: p.pos, ry: p.ry, anim: p.anim, weapon: p.weapon || 'ar' };
+  return { id: p.id, name: p.name, avatar: p.avatar, pos: p.pos, ry: p.ry, anim: p.anim, weapon: p.weapon || 'ar', skins: p.skins || null };
 }
 
 // what match clients need to render a FIGHTER
@@ -21,6 +21,6 @@ export function publicFighter(f) {
   return {
     id: f.id, name: f.name, avatar: f.avatar, team: f.team, bot: !!f.bot,
     pos: f.pos, ry: f.ry, pitch: f.pitch, anim: f.anim, crouch: !!f.crouch,
-    hp: Math.round(f.hp), weapon: f.weapon, dead: !!f.dead,
+    hp: Math.round(f.hp), weapon: f.weapon, dead: !!f.dead, skins: f.skins || null,
   };
 }

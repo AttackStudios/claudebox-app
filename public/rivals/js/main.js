@@ -8,6 +8,7 @@ import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
+import { SKINS, SKIN_BY_ID, SKINS_BY_WEAPON, SKIN_WEAPONS, RARITY_COLOR, CASE_PRICE } from '/shared/rivals/skins.js';
 import { MAPS, LOBBY } from '/shared/rivals/maps.js';
 import { loadAudio, resumeAudio, playOne, playLoop, stopLoop } from './audio.js';
 
@@ -676,6 +677,99 @@ function buildViewmodels() {
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
+
+// ---- weapon skins: re-material a gun group with an equipped skin ----
+let mySkins = { owned: [], equipped: {} };
+const skinMat = (m) => new THREE.MeshStandardMaterial({ color: m.color, metalness: m.metalness == null ? 0.4 : m.metalness, roughness: m.roughness == null ? 0.5 : m.roughness, emissive: m.emissive || '#000000', emissiveIntensity: m.emissiveIntensity || 0 });
+function applySkinToGroup(group, def) {
+  group.traverse((o) => { if (!o.isMesh) return; if (!o.userData._orig) o.userData._orig = o.material; o.material = def ? skinMat(def.mat) : o.userData._orig; });
+}
+function skinFor(equipped, weapon) { const id = equipped && equipped[weapon]; return id ? SKIN_BY_ID[id] : null; }
+function applyMyViewmodelSkins() { for (const w of SKIN_WEAPONS) { const vm = viewmodels[w]; if (vm && vm.userData.gun) applySkinToGroup(vm.userData.gun, skinFor(mySkins.equipped, w)); } }
+async function loadMySkins() {
+  try {
+    const d = await fetch('/api/rivals/skins?name=' + encodeURIComponent(identity.name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json());
+    if (d) { mySkins.owned = d.owned || []; mySkins.equipped = d.equipped || {}; mySkins.cubes = d.cubes || 0; }
+  } catch {}
+}
+
+// ---- skins shop UI (open cases, equip skins) ----
+function buildSkinsUI() {
+  if (document.getElementById('sk-open')) return;
+  const st = document.createElement('style'); st.textContent = `
+  #sk-open{position:fixed;right:14px;bottom:14px;z-index:40;background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.14);color:#fff;font-weight:800;font-size:14px;padding:11px 16px;border-radius:12px;cursor:pointer;backdrop-filter:blur(8px);}
+  #sk-open:hover{background:rgba(40,48,66,.9);}
+  #sk-panel{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(6,8,14,.6);backdrop-filter:blur(6px);font-family:-apple-system,system-ui,sans-serif;}
+  #sk-panel.hidden{display:none;}
+  .sk-card{width:min(720px,94vw);max-height:90vh;overflow-y:auto;background:rgba(22,26,36,.97);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:20px;position:relative;color:#e9edf5;}
+  .sk-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#9aa4b8;font-size:22px;cursor:pointer;}
+  .sk-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .sk-head h2{font-size:22px;} .sk-cubes{font-size:16px;font-weight:800;color:#7fbcff;}
+  .sk-case{width:100%;background:linear-gradient(135deg,#2f6fed,#7b3ff0);border:none;color:#fff;font-weight:800;font-size:17px;padding:16px;border-radius:14px;cursor:pointer;display:flex;flex-direction:column;gap:3px;margin-bottom:22px;box-shadow:0 8px 24px rgba(90,60,240,.35);}
+  .sk-case small{font-weight:600;opacity:.85;font-size:12px;}
+  .sk-case:disabled{opacity:.5;cursor:default;}
+  .sk-wsec{margin-bottom:18px;} .sk-wsec h3{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#8a94a8;margin-bottom:8px;}
+  .sk-grid{display:flex;flex-wrap:wrap;gap:8px;}
+  .sk-chip{border:2px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);border-radius:11px;padding:9px 13px;cursor:pointer;font-weight:700;font-size:13px;min-width:96px;}
+  .sk-chip small{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;opacity:.85;}
+  .sk-chip.on{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.2) inset;}
+  #sk-reveal{position:fixed;inset:0;z-index:70;display:none;place-items:center;background:rgba(4,6,12,.82);}
+  #sk-reveal.show{display:grid;}
+  .sk-rev-in{text-align:center;} .sk-rev-in h2{margin-bottom:16px;font-size:24px;}
+  .sk-drops{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
+  .sk-drop{width:150px;background:#1a1f2b;border:2px solid;border-radius:14px;padding:16px 12px;animation:skpop .4s cubic-bezier(.2,1.4,.4,1) backwards;}
+  .sk-drop b{display:block;font-size:15px;margin-top:4px;} .sk-drop .w{color:#8a94a8;font-size:12px;} .sk-drop .r{font-size:11px;font-weight:800;text-transform:uppercase;}
+  @keyframes skpop{from{transform:scale(.3);opacity:0}}
+  .sk-rev-in button{margin-top:20px;background:#2f6fed;border:none;color:#fff;font-weight:800;padding:12px 28px;border-radius:12px;cursor:pointer;font-size:15px;}
+  @media(max-width:640px){#sk-open{bottom:auto;top:10px;right:10px;}}`;
+  document.head.appendChild(st);
+  const btn = document.createElement('button'); btn.id = 'sk-open'; btn.textContent = '🎁 Skins';
+  const panel = document.createElement('div'); panel.id = 'sk-panel'; panel.className = 'hidden';
+  panel.innerHTML = `<div class="sk-card"><button class="sk-close">✕</button>
+    <div class="sk-head"><h2>🎁 Weapon Skins</h2><div class="sk-cubes">🔷 <b id="sk-cubes">0</b></div></div>
+    <button class="sk-case" id="sk-case">Open Skin Case · ${CASE_PRICE} 🔷<small>3 skins for 3 random weapons</small></button>
+    <div id="sk-weps"></div></div>`;
+  const reveal = document.createElement('div'); reveal.id = 'sk-reveal';
+  document.body.append(btn, panel, reveal);
+  btn.onclick = openSkins;
+  panel.querySelector('.sk-close').onclick = () => panel.classList.add('hidden');
+  panel.addEventListener('mousedown', (e) => { if (e.target === panel) panel.classList.add('hidden'); });
+  panel.querySelector('#sk-case').onclick = openCase;
+}
+async function openSkins() {
+  try { document.exitPointerLock && document.exitPointerLock(); } catch {}
+  await loadMySkins(); renderSkins();
+  document.getElementById('sk-panel').classList.remove('hidden');
+}
+function renderSkins() {
+  document.getElementById('sk-cubes').textContent = mySkins.cubes || 0;
+  const cs = document.getElementById('sk-case'); cs.disabled = (mySkins.cubes || 0) < CASE_PRICE;
+  const weps = document.getElementById('sk-weps');
+  weps.innerHTML = SKIN_WEAPONS.map((w) => {
+    const owned = (SKINS_BY_WEAPON[w] || []).filter((s) => mySkins.owned.includes(s.id));
+    const eq = mySkins.equipped[w];
+    const chips = [`<div class="sk-chip ${!eq ? 'on' : ''}" data-w="${w}" data-s="none">Default</div>`]
+      .concat(owned.map((s) => `<div class="sk-chip ${eq === s.id ? 'on' : ''}" data-w="${w}" data-s="${s.id}" style="border-color:${eq === s.id ? '#fff' : RARITY_COLOR[s.rarity]}"><small style="color:${RARITY_COLOR[s.rarity]}">${s.rarity}</small>${s.name}</div>`));
+    return `<div class="sk-wsec"><h3>${WEAPONS[w] ? WEAPONS[w].name : w}${owned.length ? '' : ' · <span style="color:#6a7284">no skins yet</span>'}</h3><div class="sk-grid">${chips.join('')}</div></div>`;
+  }).join('');
+  weps.querySelectorAll('.sk-chip').forEach((c) => c.onclick = () => equipSkin(c.dataset.w, c.dataset.s));
+}
+async function equipSkin(weapon, skin) {
+  const r = await fetch('/api/rivals/equip', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' }, body: JSON.stringify({ name: identity.name, weapon, skin }) }).then((x) => x.json()).catch(() => ({}));
+  if (r && r.ok) { mySkins.equipped = r.equipped || {}; applyMyViewmodelSkins(); net.send && net.send({ t: 'skins', skins: mySkins.equipped }); renderSkins(); }
+}
+async function openCase() {
+  const cs = document.getElementById('sk-case'); cs.disabled = true;
+  const r = await fetch('/api/rivals/case', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' }, body: JSON.stringify({ name: identity.name }) }).then((x) => x.json()).catch(() => ({}));
+  if (!r || !r.ok) { window.ClaudeBox?.toast?.({ title: 'Not enough ClaudeBux', emoji: '🔷' }); renderSkins(); return; }
+  mySkins.owned = r.owned || mySkins.owned; mySkins.cubes = r.cubes;
+  const drops = (r.drops || []).map((id) => SKIN_BY_ID[id]).filter(Boolean);
+  const rev = document.getElementById('sk-reveal');
+  rev.innerHTML = `<div class="sk-rev-in"><h2>🎁 Case opened!</h2><div class="sk-drops">${drops.map((s, i) => `<div class="sk-drop" style="border-color:${RARITY_COLOR[s.rarity]};animation-delay:${i * 0.15}s"><div class="r" style="color:${RARITY_COLOR[s.rarity]}">${s.rarity}</div><b>${s.name}</b><div class="w">${WEAPONS[s.weapon] ? WEAPONS[s.weapon].name : s.weapon}</div></div>`).join('')}</div><button id="sk-rev-ok">Nice!</button></div>`;
+  rev.classList.add('show');
+  rev.querySelector('#sk-rev-ok').onclick = () => { rev.classList.remove('show'); renderSkins(); };
+}
+
 const VM_HIP = { x: 0.28, y: -0.24, z: -0.5 };
 // free-hand weapons anchor nearer the centre so the two arms read left + right
 const VM_HIPS = {
@@ -978,6 +1072,8 @@ function setHeld(o, id) {
     o.held.remove(c);
   }
   o.held.add(makeHeldWeapon(id));
+  const sk = skinFor(o.data && o.data.skins, id);
+  if (sk) applySkinToGroup(o.held, sk);
 }
 
 function addOther(f) {
@@ -1742,8 +1838,9 @@ status('Connecting…');
 buildMap(LOBBY);
 setupMobile(); updateMobileHud();
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
+await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI();
 net.connect();
-net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
+net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '', skins: mySkins.equipped });
 net.startMovementStream(() => ({
   t: 'move',
   x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),

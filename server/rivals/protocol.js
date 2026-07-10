@@ -40,6 +40,8 @@ export function handleMessage(p, msg, ctx) {
   switch (msg?.t) {
     case 'join': return onJoin(p, msg, ctx);
 
+    case 'skins': { if (p.joined) p.skins = msg.skins && typeof msg.skins === 'object' ? msg.skins : null; return; }
+
     case 'move': { // lobby OR match movement (client-authoritative, like the rest of the platform)
       if (!p.joined) return;
       const m = p.matchId && state.matches.get(p.matchId);
@@ -141,6 +143,7 @@ function onJoin(p, msg, ctx) {
     }
   }
   p.avatar = msg.avatar && typeof msg.avatar === 'object' ? msg.avatar : {};
+  p.skins = msg.skins && typeof msg.skins === 'object' ? msg.skins : null;
   p.joined = true;
   p.matchId = null;
   p.pos = { x: -6 + Math.random() * 2, y: 0, z: 8 + Math.random() * 2 };

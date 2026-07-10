@@ -11,6 +11,7 @@ import { applyCourse as obApplyCourse } from '../shared/obby/course.js';
 import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
 import { toObbyCourse, toWibitWorld } from '../shared/studio/adapters.js';
 import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID } from '../shared/rewards.js';
+import { SKIN_BY_ID, CASE_PRICE, rollCase } from '../shared/rivals/skins.js';
 
 const DATA_DIR = process.env.CLAUDEBOX_DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const FILE = path.join(DATA_DIR, 'platform.json');
@@ -750,6 +751,33 @@ export function hubRouter() {
     if (platform.bans) delete platform.bans[nl];
     save();
     res.json({ ok: true });
+  });
+
+  // ---- Rivals weapon skins + cases ----
+  const ensureSkins = (u) => { if (!u.rivalsSkins) u.rivalsSkins = {}; const s = u.rivalsSkins; if (!Array.isArray(s.owned)) s.owned = []; if (!s.equipped || typeof s.equipped !== 'object') s.equipped = {}; return s; };
+  r.get('/rivals/skins', (req, res) => {
+    const u = getUser(clean(req.query.name).toLowerCase());
+    if (!u) return res.json({ owned: [], equipped: {}, cubes: 0 });
+    ensureWallet(u); const s = ensureSkins(u);
+    res.json({ owned: s.owned, equipped: s.equipped, cubes: u.cubes, price: CASE_PRICE });
+  });
+  r.post('/rivals/case', (req, res) => {
+    const name = clean(req.body?.name); if (!name) return res.json({ ok: false });
+    const u = ensureUser(name); ensureWallet(u);
+    if (u.cubes < CASE_PRICE) return res.json({ ok: false, error: 'not enough', cubes: u.cubes });
+    u.cubes -= CASE_PRICE;
+    const s = ensureSkins(u), drops = rollCase();
+    for (const id of drops) if (!s.owned.includes(id)) s.owned.push(id);
+    save();
+    res.json({ ok: true, drops, cubes: u.cubes, owned: s.owned });
+  });
+  r.post('/rivals/equip', (req, res) => {
+    const u = getUser(clean(req.body?.name).toLowerCase()); if (!u) return res.json({ ok: false });
+    const s = ensureSkins(u); const weapon = String(req.body?.weapon || ''); const skin = String(req.body?.skin || '');
+    if (skin === 'none' || skin === '') { delete s.equipped[weapon]; }
+    else { const def = SKIN_BY_ID[skin]; if (!def || def.weapon !== weapon || !s.owned.includes(skin)) return res.json({ ok: false }); s.equipped[weapon] = skin; }
+    save();
+    res.json({ ok: true, equipped: s.equipped });
   });
 
   // ---- cross-device per-account game saves (so progress follows you) ----
