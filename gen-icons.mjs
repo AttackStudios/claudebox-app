@@ -15,10 +15,8 @@ const svg = fs.readFileSync(path.join(ICONS, 'icon.svg'), 'utf8');
 const svgUri = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
 
 const page = (px, maskable) => `<!DOCTYPE html><html><body style="margin:0">
-  <div style="width:${px}px;height:${px}px;background:linear-gradient(#2e3138,#16171b);overflow:hidden;position:relative">
-    <img src="${svgUri}" style="position:absolute;${maskable
-      ? `width:${Math.round(px * 0.78)}px;height:${Math.round(px * 0.78)}px;left:${Math.round(px * 0.11)}px;top:${Math.round(px * 0.11)}px;`
-      : `width:${px}px;height:${px}px;left:0;top:0;`}">
+  <div style="width:${px}px;height:${px}px;background:linear-gradient(135deg,#1aa0ff,#0a6fe0);overflow:hidden;position:relative">
+    <img src="${svgUri}" style="position:absolute;width:${px}px;height:${px}px;left:0;top:0;">
   </div></body></html>`;
 
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9233',
