@@ -162,28 +162,35 @@ function structureMesh(id) {
       g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, HW + 0.25, (HZB + HZF) / 2, smat(ROOF)));
       g.add(box(2 * HX + 1.6, 0.4, 0.6, 0, HW + 0.55, HZF - 0.4, smat(0x7a3a2e)));
       g.add(box(2 * HX + 1.6, 0.4, 0.6, 0, HW + 0.55, HZB + 0.4, smat(0x7a3a2e)));
-      cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: HW, y1: HW + 0.5, z0: HZF - 0.6, z1: HZB + 0.6 }); break;
+      cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: HW, y1: HW + 0.5, z0: HZF - 0.6, z1: HZB + 0.6, floor: true }); break;
     }
     case 'chimney': { g.add(box(1.3, 3, 1.3, HX - 3, HW + 1.5, HZB - 3, smat(0x8a5a4a))); g.add(box(1.5, 0.4, 1.5, HX - 3, HW + 3, HZB - 3, smat(0x5a3a2e)));
       for (let i = 0; i < 3; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.4 + i * 0.15, 8, 6), new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.35 - i * 0.08 })); s.position.set(HX - 3, HW + 3.6 + i * 0.9, HZB - 3); g.add(s); }
       cols.push(aabb(HX - 3, HZB - 3, 0.7, HW + 3, 0.7)); break; }
     case 'floor2': {
       g.add(box(2 * HX - 0.4, 0.5, HZB - HZF - 0.4, 0, F2 - 0.25, (HZB + HZF) / 2, smat(0xb0a088)));
-      cols.push({ x0: -HX + 0.2, x1: HX - 0.2, y0: F2 - 0.5, y1: F2, z0: HZF + 0.2, z1: HZB - 0.2 });
-      // staircase up the right side (each step ≤ step-up height)
-      for (let i = 0; i < 7; i++) { const top = (i + 1) / 7 * F2; const z = HZF + 1.5 + i * 1.1; g.add(box(2.6, top, 1.1, HX - 2, top / 2, z, smat(0xa0895f))); cols.push({ x0: HX - 3.3, x1: HX - 0.7, y0: 0, y1: top, z0: z - 0.55, z1: z + 0.55 }); }
+      cols.push({ x0: -HX + 0.2, x1: HX - 0.2, y0: F2 - 0.5, y1: F2, z0: HZF + 0.2, z1: HZB - 0.2, floor: true });
+      // a RAMP up to the second floor — a smooth slope, set clear of the walls.
+      // Collision is a chain of thin flat slabs (no tall boxes) so you can't get
+      // pushed sideways / clipped out while walking up.
+      const rx = 8.5, rz0 = -2, rz1 = 6.5, rlen = rz1 - rz0;
+      const plank = box(3.2, 0.4, Math.hypot(rlen, F2), rx, F2 / 2, (rz0 + rz1) / 2, smat(0xa0895f));
+      plank.rotation.x = -Math.atan2(F2, rlen); g.add(plank);
+      const N = 16;
+      for (let i = 0; i <= N; i++) { const tz = rz0 + (i / N) * rlen, h = (i / N) * F2; cols.push({ x0: rx - 1.55, x1: rx + 1.55, y0: h - 0.5, y1: h + 0.06, z0: tz - (rlen / N * 0.5 + 0.35), z1: tz + (rlen / N * 0.5 + 0.35), floor: true }); }
+      for (let i = 0; i <= 5; i++) { const tz = rz0 + (i / 5) * rlen, h = (i / 5) * F2; g.add(box(0.16, 1.0, 0.16, rx + 1.65, h + 0.55, tz, smat(0x6b5a3a))); }
       // railing posts around the deck
       for (let x = -HX + 1; x <= HX - 1; x += 3) { g.add(box(0.18, 1.1, 0.18, x, F2 + 0.55, HZF + 0.3, smat(0x6b5a3a))); g.add(box(0.18, 1.1, 0.18, x, F2 + 0.55, HZB - 0.3, smat(0x6b5a3a))); }
       break;
     }
     case 'walls2': wallRing(g, cols, F2, HW2, WALL, false); break;
     case 'windows2': g.add(winPane(-HX - 0.08, F2 + 2.2, -3, Math.PI / 2), winPane(HX + 0.08, F2 + 2.2, 3, Math.PI / 2), winPane(-4, F2 + 2.2, HZB + 0.08, 0), winPane(4, F2 + 2.2, HZB + 0.08, 0)); break;
-    case 'roof2': { g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, F2 + HW2 + 0.25, (HZB + HZF) / 2, smat(ROOF))); cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: F2 + HW2, y1: F2 + HW2 + 0.5, z0: HZF - 0.6, z1: HZB + 0.6 }); break; }
+    case 'roof2': { g.add(box(2 * HX + 1.2, 0.5, HZB - HZF + 1.2, 0, F2 + HW2 + 0.25, (HZB + HZF) / 2, smat(ROOF))); cols.push({ x0: -HX - 0.6, x1: HX + 0.6, y0: F2 + HW2, y1: F2 + HW2 + 0.5, z0: HZF - 0.6, z1: HZB + 0.6, floor: true }); break; }
     case 'balcony': {
       g.add(box(8, 0.4, 3.5, 0, F2 - 0.2, HZF - 1.7, smat(0xa08a6a)));
       for (let x = -3.5; x <= 3.5; x += 1.75) g.add(box(0.16, 1.0, 0.16, x, F2 + 0.5, HZF - 3.4, smat(0x6b5a3a)));
       g.add(box(8, 0.16, 0.16, 0, F2 + 1.0, HZF - 3.4, smat(0x6b5a3a)));
-      cols.push({ x0: -4, x1: 4, y0: F2 - 0.4, y1: F2, z0: HZF - 3.4, z1: HZF }); break;
+      cols.push({ x0: -4, x1: 4, y0: F2 - 0.4, y1: F2, z0: HZF - 3.4, z1: HZF, floor: true }); break;
     }
     case 'flag': { g.add(cyl(0.1, 0.1, 4, 0, F2 + HW2 + 2.5, 0, smat(0xcccccc))); const cloth = box(2.4, 1.4, 0.06, 1.2, F2 + HW2 + 3.8, 0, smat(0xff4a5a)); g.add(cloth); break; }
     case 'fence': for (let i = -HX; i <= HX; i += 2.2) { g.add(box(0.2, 1.4, 0.2, i, 0.7, HZF - 0.8, smat(0x8a6a44))); g.add(box(0.2, 1.4, 0.2, i, 0.7, HZB + 0.8, smat(0x8a6a44))); }
@@ -602,6 +609,7 @@ function resolveCollision() {
   let lx = _cv.x, lz = _cv.z; const feet = player.pos.y;
   const PR = 0.55, STEP = 0.9, PH = 1.5;
   for (const c of plot.colliders) {
+    if (c.floor) continue;                                      // horizontal floors/roofs: support only, never shove sideways
     if (c.y1 <= feet + 0.02) continue;                          // below the feet (it's a floor)
     if (c.y0 >= feet + PH) continue;                            // above the head
     if (c.y1 - feet <= STEP && c.y0 <= feet + 0.05) continue;   // low step → walk up, don't block
