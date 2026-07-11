@@ -13,14 +13,17 @@
 <canvas id="game-canvas"></canvas>
 <div id="reticle" class="hidden"></div>
 
+<div id="wind"></div>
+
 <div id="hud" class="hidden">
   <div id="objective"><span class="ob-emoji">🎯</span><span id="ob-text">Swing to the crime scene!</span></div>
   <div id="waypoint" class="hidden"><span id="wp-arrow">▲</span><span id="wp-dist">0m</span></div>
+  <div id="chips"><span id="crime-chip">🚨 0/6</span><span id="score-chip">⭐ 0</span></div>
   <div id="health-wrap"><div id="health-bar"><i id="health-fill"></i></div><span id="health-num">100</span></div>
   <div id="speed-chip"><span class="si">💨</span><b id="speed">0</b> mph</div>
   <div id="feed"></div>
   <div id="dmg-flash"></div>
-  <div id="help"><b>Hold Space</b> web-swing · <b>WASD</b> steer/run · <b>Click</b> punch · <b>Shift</b> web-zip · <b>Esc</b> menu</div>
+  <div id="help"><b>Hold Space</b> web-swing · <b>WASD</b> steer/run · <b>Click</b> punch · <b>F</b> web-stun · <b>Shift</b> web-zip · <b>Esc</b> menu</div>
 </div>
 
 <div id="dead-overlay" class="hidden">
@@ -31,6 +34,7 @@
   <div id="stick"><i></i></div>
   <button id="t-web">🕸️</button>
   <button id="t-punch">👊</button>
+  <button id="t-stun">🎯</button>
 </div>
 
 <div id="loading"><div class="spinner"></div><p id="load-msg">Spinning up the city…</p></div>

@@ -50,3 +50,24 @@ html, body { height: 100%; overflow: hidden; background: #0b1020; font-family: -
 .spinner { width: 46px; height: 46px; border-radius: 50%; border: 4px solid rgba(255,255,255,.15); border-top-color: #e0303c; border-right-color: #3a7bff; animation: spin 1s linear infinite; }
 
 @media (max-width: 720px) { #help { display: none; } #health-bar { width: 150px; } #speed-chip { bottom: 12px; } }
+
+/* ==================== polish pass ==================== */
+/* wind vignette that builds with speed */
+#wind { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 52%, rgba(190,215,255,.42) 100%); }
+
+/* score + crime chips */
+#chips { position: fixed; top: 16px; right: 16px; z-index: 7; display: flex; gap: 8px; }
+#chips span { background: rgba(10,14,28,.72); border: 1px solid rgba(255,255,255,.16); padding: 7px 12px; border-radius: 11px; font-weight: 800; font-size: 13px; }
+
+/* reticle glows green when a web anchor is in reach */
+#reticle { transition: border-color .15s; }
+#reticle.ok { border-color: rgba(127,255,176,.95); }
+#reticle.ok::after { background: rgba(127,255,176,.95); }
+
+/* low-health pulse */
+#dmg-flash.low { opacity: .5; animation: lowpulse 1.1s ease-in-out infinite; }
+@keyframes lowpulse { 50% { opacity: .2; } }
+
+/* mobile web-stun button */
+#t-stun { position: fixed; right: 34px; bottom: 174px; width: 62px; height: 62px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); font-size: 24px; color: #fff; pointer-events: auto; background: rgba(130,80,220,.42); }
