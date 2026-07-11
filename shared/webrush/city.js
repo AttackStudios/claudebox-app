@@ -7,32 +7,59 @@ export const SPAWN = { x: 0, y: 60, z: 8 };   // start on a rooftop, mid-fall in
 // tiny seeded PRNG so the city is identical everywhere
 function lcg(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
-// Manhattan grid: blocks separated by roads; each block holds a few towers.
+// city grid constants (shared with the client for streets + props)
+export const BLOCK = 62, ROAD = 20, SPAN = BLOCK + ROAD, N = 4;   // blocks from -N..N
+export const PLAZAS = [];   // {x,z} block centres left open (park/plaza)
+
+const STYLE_COL = {
+  glass:    [0x4a6a8a, 0x3a5a7a, 0x567a9a, 0x2f5270, 0x6a8aa8],
+  concrete: [0x7a8090, 0x6a7080, 0x8a90a0, 0x727988],
+  brick:    [0x8a5644, 0x784636, 0x9a6a50, 0x6e4030],
+  stone:    [0x9a9a8a, 0x8a8a7c, 0xaaaa98, 0x807e70],
+};
+const STYLES = ['glass', 'glass', 'concrete', 'concrete', 'brick', 'stone'];
+
+// Manhattan grid: blocks separated by roads; towers use setbacks (ziggurats).
 export const BUILDINGS = (() => {
   const r = lcg(0xC0FFEE);
   const out = [];
-  const BLOCK = 62, ROAD = 20, N = 4;            // blocks from -N..N
-  const PAL = [0x5a6272, 0x6b7486, 0x4a5160, 0x737d8f, 0x565e6e, 0x818b9c];
+  const push = (cx, cz, w, d, h, style, ci, y0 = 0, crown = false) =>
+    out.push({ x: cx, z: cz, w, d, h, y0, style, crown, color: STYLE_COL[style][ci % STYLE_COL[style].length] });
+  const tower = (cx, cz, w, d, h, style, ci) => {
+    if (h > 108 && Math.min(w, d) > 15) {                 // setback ziggurat: 3 tiers
+      const h1 = h * 0.5, h2 = h * 0.8;
+      push(cx, cz, w, d, h1, style, ci);
+      push(cx, cz, w * 0.72, d * 0.72, h2, style, ci, h1);
+      push(cx, cz, w * 0.46, d * 0.46, h, style, ci, h2, true);
+    } else push(cx, cz, w, d, h, style, ci, 0, h > 78 && r() < 0.45);
+  };
+
   for (let bx = -N; bx <= N; bx++) {
     for (let bz = -N; bz <= N; bz++) {
-      const ox = bx * (BLOCK + ROAD), oz = bz * (BLOCK + ROAD);
-      // 2x2 sub-lots per block, each maybe a tower
-      for (let sx = 0; sx < 2; sx++) {
-        for (let sz = 0; sz < 2; sz++) {
-          if (r() < 0.12) continue;               // occasional gap / plaza
-          const w = BLOCK / 2 - 4 - r() * 6, d = BLOCK / 2 - 4 - r() * 6;
+      const ox = bx * SPAN, oz = bz * SPAN;
+      const dist = Math.hypot(bx, bz);
+      if (r() < 0.06) { PLAZAS.push({ x: ox, z: oz }); continue; }   // open plaza block
+      const style = STYLES[Math.floor(r() * STYLES.length)];
+      const ci = Math.floor(r() * 5);
+      if (r() < 0.22) {                                   // one big block-filling tower
+        const w = BLOCK - 8 - r() * 6, d = BLOCK - 8 - r() * 6;
+        const h = (r() < 0.5 ? 130 + r() * 150 : 60 + r() * 60) - dist * 3;
+        tower(ox, oz, w, d, Math.max(24, h), style, ci);
+      } else {                                            // 2x2 sub-lots
+        for (let sx = 0; sx < 2; sx++) for (let sz = 0; sz < 2; sz++) {
+          if (r() < 0.12) continue;
+          const w = BLOCK / 2 - 4 - r() * 8, d = BLOCK / 2 - 4 - r() * 8;
           const cx = ox + (sx - 0.5) * (BLOCK / 2), cz = oz + (sz - 0.5) * (BLOCK / 2);
-          const dist = Math.hypot(bx, bz);
-          const tall = r() < 0.18;                 // some skyscrapers
-          const h = tall ? 120 + r() * 130 : 30 + r() * 70 - dist * 4;
-          out.push({ x: cx, z: cz, w, d, h: Math.max(18, h), color: PAL[(out.length + bx + bz + 6) % PAL.length] });
+          const tall = r() < 0.2;
+          const h = Math.max(18, (tall ? 120 + r() * 140 : 28 + r() * 66) - dist * 4);
+          tower(cx, cz, w, d, h, r() < 0.7 ? style : STYLES[Math.floor(r() * STYLES.length)], ci);
         }
       }
     }
   }
-  // a couple of signature towers near the middle for epic swings
-  out.push({ x: 30, z: -40, w: 26, d: 26, h: 300, color: 0x8892a4 });
-  out.push({ x: -55, z: 40, w: 24, d: 24, h: 260, color: 0x7c8698 });
+  // signature towers near the middle for epic swings
+  tower(30, -40, 26, 26, 300, 'glass', 0);
+  tower(-55, 40, 24, 24, 262, 'stone', 1);
   return out;
 })();
 
