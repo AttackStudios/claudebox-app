@@ -71,3 +71,26 @@ html, body { height: 100%; overflow: hidden; background: #0b1020; font-family: -
 
 /* mobile web-stun button */
 #t-stun { position: fixed; right: 34px; bottom: 174px; width: 62px; height: 62px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); font-size: 24px; color: #fff; pointer-events: auto; background: rgba(130,80,220,.42); }
+
+/* ==================== combat + suits pass ==================== */
+#t-jump { position: fixed; right: 208px; bottom: 44px; width: 62px; height: 62px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); font-size: 24px; color: #fff; pointer-events: auto; background: rgba(70,190,120,.4); }
+#t-dodge { position: fixed; right: 118px; bottom: 152px; width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); font-size: 22px; color: #fff; pointer-events: auto; background: rgba(80,160,220,.4); }
+
+#suit-btn { background: linear-gradient(135deg, rgba(200,38,46,.85), rgba(34,52,143,.85)); border: 1px solid rgba(255,255,255,.25); color: #fff; padding: 7px 12px; border-radius: 11px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: inherit; }
+#suit-btn:hover { filter: brightness(1.15); }
+
+#suits-panel { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(6,8,16,.72); backdrop-filter: blur(8px); }
+.suits-card { width: min(560px, 94vw); max-height: 84vh; overflow: auto; background: rgba(16,20,36,.96); border: 1px solid rgba(255,255,255,.14); border-radius: 20px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+.suits-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 18px; }
+#suits-close { background: rgba(255,255,255,.1); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; font-size: 15px; cursor: pointer; }
+#suits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 520px) { #suits-grid { grid-template-columns: repeat(2, 1fr); } }
+.suit-card { display: flex; flex-direction: column; align-items: center; gap: 5px; background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px 8px; color: #fff; cursor: pointer; font-family: inherit; transition: border-color .12s, transform .12s; }
+.suit-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.3); }
+.suit-card.eq { border-color: #41d17a; background: rgba(65,209,122,.1); }
+.suit-card .s-em { font-size: 26px; }
+.suit-card b { font-size: 12.5px; }
+.suit-card .sw { display: flex; gap: 4px; font-size: 15px; }
+.suit-card .sw i { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); }
+.suit-card small { color: #9fb0c8; font-size: 11.5px; font-weight: 700; }
+.suit-card.eq small { color: #41d17a; }
