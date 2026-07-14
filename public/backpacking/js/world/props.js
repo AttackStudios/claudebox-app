@@ -311,8 +311,10 @@ export function buildProps(sky, quality = 'high') {
     g.position.set(lot.x, ly, lot.z);
     g.rotation.y = lot.ry;
     // paved pad
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(lot.w, 0.3, lot.d), lambert('#46464a'));
-    pad.position.y = 0.12;
+    // thick slab sunk deep: terrain interpolates between grid vertices, so a
+    // thin pad shows sliver gaps at the edges — the slab covers any sag
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(lot.w, 1.8, lot.d), lambert('#46464a'));
+    pad.position.y = 0.27 - 0.9;
     pad.receiveShadow = true;
     g.add(pad);
     // painted parking-space lines (down the length)
@@ -396,6 +398,11 @@ function buildLodge(group, sky, trunks, platforms) {
   const floor = new THREE.Mesh(new THREE.BoxGeometry(W + 8, 0.5, D + 8), lambert('#b08a5a', { map: plankTex }));
   floor.position.set(0, 0.55, 0);
   lodge.add(floor);
+  // stone foundation: fills the gap between the raised floor and the terrain
+  // (which sags slightly between mesh vertices) all the way around
+  const foundation = new THREE.Mesh(new THREE.BoxGeometry(W + 7.6, 8, D + 7.6), lambert('#7e7468'));
+  foundation.position.set(0, 0.32 - 4, 0);
+  lodge.add(foundation);
   platforms.push({ minX: lg.x - (W + 8) / 2, maxX: lg.x + (W + 8) / 2, minZ: lg.z - (D + 8) / 2, maxZ: lg.z + (D + 8) / 2, y: baseY + 0.8 });
 
   // walls (south wall has a big doorway gap)

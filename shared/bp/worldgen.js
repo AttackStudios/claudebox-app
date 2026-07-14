@@ -76,19 +76,22 @@ for (const rb of ROUNDABOUTS) {
 }
 
 // Paved parking lots (rendered with a pergola + marked spaces + lights).
+// Every lot has an explicit pad height (y): terrain is flattened EXACTLY to it
+// (see height()), so pads can never float or sink. Positions chosen on flat,
+// road-adjacent ground.
 export const PARKING_LOTS = [
-  { x: -240, z: 1080, w: 58, d: 40, ry: 0.3, label: 'Lodge Lot' },
-  { x: 290, z: -700, w: 46, d: 34, ry: 0.2, label: 'Mountain Lot' },     // on Table Mountain by the cave
-  { x: 1380, z: 720, w: 50, d: 36, ry: 0.1, label: 'Canyon Lot' },
-  { x: -300, z: -20, w: 44, d: 32, ry: 1.2, label: 'Lakeside Lot' },
-  { x: 1200, z: 180, w: 44, d: 32, ry: -0.4, label: 'Volcano Lot' },
+  { x: -240, z: 1080, y: 11,   w: 58, d: 40, ry: 0.3, label: 'Lodge Lot' },
+  { x: 270,  z: -800, y: 150,  w: 46, d: 34, ry: 0.2, label: 'Mountain Lot' },   // Table Mountain plateau
+  { x: 1460, z: 640,  y: 68.5, w: 50, d: 36, ry: 0.1, label: 'Canyon Lot' },
+  { x: -300, z: -20,  y: 3.5,  w: 44, d: 32, ry: 1.2, label: 'Lakeside Lot' },
+  { x: 1120, z: 260,  y: 44.5, w: 44, d: 32, ry: -0.4, label: 'Volcano Lot' },
 ];
 
 // Where vans park (map's car-spawn pins). ry = facing.
 export const CAR_SPAWNS = [
   { x: -252, z: 1066, ry: 0.3 }, { x: -240, z: 1080, ry: 0.3 }, { x: -228, z: 1094, ry: 0.3 },
-  { x: -300, z: -20, ry: 1.2 }, { x: 230, z: 1010, ry: -0.6 }, { x: 1380, z: 720, ry: 0.1 },
-  { x: 290, z: -700, ry: 0.2 }, { x: 1200, z: 180, ry: -0.4 }, { x: -200, z: 1280, ry: 1.57 },
+  { x: -300, z: -20, ry: 1.2 }, { x: 230, z: 1010, ry: -0.6 }, { x: 1460, z: 640, ry: 0.1 },
+  { x: 270, z: -800, ry: 0.2 }, { x: 1120, z: 260, ry: -0.4 }, { x: -200, z: 1280, ry: 1.57 },
 ];
 
 // Flat campsite clearings along the roads (map's tent pins).
@@ -283,10 +286,6 @@ function rawHeight(x, z) {
   const lgd = Math.hypot(x - lg.x, z - lg.z);
   h = lerp(8, h, smoothstep(60, 150, lgd));
 
-  // parking lots: flatten their pads (to raw terrain — kept road-independent
-  // so this stays callable while the road heights are being built)
-  const pk2 = parkingAt(x, z);
-  if (pk2) h = lerp(h, rawAt(pk2.x, pk2.z), 0.9);
 
   // campsite clearings
   for (const c of CAMPSITES) {
@@ -313,6 +312,15 @@ export function height(x, z) {
   const reach = ri.width * 2.6;
   if (ri.dist < reach) {
     h = lerp(roadElevation(ri), h, smoothstep(ri.width * 0.55, reach, ri.dist));
+  }
+  // parking lots LAST: terrain inside a pad is exactly lot.y (flat), easing
+  // back to natural ground over an 18-unit skirt. Roads can't re-carve pads.
+  for (const lot of PARKING_LOTS) {
+    const dx = x - lot.x, dz = z - lot.z;
+    const c = Math.cos(-lot.ry), s = Math.sin(-lot.ry);
+    const lx = Math.abs(dx * c - dz * s), lz2 = Math.abs(dx * s + dz * c);
+    const dOut = Math.max(lx - lot.w / 2, lz2 - lot.d / 2, 0);
+    if (dOut < 18) h = lerp(lot.y, h, smoothstep(0, 18, dOut));
   }
   return h;
 }
