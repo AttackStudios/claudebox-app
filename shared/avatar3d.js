@@ -45,12 +45,41 @@ function inPlace(clip) {
   return clip;
 }
 
+// The girl model's texture atlas is mostly TRANSPARENT texels whose RGB is
+// black; rendered opaque that paints black blotches over the body and hides
+// the face. Composite it over white once so unpainted areas become white
+// (letting the per-region tint through, Roblox-style) and the painted face
+// keeps its colours.
+const texFix = new Map();
+function opaqueTex(tex) {
+  const img = tex?.image;
+  if (!img || !img.width || typeof document === 'undefined') return tex;
+  if (texFix.has(tex)) return texFix.get(tex);
+  const cv = document.createElement('canvas');
+  cv.width = img.width; cv.height = img.height;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(img, 0, 0);
+  const out = new THREE.CanvasTexture(cv);
+  out.flipY = tex.flipY;
+  out.colorSpace = tex.colorSpace || THREE.SRGBColorSpace;
+  out.wrapS = tex.wrapS; out.wrapT = tex.wrapT;
+  texFix.set(tex, out);
+  return out;
+}
+
 async function loadGender(gender) {
   if (genders.has(gender)) return genders.get(gender);
   const base = await loadGLB(`/models/${gender}.glb`);
   const clips = {};
-  const idle = base.animations.find((a) => /idle/i.test(a.name)) || base.animations[0];
+  // idle must be a REAL idle clip — the girl model ships dance/run/… but no
+  // idle, and falling back to animations[0] made her dance forever. No idle
+  // clip → procedural rest pose (same as the boy).
+  const idle = base.animations.find((a) => /idle/i.test(a.name));
   if (idle) { const c = inPlace(idle.clone()); c.name = 'idle'; clips.idle = c; }
+  base.scene.traverse((o) => {
+    if (o.isMesh && o.material?.map) o.material.map = opaqueTex(o.material.map);
+  });
   await Promise.all(EXTRA_CLIPS.map(async (name) => {
     // not every gender ships every clip (e.g. swim/tread) — missing files are fine
     try {
@@ -273,7 +302,33 @@ export function makeAvatar(profile = {}) {
       for (const a of attachments) a.parent?.remove(a);
       attachments.length = 0;
       inner.updateWorldMatrix(true, true);
+      // the face rides the same attachment pipeline so expression changes
+      // (and removal on re-dress) just work
+      const ft = faceTexture(p.face || 'happy');
+      if (ft) {
+        // single-mesh (boy): the bbox head anchor is tuned for hats and sits
+        // high, so drop and enlarge the face a touch to land on his face
+        const single = !headMesh;
+        const fs = head.radius * (single ? 2.0 : 1.55);
+        const fp = new THREE.Mesh(
+          new THREE.PlaneGeometry(fs, fs),
+          new THREE.MeshBasicMaterial({ map: ft, transparent: true, depthWrite: false }),
+        );
+        fp.position.y = single ? -head.radius * 0.55 : 0;
+        fp.position.z = head.radius * (single ? 1.15 : 1.04) * head.forward;
+        if (head.forward < 0) fp.rotation.y = Math.PI;
+        const holder = new THREE.Group();
+        holder.position.copy(inner.worldToLocal(head.center.clone()));
+        holder.scale.setScalar(1 / rec.scale);
+        holder.add(fp);
+        inner.add(holder);
+        attachments.push(holder);
+      }
       for (const raw of clothingFor(p)) {
+        // hair only fits models with a real Head mesh (the girl). The boy's
+        // single Mixamo mesh has hair baked in and only an estimated head
+        // position, which put hair pieces across his face.
+        if (raw.build?.startsWith('hair-') && !headMesh) continue;
         // 'swim' picks the garment by body type: girls get a full one-piece on
         // the torso, boys get swim shorts on the hips.
         const item = raw.build === 'swim'
@@ -364,6 +419,16 @@ export const CLOTHING = {
     { id: 'none', label: 'None', emoji: '🚫' },
     { id: 'swim', label: 'Swimsuit', emoji: '🩱', bone: 'Hips', build: 'swim' },
   ],
+  // Hair rides the same head anchor as hats. Ids match the platform's saved
+  // avatar fields (sanitizeAvatar), so old profiles just start showing hair.
+  hair: [
+    { id: 'none', label: 'None', emoji: '🚫' },
+    { id: 'short', label: 'Short', emoji: '💇', bone: 'Neck', build: 'hair-short' },
+    { id: 'long', label: 'Long', emoji: '👱', bone: 'Neck', build: 'hair-long' },
+    { id: 'spiky', label: 'Spiky', emoji: '🦔', bone: 'Neck', build: 'hair-spiky' },
+    { id: 'bun', label: 'Bun', emoji: '🍩', bone: 'Neck', build: 'hair-bun' },
+    { id: 'curly', label: 'Curly', emoji: '🐑', bone: 'Neck', build: 'hair-curly' },
+  ],
 };
 
 function clothingFor(p) {
@@ -372,6 +437,7 @@ function clothingFor(p) {
     const item = CLOTHING[cat]?.find((i) => i.id === id);
     if (item && item.build) out.push({ ...item, color });
   };
+  add('hair', p.hair, p.hairColor || '#5d4037');
   add('hats', p.hat, p.hatColor || '#d2453a');
   add('backs', p.back, p.backColor || '#4a7ec0');
   add('faces', p.face2 || p.accessory, p.faceColor || '#222');
@@ -382,6 +448,37 @@ function clothingFor(p) {
 const lam = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: c, ...opts });
 const basic = (c) => new THREE.MeshBasicMaterial({ color: c });
 
+// ---- face decal ----
+// Neither GLB paints a face where its head UVs sample, so the face is a drawn
+// decal on a small transparent plane just in front of the head (Roblox-style).
+const faceTexCache = new Map();
+function faceTexture(face) {
+  if (typeof document === 'undefined') return null;
+  if (faceTexCache.has(face)) return faceTexCache.get(face);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const x = cv.getContext('2d');
+  x.strokeStyle = x.fillStyle = '#241a12'; x.lineCap = 'round';
+  const dot = (cx) => { x.beginPath(); x.arc(cx, 104, 15, 0, Math.PI * 2); x.fill(); };
+  const closed = (cx) => { x.lineWidth = 10; x.beginPath(); x.moveTo(cx - 16, 106); x.quadraticCurveTo(cx, 116, cx + 16, 106); x.stroke(); };
+  if (face === 'cool') {                       // shades + smirk
+    x.fillRect(56, 86, 52, 30); x.fillRect(148, 86, 52, 30); x.fillRect(100, 94, 56, 10);
+    x.lineWidth = 12; x.beginPath(); x.moveTo(96, 156); x.quadraticCurveTo(140, 178, 168, 148); x.stroke();
+  } else if (face === 'surprised') {           // wide eyes + o mouth
+    dot(88); dot(168);
+    x.lineWidth = 11; x.beginPath(); x.arc(128, 170, 20, 0, Math.PI * 2); x.stroke();
+  } else if (face === 'sleepy') {              // closed eyes + soft smile
+    closed(88); closed(168);
+    x.lineWidth = 10; x.beginPath(); x.moveTo(102, 172); x.quadraticCurveTo(128, 182, 154, 172); x.stroke();
+  } else {                                     // happy (default)
+    dot(88); dot(168);
+    x.lineWidth = 12; x.beginPath(); x.arc(128, 128, 48, Math.PI * 0.22, Math.PI * 0.78); x.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  faceTexCache.set(face, t);
+  return t;
+}
+
 // Clothing is built around the attach anchor at origin (head center for hats/
 // faces, chest for backs). +Y is up, +Z*F is the way the face/front points.
 function buildClothing(item, head) {
@@ -391,6 +488,58 @@ function buildClothing(item, head) {
   const F = (head?.forward || 1);        // face direction in +Z
   const TOP = R;                         // head top, relative to head center
   switch (item.build) {
+    // ---- hair (cap = top of head, pieces keep the face clear) ----
+    case 'hair-short': {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
+      const fringe = new THREE.Mesh(new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.4), lam(c));
+      fringe.position.set(0, R * 0.78, R * 0.6 * F);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(R * 1.85, R * 1.1, R * 0.4), lam(c));
+      back.position.set(0, -R * 0.05, -R * 0.9 * F);
+      g.add(cap, fringe, back); break;
+    }
+    case 'hair-long': {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
+      const fringe = new THREE.Mesh(new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.4), lam(c));
+      fringe.position.set(0, R * 0.78, R * 0.6 * F);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(R * 1.8, R * 2.5, R * 0.45), lam(c));
+      back.position.set(0, -R * 0.85, -R * 0.88 * F);
+      for (const s of [-1, 1]) {
+        const strand = new THREE.Mesh(new THREE.BoxGeometry(R * 0.5, R * 2.0, R * 0.6), lam(c));
+        strand.position.set(s * R * 1.0, -R * 0.6, -R * 0.25 * F);
+        g.add(strand);
+      }
+      g.add(cap, fringe, back); break;
+    }
+    case 'hair-spiky': {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
+      const spots = [[0, 1.05, 0], [0.55, 0.9, 0.35], [-0.55, 0.9, 0.35], [0.5, 0.9, -0.45], [-0.5, 0.9, -0.45], [0, 0.95, -0.6]];
+      for (const [sx, sy, sz] of spots) {
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(R * 0.3, R * 1.0, 6), lam(c));
+        spike.position.set(sx * R, sy * R, sz * R * F);
+        spike.rotation.set(sz * -0.5, 0, sx * -0.5);
+        g.add(spike);
+      }
+      g.add(cap); break;
+    }
+    case 'hair-bun': {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
+      const fringe = new THREE.Mesh(new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.4), lam(c));
+      fringe.position.set(0, R * 0.78, R * 0.6 * F);
+      const bun = new THREE.Mesh(new THREE.SphereGeometry(R * 0.52, 12, 10), lam(c));
+      bun.position.set(0, R * 0.72, -R * 0.95 * F);
+      g.add(cap, fringe, bun); break;
+    }
+    case 'hair-curly': {
+      const puffs = [[0, 1.0, 0, 0.62], [0.7, 0.75, 0.35, 0.5], [-0.7, 0.75, 0.35, 0.5], [0.65, 0.75, -0.5, 0.52],
+        [-0.65, 0.75, -0.5, 0.52], [0, 0.85, -0.75, 0.55], [0.35, 0.95, 0.55, 0.45], [-0.35, 0.95, 0.55, 0.45],
+        [0.9, 0.35, -0.15, 0.42], [-0.9, 0.35, -0.15, 0.42]];
+      for (const [sx, sy, sz, sr] of puffs) {
+        const p = new THREE.Mesh(new THREE.SphereGeometry(R * sr, 10, 8), lam(c));
+        p.position.set(sx * R, sy * R, sz * R * F);
+        g.add(p);
+      }
+      break;
+    }
     case 'cap': {
       const dome = new THREE.Mesh(new THREE.SphereGeometry(R * 1.05, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(c));
       dome.position.y = TOP - R * 0.1;

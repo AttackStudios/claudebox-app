@@ -895,6 +895,8 @@ $('add-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('ad
 const cloth = (cat) => CLOTHING[cat].map((i) => [i.id, `${i.emoji} ${i.label}`]);
 const OPTIONS = {
   body: { label: 'Body type', values: [['boy', '🧍 Boy'], ['girl', '🧍‍♀️ Girl']] },
+  hair: { label: 'Hair', values: cloth('hair'), color: 'hairColor' },
+  face: { label: 'Expression', values: [['happy', '🙂 Happy'], ['cool', '😎 Cool'], ['surprised', '😮 Surprised'], ['sleepy', '😴 Sleepy']] },
   shirtColor: { label: 'Shirt colour', colorOnly: true },
   pantsColor: { label: 'Pants colour', colorOnly: true },
   suit: { label: 'Swimsuit', values: cloth('suits'), color: 'suitColor' },
