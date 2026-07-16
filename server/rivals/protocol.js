@@ -2,8 +2,8 @@
 // input relay, and authoritative combat calls into match.js.
 
 import { state, clock, publicPlayer, publicFighter } from './state.js';
-import { ROUND, MODES, WEAPONS, LOADOUT } from '../../shared/rivals/config.js';
-import { createMatch, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade } from './match.js';
+import { ROUND, MODES, WEAPONS, LOADOUT, WAVE } from '../../shared/rivals/config.js';
+import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade } from './match.js';
 import { tickBots } from './bots.js';
 import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
@@ -64,6 +64,19 @@ export function handleMessage(p, msg, ctx) {
       if (!p.joined || p.matchId) return;
       const mode = MODES[msg.mode] ? msg.mode : 'duo';
       dequeue(p.id);
+      if (mode === 'wave') {
+        // a round only needs one player to start — and anyone can hop into a
+        // round that's already running
+        const live = state.waveMatchId && state.matches.get(state.waveMatchId);
+        if (live && live.state !== 'podium') {
+          joinWave(live, p);
+        } else {
+          const m = createWaveMatch([p.id]);
+          lobbySend({ t: 'player.leave', id: p.id });
+          matchSend(m, { t: 'match.start', matchId: m.id, mode: 'wave', map: m.map, roster: matchRoster(m), wave: m.wave, waveTotal: WAVE.waves, arsenal: WAVE.startArsenal });
+        }
+        return;
+      }
       state.queues[mode].push({ id: p.id, since: clock() });
       p.ws.send(JSON.stringify({ t: 'queue.state', mode, since: clock() }));
       return;
@@ -82,11 +95,14 @@ export function handleMessage(p, msg, ctx) {
     }
 
     case 'weapon': {
-      if (!LOADOUT.includes(msg.id)) return;
+      if (!WEAPONS[msg.id]) return;
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
-      if (f && !f.dead) f.weapon = msg.id;
-      else if (!m) p.weapon = msg.id;   // lobby: show what they're holding too
+      if (f && !f.dead) {
+        if (m.mode === 'wave' && f.arsenal && !f.arsenal.includes(msg.id)) return;
+        if (m.mode !== 'wave' && !LOADOUT.includes(msg.id)) return;
+        f.weapon = msg.id;
+      } else if (!m && LOADOUT.includes(msg.id)) p.weapon = msg.id;   // lobby: show what they're holding too
       return;
     }
 
@@ -94,7 +110,10 @@ export function handleMessage(p, msg, ctx) {
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
       if (!f || f.dead || m.state !== 'live') return;
-      fireHitscan(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0, LOADOUT.includes(msg.weapon) ? msg.weapon : 'ar');
+      let wid = WEAPONS[msg.weapon] ? msg.weapon : 'ar';
+      if (m.mode === 'wave' && f.arsenal && !f.arsenal.includes(wid)) wid = 'handgun';
+      else if (m.mode !== 'wave' && !LOADOUT.includes(wid)) wid = 'ar';
+      fireHitscan(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0, wid);
       return;
     }
     case 'melee': {
@@ -131,6 +150,17 @@ export function handleMessage(p, msg, ctx) {
   }
 }
 
+function joinWave(m, p) {
+  const f = addWavePlayer(m, p.id, true);
+  if (!f) return;
+  lobbySend({ t: 'player.leave', id: p.id });
+  p.ws.send(JSON.stringify({
+    t: 'match.start', matchId: m.id, mode: 'wave', map: m.map, roster: matchRoster(m),
+    wave: m.wave, waveTotal: WAVE.waves, arsenal: f.arsenal,
+    joinLive: true, state: m.state, botsLeft: m.botsLeft, nextAt: m.stateUntil,
+  }));
+}
+
 function onJoin(p, msg, ctx) {
   if (!checkAccess(msg.code)) { try { p.ws.send(JSON.stringify({ t: 'toast', text: 'Locked — open from the ClaudeBox hub with the invite code.' })); p.ws.close(4003, 'locked'); } catch {} return; }
   const name = clean(msg.name, 20) || 'Rival';
@@ -144,6 +174,7 @@ function onJoin(p, msg, ctx) {
   }
   p.avatar = msg.avatar && typeof msg.avatar === 'object' ? msg.avatar : {};
   p.skins = msg.skins && typeof msg.skins === 'object' ? msg.skins : null;
+  p.platform = ['phone', 'tablet', 'laptop', 'pc'].includes(msg.platform) ? msg.platform : null;
   p.joined = true;
   p.matchId = null;
   p.pos = { x: -6 + Math.random() * 2, y: 0, z: 8 + Math.random() * 2 };
@@ -166,7 +197,10 @@ function leaveMatch(p, ctx, backToLobby) {
     m.fighters.delete(p.id);
     matchSend(m, { t: 'fighter.leave', id: p.id });
     // no humans left → tear down
-    if (![...m.fighters.values()].some((q) => !q.bot)) state.matches.delete(m.id);
+    if (![...m.fighters.values()].some((q) => !q.bot)) {
+      state.matches.delete(m.id);
+      if (state.waveMatchId === m.id) state.waveMatchId = null;
+    }
   }
   if (backToLobby && p.ws?.readyState === 1) {
     p.pos = { x: -6 + Math.random() * 2, y: 0, z: 8 + Math.random() * 2 };
@@ -260,6 +294,8 @@ export function snapshotRivals() {
   // per-match snapshots
   for (const m of state.matches.values()) {
     if (m.state === 'vote' || m.state === 'loading') continue;
-    matchSend(m, { t: 'snap', fighters: [...m.fighters.values()].map(publicFighter), until: m.stateUntil, state: m.state });
+    const snap = { t: 'snap', fighters: [...m.fighters.values()].map(publicFighter), until: m.stateUntil, state: m.state };
+    if (m.mode === 'wave') { snap.wave = m.wave; snap.botsLeft = m.botsLeft; snap.waveTotal = WAVE.waves; }
+    matchSend(m, snap);
   }
 }

@@ -4,8 +4,8 @@
 // the bot AI.
 
 import { state, genId, clock, publicFighter } from './state.js';
-import { MOVE, ROUND, WEAPONS, TIPS } from '../../shared/rivals/config.js';
-import { MAPS, VOTE_OPTIONS } from '../../shared/rivals/maps.js';
+import { MOVE, ROUND, WEAPONS, TIPS, WAVE } from '../../shared/rivals/config.js';
+import { MAPS, VOTE_OPTIONS, WAVE_MAPS } from '../../shared/rivals/maps.js';
 
 // ---------------- geometry helpers ----------------
 // only SOLID boxes collide/block shots — glow boxes are decorative neon trim
@@ -88,7 +88,7 @@ export function createMatch(mode, playerIds, botsNeeded, botSkill) {
   playerIds.forEach((pid, i) => {
     const p = state.players.get(pid);
     if (!p) return;
-    const f = makeFighter({ id: p.id, name: p.name, avatar: p.avatar, skins: p.skins, team: i % 2 === 0 ? 'A' : 'B' });
+    const f = makeFighter({ id: p.id, name: p.name, avatar: p.avatar, skins: p.skins, platform: p.platform, team: i % 2 === 0 ? 'A' : 'B' });
     m.fighters.set(f.id, f);
     p.matchId = m.id;
   });
@@ -107,7 +107,7 @@ export function createMatch(mode, playerIds, botsNeeded, botSkill) {
 }
 
 export function matchRoster(m) {
-  return [...m.fighters.values()].map((f) => ({ id: f.id, name: f.name, avatar: f.avatar, team: f.team, bot: !!f.bot }));
+  return [...m.fighters.values()].map((f) => ({ id: f.id, name: f.name, avatar: f.avatar, team: f.team, bot: !!f.bot, platform: f.platform || null }));
 }
 
 // send to all human fighters of a match
@@ -150,6 +150,154 @@ function resolveVote(m) {
   m.map = pick;
 }
 
+// ================= WAVE SURVIVAL (co-op horde) =================
+export function createWaveMatch(playerIds) {
+  const m = {
+    id: genId('m'), mode: 'wave', state: 'loading', stateUntil: clock() + 2.5,
+    map: WAVE_MAPS[Math.floor(Math.random() * WAVE_MAPS.length)],
+    votes: {}, score: { A: 0, B: 0 }, round: 0,
+    fighters: new Map(), grenades: [], drops: [], wave: 0, botsLeft: 0,
+  };
+  for (const pid of playerIds) addWavePlayer(m, pid, false);
+  state.matches.set(m.id, m);
+  state.waveMatchId = m.id;
+  return m;
+}
+
+// join (or mid-round join) — spawns alive at the fort with the starter kit
+export function addWavePlayer(m, pid, announce = true) {
+  const p = state.players.get(pid);
+  if (!p || m.fighters.has(pid)) return null;
+  const f = makeFighter({ id: p.id, name: p.name, avatar: p.avatar, skins: p.skins, platform: p.platform, team: 'A' });
+  f.arsenal = [...WAVE.startArsenal];
+  f.weapon = 'handgun';
+  m.fighters.set(f.id, f);
+  p.matchId = m.id;
+  spawnWavePlayer(m, f);
+  if (announce) {
+    matchSend(m, { t: 'fighter.join', fighter: publicFighter(f) });
+    matchSend(m, { t: 'toast', text: `${f.name} joined the fight!` });
+  }
+  return f;
+}
+
+function spawnWavePlayer(m, f) {
+  const map = MAPS[m.map];
+  const s = map.spawnsA[Math.floor(Math.random() * map.spawnsA.length)];
+  f.pos = { x: s.x + (Math.random() - 0.5), y: 0, z: s.z + (Math.random() - 0.5) };
+  f.ry = s.ry || 0; f.pitch = 0; f.hp = ROUND.maxHp; f.dead = false; f.anim = 'idle';
+  f.weapon = f.arsenal?.includes(f.weapon) ? f.weapon : 'handgun';
+  f.grenades = 1;
+  f.botMem = {};
+}
+
+const WAVE_BOT_NAMES = ['Grunt', 'Raider', 'Bruiser', 'Stalker', 'Marauder', 'Enforcer', 'Reaver', 'Warden'];
+function spawnWave(m) {
+  m.wave++;
+  const map = MAPS[m.map];
+  const skill = WAVE.botSkill(m.wave);
+  const pool = WAVE.botWeapons(m.wave);
+  const count = WAVE.botCount(m.wave);
+  const hp = WAVE.botHp(m.wave);
+  // clear any old bot corpses from the roster
+  for (const [id, f] of [...m.fighters]) if (f.bot) m.fighters.delete(id);
+  for (let i = 0; i < count; i++) {
+    const melee = Math.random() < WAVE.meleeChance(m.wave);
+    const weapon = melee ? 'scythe' : pool[Math.floor(Math.random() * pool.length)];
+    const f = makeFighter({
+      id: genId('bot'),
+      name: WAVE_BOT_NAMES[Math.floor(Math.random() * WAVE_BOT_NAMES.length)] + ' ' + m.wave + '-' + (i + 1),
+      avatar: makeBotAvatar(), team: 'B',
+      bot: { skill: { ...skill }, weapon },
+    });
+    f.weapon = weapon;
+    f.hp = hp; f.maxHp = hp;
+    const sp = map.waveSpawns[Math.floor(Math.random() * map.waveSpawns.length)];
+    f.pos = { x: sp.x + (Math.random() - 0.5) * 4, y: 0, z: sp.z + (Math.random() - 0.5) * 4 };
+    m.fighters.set(f.id, f);
+  }
+  m.botsLeft = count;
+  // fallen heroes rejoin every wave
+  for (const f of m.fighters.values()) if (!f.bot && f.dead) { spawnWavePlayer(m, f); matchSend(m, { t: 'hp', id: f.id, hp: 100 }); }
+  m.state = 'live'; m.stateUntil = clock() + WAVE.maxLiveSecs;
+  matchSend(m, {
+    t: 'wave.start', wave: m.wave, total: WAVE.waves, botsLeft: m.botsLeft,
+    fighters: [...m.fighters.values()].map(publicFighter),
+  });
+}
+
+function waveCleared(m) {
+  if (m.wave >= WAVE.waves) return endWaveMatch(m, true);
+  m.state = 'break'; m.stateUntil = clock() + WAVE.intermission;
+  matchSend(m, { t: 'wave.cleared', wave: m.wave, total: WAVE.waves, nextAt: m.stateUntil });
+}
+
+function endWaveMatch(m, victory) {
+  m.state = 'podium'; m.stateUntil = clock() + ROUND.podiumSecs;
+  const stats = [...m.fighters.values()].filter((f) => !f.bot).map((f) => ({
+    id: f.id, name: f.name, avatar: f.avatar, team: f.team, bot: false, ...f.stats,
+    survived: !f.dead,
+  }));
+  if (state.waveMatchId === m.id) state.waveMatchId = null;
+  matchSend(m, { t: 'match.end', waveMode: true, victory: !!victory, wave: m.wave, total: WAVE.waves, score: m.score, stats });
+}
+
+function spawnDrop(m, f) {
+  const weapon = f.bot?.weapon;
+  if (!weapon || weapon === 'scythe' || weapon === 'fists') return;
+  const d = { id: genId('d'), weapon, x: f.pos.x, y: 0.55, z: f.pos.z, until: clock() + WAVE.dropLifeSecs };
+  m.drops.push(d);
+  matchSend(m, { t: 'drop.spawn', d: { id: d.id, weapon: d.weapon, x: d.x, y: d.y, z: d.z } });
+}
+
+function tickDrops(m) {
+  const now = clock();
+  for (let i = m.drops.length - 1; i >= 0; i--) {
+    const d = m.drops[i];
+    if (now > d.until) { m.drops.splice(i, 1); matchSend(m, { t: 'drop.take', id: d.id }); continue; }
+    for (const f of m.fighters.values()) {
+      if (f.bot || f.dead) continue;
+      if (Math.hypot(f.pos.x - d.x, f.pos.z - d.z) < 1.6 && f.pos.y < 1.4) {
+        m.drops.splice(i, 1);
+        if (!f.arsenal.includes(d.weapon)) f.arsenal.push(d.weapon);
+        matchSend(m, { t: 'drop.take', id: d.id, by: f.id });
+        const p = state.players.get(f.id);
+        if (p?.ws?.readyState === 1) p.ws.send(JSON.stringify({ t: 'pickup', weapon: d.weapon, arsenal: f.arsenal }));
+        break;
+      }
+    }
+  }
+}
+
+function tickWaveMatch(m, dt, tickBots, endMatchCb) {
+  const now = clock();
+  switch (m.state) {
+    case 'loading':
+      if (now >= m.stateUntil) {
+        m.state = 'break'; m.stateUntil = now + WAVE.readySecs; m.wave = 0;
+        matchSend(m, { t: 'wave.cleared', wave: 0, total: WAVE.waves, nextAt: m.stateUntil });
+      }
+      break;
+    case 'break':
+      if (now >= m.stateUntil) spawnWave(m);
+      break;
+    case 'live': {
+      tickBots(m, dt);
+      tickGrenades(m, dt);
+      tickDrops(m);
+      if (now >= m.stateUntil) {   // failsafe: never let a wave stall forever
+        for (const f of m.fighters.values()) if (f.bot && !f.dead) { f.dead = true; }
+        m.botsLeft = 0;
+        waveCleared(m);
+      }
+      break;
+    }
+    case 'podium':
+      if (now >= m.stateUntil) endMatchCb(m);
+      break;
+  }
+}
+
 // ---------------- combat ----------------
 export function applyDamage(m, target, amount, source, weapon, head) {
   if (target.dead || m.state !== 'live') return 0;
@@ -181,6 +329,17 @@ function elim(m, victim, killer, weapon) {
   const assist = victim.assistBy && victim.assistBy !== killer?.id ? m.fighters.get(victim.assistBy) : null;
   if (assist) assist.stats.assists++;
   matchSend(m, { t: 'elim', victim: victim.id, killer: killer?.id || null, weapon: weapon || 'ar' });
+  if (m.mode === 'wave') {
+    if (victim.bot) {
+      spawnDrop(m, victim);
+      m.botsLeft = [...m.fighters.values()].filter((f) => f.bot && !f.dead).length;
+      if (m.state === 'live' && m.botsLeft === 0) waveCleared(m);
+    } else if (m.state === 'live') {
+      const humansAlive = [...m.fighters.values()].some((f) => !f.bot && !f.dead);
+      if (!humansAlive) endWaveMatch(m, false);
+    }
+    return;
+  }
   // round over?
   const alive = { A: 0, B: 0 };
   for (const f of m.fighters.values()) if (!f.dead) alive[f.team]++;
@@ -212,18 +371,30 @@ export function fireHitscan(m, shooter, dirX, dirY, dirZ, weaponId) {
   const boxes = boxesOf(m.map);
   const ox = shooter.pos.x, oy = eyeY(shooter), oz = shooter.pos.z;
   const len = Math.hypot(dirX, dirY, dirZ) || 1; dirX /= len; dirY /= len; dirZ /= len;
-  const wallDist = rayMapDist(boxes, ox, oy, oz, dirX, dirY, dirZ, w.range);
-  let best = null, bestDist = wallDist;
-  for (const f of m.fighters.values()) {
-    if (f.id === shooter.id || f.dead || f.team === shooter.team) continue;
-    const hit = rayFighter(f, ox, oy, oz, dirX, dirY, dirZ, w.range);
-    if (hit && hit.dist < bestDist) { best = { f, head: hit.head }; bestDist = hit.dist; }
+  const pellets = w.pellets || 1;
+  let shownDist = 0;
+  for (let pi = 0; pi < pellets; pi++) {
+    let px = dirX, py = dirY, pz = dirZ;
+    if (pellets > 1) {
+      px += (Math.random() - 0.5) * w.spread * 2.4;
+      py += (Math.random() - 0.5) * w.spread * 2.4;
+      pz += (Math.random() - 0.5) * w.spread * 2.4;
+      const pl = Math.hypot(px, py, pz) || 1; px /= pl; py /= pl; pz /= pl;
+    }
+    const wallDist = rayMapDist(boxes, ox, oy, oz, px, py, pz, w.range);
+    let best = null, bestDist = wallDist;
+    for (const f of m.fighters.values()) {
+      if (f.id === shooter.id || f.dead || f.team === shooter.team) continue;
+      const hit = rayFighter(f, ox, oy, oz, px, py, pz, w.range);
+      if (hit && hit.dist < bestDist) { best = { f, head: hit.head }; bestDist = hit.dist; }
+    }
+    shownDist = Math.max(shownDist, bestDist);
+    if (best) {
+      const dmg = Math.round(w.dmg * (best.head ? w.headMult : 1));
+      applyDamage(m, best.f, dmg, shooter, weaponId, best.head);
+    }
   }
-  matchSend(m, { t: 'shot', id: shooter.id, weapon: weaponId, dist: bestDist });
-  if (best) {
-    const dmg = Math.round(w.dmg * (best.head ? w.headMult : 1));
-    applyDamage(m, best.f, dmg, shooter, weaponId, best.head);
-  }
+  matchSend(m, { t: 'shot', id: shooter.id, weapon: weaponId, dist: shownDist });
 }
 
 export function meleeSwing(m, attacker, weaponId = 'scythe') {
@@ -322,6 +493,7 @@ function pointInBoxes(boxes, x, y, z) {
 
 // ---------------- per-tick state machine ----------------
 export function tickMatch(m, dt, tickBots, endMatchCb) {
+  if (m.mode === 'wave') return tickWaveMatch(m, dt, tickBots, endMatchCb);
   const now = clock();
   switch (m.state) {
     case 'vote':

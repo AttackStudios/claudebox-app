@@ -130,5 +130,119 @@ export const LOBBY = {
   spawnsB: [{ x: -6, z: 8, ry: -0.36 }],
 };
 
-export const MAPS = { arena: ARENA, battleground: BATTLEGROUND };
+
+// ============ FRONTIER — HUGE canyon outpost (Wave Survival) ============
+// ~4x the area of Battleground: a desert canyon town with a central fort,
+// watchtowers, long sightlines and lots of room to run.
+const FR_S = '#d8b078', FR_S2 = '#c49a5e', FR_R = '#a8683c', FR_W = '#8a6a48', FR_T = '#6a89a8';
+const FR_NEON = '#ffd24a';
+export const FRONTIER = {
+  id: 'frontier', name: 'Frontier', huge: true,
+  sky: '#f2d8a8', sky2: ['#e8b06a', '#f2d8a8', '#faf0d8'], fog: 0.0028,
+  ground: { color: '#caa268', size: 320, tex: ['#caa268', 'rgba(120,80,40,0.25)', 'rgba(255,230,170,0.15)'] },
+  emblem: '#ffd24a',
+  boxes: [
+    // canyon perimeter
+    B(0, 7, -75, 224, 14, 3, FR_R), B(0, 7, 75, 224, 14, 3, FR_R),
+    B(-112, 7, 0, 3, 14, 153, FR_R), B(112, 7, 0, 3, 14, 153, FR_R),
+    // central fort (walkable roof) + ramps
+    B(0, 3.5, 0, 22, 7, 16, FR_W, { walk: true }),
+    B(0, 7.7, 0, 24, 1.4, 18, FR_S2),
+    slope(-16, 0, 0, 'x', 10, 7, 5, 1, FR_S2),
+    slope(16, 0, 0, 'x', 10, 7, 5, -1, FR_S2),
+    // four watchtowers
+    B(-70, 4, -45, 8, 8, 8, FR_W, { walk: true }), slope(-70, 0, -36, 'z', 10, 8, 4, -1, FR_S2),
+    B(70, 4, 45, 8, 8, 8, FR_W, { walk: true }),   slope(70, 0, 36, 'z', 10, 8, 4, 1, FR_S2),
+    B(-70, 4, 45, 8, 8, 8, FR_W, { walk: true }),  slope(-61, 0, 45, 'x', 10, 8, 4, -1, FR_S2),
+    B(70, 4, -45, 8, 8, 8, FR_W, { walk: true }),  slope(61, 0, -45, 'x', 10, 8, 4, 1, FR_S2),
+    // town buildings (walkable roofs)
+    B(-45, 2.5, -12, 14, 5, 10, FR_S, { walk: true }), B(45, 2.5, 12, 14, 5, 10, FR_S, { walk: true }),
+    B(-40, 2, 34, 12, 4, 9, FR_S2, { walk: true }),   B(40, 2, -34, 12, 4, 9, FR_S2, { walk: true }),
+    B(-16, 2.2, -42, 10, 4.4, 8, FR_S, { walk: true }), B(16, 2.2, 42, 10, 4.4, 8, FR_S, { walk: true }),
+    slope(-45, 0, -1.5, 'z', 9, 5, 4, -1, FR_S2), slope(45, 0, 1.5, 'z', 9, 5, 4, 1, FR_S2),
+    // scattered canyon rocks + crates (cover everywhere)
+    B(-85, 1.6, 10, 6, 3.2, 5, FR_R), B(85, 1.6, -10, 6, 3.2, 5, FR_R),
+    B(-60, 1.2, -60, 5, 2.4, 5, FR_R), B(60, 1.2, 60, 5, 2.4, 5, FR_R),
+    B(-25, 1, 18, 3, 2, 3, FR_S2), B(25, 1, -18, 3, 2, 3, FR_S2),
+    B(-8, 0.9, 58, 3, 1.8, 3, FR_S2), B(8, 0.9, -58, 3, 1.8, 3, FR_S2),
+    B(-55, 1, 55, 4, 2, 3, FR_S), B(55, 1, -55, 4, 2, 3, FR_S),
+    B(-95, 1.2, -30, 4, 2.4, 4, FR_R), B(95, 1.2, 30, 4, 2.4, 4, FR_R),
+    B(-30, 1.4, -70, 5, 2.8, 4, FR_R), B(30, 1.4, 70, 5, 2.8, 4, FR_R),
+    B(0, 1, -30, 4, 2, 2.5, FR_S2), B(0, 1, 30, 4, 2, 2.5, FR_S2),
+    B(-75, 0.9, -8, 2.5, 1.8, 2.5, FR_S), B(75, 0.9, 8, 2.5, 1.8, 2.5, FR_S),
+    B(-50, 0.8, 20, 2.5, 1.6, 2.5, FR_S2), B(50, 0.8, -20, 2.5, 1.6, 2.5, FR_S2),
+    B(-20, 1.1, 65, 3, 2.2, 3, FR_R), B(20, 1.1, -65, 3, 2.2, 3, FR_R),
+    B(-98, 1, 55, 4, 2, 4, FR_R), B(98, 1, -55, 4, 2, 4, FR_R),
+    // fort crown glow
+    B(0, 8.5, 0, 24.2, 0.2, 0.4, FR_NEON, { glow: true }),
+    B(0, 8.5, 0, 0.4, 0.2, 18.2, FR_NEON, { glow: true }),
+  ],
+  spawnsA: [
+    { x: -4, z: 10, ry: 3.14 }, { x: 4, z: 10, ry: 3.14 },
+    { x: -4, z: -10, ry: 0 }, { x: 4, z: -10, ry: 0 },
+  ],
+  spawnsB: [{ x: 0, z: -60, ry: 0 }],
+  waveSpawns: [
+    { x: -100, z: -60 }, { x: 100, z: 60 }, { x: -100, z: 60 }, { x: 100, z: -60 },
+    { x: 0, z: -68 }, { x: 0, z: 68 }, { x: -104, z: 0 }, { x: 104, z: 0 },
+    { x: -55, z: -68 }, { x: 55, z: 68 }, { x: 55, z: -68 }, { x: -55, z: 68 },
+  ],
+};
+
+// ============ COLOSSUS — HUGE neon mega-yard (Wave Survival) ============
+const CO_D = '#3a4152', CO_D2 = '#2c3240', CO_G = '#9aa3ad', CO_C = '#c69a5a';
+const CO_N1 = '#57e0ff', CO_N2 = '#c17bff';
+export const COLOSSUS = {
+  id: 'colossus', name: 'Colossus', huge: true,
+  sky: '#1c2334', sky2: ['#151b2a', '#283452', '#4a5a86'], fog: 0.003,
+  ground: { color: '#4a5161', size: 300, tex: ['#4a5161', 'rgba(20,25,40,0.35)', 'rgba(120,190,255,0.10)'] },
+  emblem: '#57e0ff',
+  boxes: [
+    // perimeter
+    B(0, 7, -70, 210, 14, 3, CO_D), B(0, 7, 70, 210, 14, 3, CO_D),
+    B(-105, 7, 0, 3, 14, 143, CO_D2), B(105, 7, 0, 3, 14, 143, CO_D2),
+    // grand central platform + twin ramps
+    B(0, 2.5, 0, 30, 5, 20, CO_G, { walk: true }),
+    slope(-20, 0, 0, 'x', 10, 5, 6, 1, CO_D2),
+    slope(20, 0, 0, 'x', 10, 5, 6, -1, CO_D2),
+    // four warehouse blocks (walkable)
+    B(-60, 3.5, -35, 20, 7, 14, CO_D2, { walk: true }), slope(-60, 0, -25, 'z', 8, 7, 4, -1, CO_G),
+    B(60, 3.5, 35, 20, 7, 14, CO_D2, { walk: true }),   slope(60, 0, 25, 'z', 8, 7, 4, 1, CO_G),
+    B(-60, 3.5, 35, 20, 7, 14, CO_D2, { walk: true }),  slope(-49, 0, 35, 'x', 8, 7, 4, -1, CO_G),
+    B(60, 3.5, -35, 20, 7, 14, CO_D2, { walk: true }),  slope(49, 0, -35, 'x', 8, 7, 4, 1, CO_G),
+    // crate mazes
+    B(-30, 1, -15, 3, 2, 3, CO_C), B(30, 1, 15, 3, 2, 3, CO_C),
+    B(-35, 1.4, 15, 3.5, 2.8, 3.5, CO_C), B(35, 1.4, -15, 3.5, 2.8, 3.5, CO_C),
+    B(-15, 1, 40, 3, 2, 3, CO_C), B(15, 1, -40, 3, 2, 3, CO_C),
+    B(0, 1.2, -55, 4, 2.4, 3, CO_C), B(0, 1.2, 55, 4, 2.4, 3, CO_C),
+    B(-85, 1.2, 20, 4, 2.4, 4, CO_G), B(85, 1.2, -20, 4, 2.4, 4, CO_G),
+    B(-85, 1, -50, 3.5, 2, 3.5, CO_C), B(85, 1, 50, 3.5, 2, 3.5, CO_C),
+    B(-45, 0.9, 55, 2.5, 1.8, 2.5, CO_C), B(45, 0.9, -55, 2.5, 1.8, 2.5, CO_C),
+    B(-20, 1.6, -30, 2.2, 3.2, 2.2, CO_G), B(20, 1.6, 30, 2.2, 3.2, 2.2, CO_G),
+    B(-95, 1, 0, 3, 2, 3, CO_C), B(95, 1, 0, 3, 2, 3, CO_C),
+    B(-50, 1.1, -58, 3, 2.2, 3, CO_C), B(50, 1.1, 58, 3, 2.2, 3, CO_C),
+    // long pipe racks
+    B(0, 2.6, -45, 40, 0.7, 0.7, '#c8ccd4'),
+    B(-18, 1.3, -45, 0.6, 2.6, 0.6, CO_D2), B(18, 1.3, -45, 0.6, 2.6, 0.6, CO_D2),
+    B(0, 2.6, 45, 40, 0.7, 0.7, '#c8ccd4'),
+    B(-18, 1.3, 45, 0.6, 2.6, 0.6, CO_D2), B(18, 1.3, 45, 0.6, 2.6, 0.6, CO_D2),
+    // neon
+    B(0, 14.05, -70, 210, 0.4, 0.8, CO_N1, { glow: true }), B(0, 14.05, 70, 210, 0.4, 0.8, CO_N1, { glow: true }),
+    B(-105, 14.05, 0, 0.8, 0.4, 142, CO_N2, { glow: true }), B(105, 14.05, 0, 0.8, 0.4, 142, CO_N2, { glow: true }),
+    B(0, 5.28, 0, 30.2, 0.18, 0.4, CO_N1, { glow: true }), B(0, 5.28, 0, 0.4, 0.18, 20.2, CO_N2, { glow: true }),
+  ],
+  spawnsA: [
+    { x: -5, z: 8, ry: 3.14 }, { x: 5, z: 8, ry: 3.14 },
+    { x: -5, z: -8, ry: 0 }, { x: 5, z: -8, ry: 0 },
+  ],
+  spawnsB: [{ x: 0, z: -55, ry: 0 }],
+  waveSpawns: [
+    { x: -95, z: -58 }, { x: 95, z: 58 }, { x: -95, z: 58 }, { x: 95, z: -58 },
+    { x: 0, z: -64 }, { x: 0, z: 64 }, { x: -98, z: 0 }, { x: 98, z: 0 },
+    { x: -50, z: 64 }, { x: 50, z: -64 }, { x: 50, z: 64 }, { x: -50, z: -64 },
+  ],
+};
+
+export const MAPS = { arena: ARENA, battleground: BATTLEGROUND, frontier: FRONTIER, colossus: COLOSSUS };
+export const WAVE_MAPS = ['frontier', 'colossus'];
 export const VOTE_OPTIONS = ['random', 'arena', 'battleground'];

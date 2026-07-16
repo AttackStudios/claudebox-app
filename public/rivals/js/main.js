@@ -36,7 +36,7 @@ addEventListener('resize', () => {
 });
 
 const game = {
-  phase: 'lobby',          // lobby | vote | teleport | freeze | live | roundEnd | podium
+  phase: 'lobby',          // lobby | vote | teleport | freeze | live | roundEnd | podium | break (wave)
   mapId: 'lobby',
   roster: [],              // match.start roster
   myTeam: 'A',
@@ -44,7 +44,24 @@ const game = {
   stateUntil: 0,
   queued: null, queuedSince: 0,
   gotFirstElim: false,
+  loadout: null,           // wave mode: the guns you actually own (null = standard LOADOUT)
+  waveMode: false, wave: 0, waveTotal: 10, botsLeft: 0,
 };
+const myLoadout = () => game.loadout || LOADOUT;
+
+// what device is this player on? (shown next to names in duels)
+function platformKind() {
+  const ua = navigator.userAgent;
+  const touch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  const short = Math.min(screen.width, screen.height);
+  if (/iPad/.test(ua) || (/Macintosh/.test(ua) && touch)) return 'tablet';
+  if (touch && short >= 700) return 'tablet';
+  if (/iPhone|Android/.test(ua) || touch) return 'phone';
+  if (/Macintosh|Mac OS X/.test(ua)) return 'laptop';
+  return 'pc';
+}
+const PLATFORM_ICONS = { phone: '📱', tablet: '📱', laptop: '💻', pc: '🖥️' };
+const platIcon = (k) => (k ? `<span class="plat" title="Playing on ${k}">${PLATFORM_ICONS[k] || ''}${k === 'tablet' ? '⁺' : ''}</span>` : '');
 window.__rivals = {
   game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; },
   get anim() { return vmAnim; },
@@ -299,7 +316,7 @@ addEventListener('keydown', (e) => {
   const c = e.code;
   if (c === binds.queue && game.phase === 'lobby') toggleModes();
   if (c === binds.reload) startReload();
-  for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(LOADOUT[i - 1]);
+  for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
   if (c === binds.sprint && sprintToggle) sprintOn = !sprintOn;
   if (c === binds.crouch) tryCrouch(true);
 });
@@ -681,6 +698,26 @@ function buildViewmodels() {
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
+// wave-mode guns: tinted/scaled variants of the base viewmodels
+function vmVariant(srcKey, scale, tint) {
+  const src = viewmodels[srcKey];
+  if (!src) return null;
+  const g = src.clone(true);
+  g.traverse((n) => {
+    if (n.isMesh && n.material) {
+      n.material = n.material.clone();
+      if (tint && n.material.color) n.material.color.lerp(new THREE.Color(tint), 0.45);
+    }
+  });
+  g.scale.setScalar(0.68 * scale);
+  g.visible = false;
+  viewRoot.add(g);
+  return g;
+}
+viewmodels.smg = vmVariant('ar', 0.8, '#57e0ff');
+viewmodels.shotgun = vmVariant('ar', 0.95, '#ff9a3c');
+viewmodels.dmr = vmVariant('sniper', 0.9, '#59d185');
+viewmodels.minigun = vmVariant('ar', 1.3, '#39404e');
 
 // ---- weapon skins: re-material a gun group with an equipped skin ----
 let mySkins = { owned: [], equipped: {} };
@@ -797,6 +834,11 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const easeOutBack = (t) => 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
 
+function freshAmmo() {
+  const a = {};
+  for (const [k, w] of Object.entries(WEAPONS)) if (w.mag) a[k] = { mag: w.mag, res: w.reserve };
+  return a;
+}
 function switchWeapon(id) {
   if (!id || id === me.weapon || me.reloading) return;
   me.weapon = id;
@@ -974,7 +1016,9 @@ function drawPlate(p) {
   p.tex.needsUpdate = true;
 }
 // mini third-person weapons so you can SEE what everyone is holding
+const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper' };
 function makeHeldWeapon(id) {
+  id = HELD_ALIAS[id] || id;
   const g = new THREE.Group();
   if (id === 'ar') {
     g.add(box(0.07, 0.09, 0.44, GOLD, 0, 0, -0.06));
@@ -1131,10 +1175,10 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', sniper: '🔭', fists: '👊' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
-  LOADOUT.forEach((id, i) => {
+  myLoadout().forEach((id, i) => {
     const s = document.createElement('div');
     s.className = 'slot' + (me.weapon === id ? ' active' : '');
     s.innerHTML = `<small>${i + 1}</small>${WEAPON_ICONS[id]}` + (id === 'grenade' ? `<span class="cnt">${me.grenades}</span>` : '');
@@ -1188,11 +1232,23 @@ function killfeed(killerName, victimName, weapon, meInvolved) {
 function chipAvatars(el, roster, team) {
   el.innerHTML = '';
   for (const f of roster.filter((r) => r.team === team)) {
+    const wrap = document.createElement('span');
+    wrap.className = 'chip-av';
     const cv = document.createElement('canvas');
     cv.width = cv.height = 64;
     cv.dataset.fid = f.id;
     try { drawAvatarHead(cv.getContext('2d'), f.avatar || {}, 64); } catch {}
-    el.appendChild(cv);
+    wrap.appendChild(cv);
+    // platform badge: what device this player is on (bots get a chip icon)
+    const plat = f.bot ? 'bot' : f.platform;
+    if (plat) {
+      const b = document.createElement('i');
+      b.className = 'plat-badge';
+      b.textContent = plat === 'bot' ? '\ud83e\udd16' : (PLATFORM_ICONS[plat] || '');
+      b.title = plat === 'bot' ? 'Bot' : 'Playing on ' + plat;
+      wrap.appendChild(b);
+    }
+    el.appendChild(wrap);
   }
 }
 
@@ -1248,6 +1304,8 @@ net.on('queue.state', (msg) => {
 });
 
 net.on('match.start', (msg) => {
+  if (msg.mode === 'wave') return startWaveMatch(msg);
+  game.waveMode = false; game.loadout = null;
   game.phase = 'vote';
   game.roster = msg.roster;
   game.stateUntil = msg.voteEnds;
@@ -1294,7 +1352,7 @@ net.on('round.freeze', (msg) => {
       me.vel = { x: 0, y: 0, z: 0 };
       me.hp = 100; me.dead = false;
       me.weapon = 'ar';
-      me.ammo = { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 }, sniper: { mag: 5, res: 25 } };
+      me.ammo = freshAmmo();
       me.grenades = WEAPONS.grenade.count;
       me.reloading = 0;
     } else addOther(f);
@@ -1339,6 +1397,32 @@ net.on('round.end', (msg) => {
 });
 net.on('match.end', (msg) => {
   game.phase = 'podium';
+  if (msg.waveMode) {
+    $('#podium-title').textContent = msg.victory ? 'VICTORY' : 'DEFEAT';
+    $('#podium-title').className = msg.victory ? 'win' : 'lose';
+    $('#podium-sub').textContent = msg.victory
+      ? 'All ' + msg.total + ' waves defeated! ' + (msg.stats.filter((x) => x.survived).map((x) => x.name).join(' & ') || 'Nobody') + ' survived to the end'
+      : 'The horde won on wave ' + msg.wave + ' of ' + msg.total + ' — try again!';
+    const hostW = $('#podium-stats');
+    hostW.innerHTML = '';
+    for (const st of [...msg.stats].sort((a, b) => b.elims - a.elims)) {
+      const row = document.createElement('div');
+      row.className = 'pstat' + (st.survived && msg.victory ? ' winner' : '');
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      try { drawAvatarHead(cv.getContext('2d'), st.avatar || {}, 64); } catch {}
+      row.appendChild(cv);
+      row.insertAdjacentHTML('beforeend',
+        '<div class="pn">' + st.name + (st.survived ? ' <small>SURVIVED</small>' : '') + '</div>' +
+        '<div class="pv"><span>\u2694 <b>' + st.elims + '</b></span><span>\ud83d\udc80 <b>' + st.deaths + '</b></span></div>');
+      hostW.appendChild(row);
+    }
+    $('#podium').classList.remove('hidden');
+    $('#wave-top')?.classList.add('hidden');
+    game.waveMode = false; game.loadout = null;
+    document.exitPointerLock?.();
+    if (msg.victory) { sfx.win(); window.ClaudeBox?.completeChallenge('rivals-win'); } else sfx.lose();
+    return;
+  }
   const won = msg.winner === game.myTeam;
   $('#podium-title').textContent = won ? 'VICTORY' : 'DEFEAT';
   $('#podium-title').className = won ? 'win' : 'lose';
@@ -1365,6 +1449,156 @@ net.on('match.end', (msg) => {
 });
 net.on('lobby', (msg) => { enterLobby(true); for (const p of msg.players) addOther({ ...p, team: 'A' }); });
 
+
+// ============================ WAVE SURVIVAL ============================
+function ensureWaveTop() {
+  let el = $('#wave-top');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'wave-top';
+    el.innerHTML = '<b id="wt-wave"></b><span id="wt-bots"></span>';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+let wtLast = '';
+function updateWaveTop() {
+  if (!game.waveMode) { $('#wave-top')?.classList.add('hidden'); wtLast = ''; return; }
+  const el = ensureWaveTop();
+  el.classList.remove('hidden');
+  let right;
+  if (game.phase === 'live') right = '\ud83e\udd16 ' + game.botsLeft + ' left';
+  else if (game.wave >= game.waveTotal) right = '';
+  else {
+    const secs = Math.max(0, Math.ceil(game.stateUntil - clockNow()));
+    right = 'next wave in ' + secs + 's';
+  }
+  const txt = '\ud83c\udf0a Wave ' + Math.max(1, game.wave || 1) + '/' + game.waveTotal + '|' + right;
+  if (txt !== wtLast) {
+    wtLast = txt;
+    el.querySelector('#wt-wave').textContent = txt.split('|')[0];
+    el.querySelector('#wt-bots').textContent = txt.split('|')[1];
+  }
+}
+
+function startWaveMatch(msg) {
+  game.waveMode = true;
+  game.phase = msg.state === 'live' ? 'live' : 'break';
+  game.mapId = msg.map;
+  game.roster = msg.roster;
+  game.myTeam = 'A';
+  game.score = { A: 0, B: 0 };
+  game.queued = null;
+  game.wave = msg.wave || 0; game.waveTotal = msg.waveTotal || 10;
+  game.botsLeft = msg.botsLeft || 0;
+  game.stateUntil = msg.nextAt || 0;
+  game.loadout = [...(msg.arsenal || ['handgun', 'fists'])];
+  $('#queue-banner').classList.add('hidden');
+  $('#vote').classList.add('hidden');
+  $('#teleport').classList.add('hidden');
+  $('#podium').classList.add('hidden');
+  buildMap(MAPS[game.mapId] || MAPS.arena);
+  game.builtMap = game.mapId;
+  clearOthers();
+  const sp = (MAPS[game.mapId].spawnsA || [{ x: 0, z: 0, ry: 0 }])[0];
+  me.pos = { x: sp.x, y: 0, z: sp.z }; me.ry = sp.ry || 0; me.pitch = 0;
+  me.vel = { x: 0, y: 0, z: 0 };
+  me.hp = 100; me.dead = false;
+  me.weapon = 'handgun';
+  me.ammo = freshAmmo();
+  me.grenades = 1; me.reloading = 0;
+  $('#match-top').classList.add('hidden');
+  $('#health-wrap').classList.remove('hidden');
+  $('#ammo-wrap').classList.remove('hidden');
+  $('#lobby-tip').classList.add('hidden');
+  $('#kb-open')?.classList.add('hidden'); closeKeybinds();
+  $('#freeze-count').classList.add('hidden');
+  updateHpHud(); updateAmmoHud();
+  updateWaveTop();
+  banner(msg.joinLive ? 'YOU JOINED THE FIGHT!' : 'WAVE SURVIVAL', 1400);
+  sfx.roundStart();
+  try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
+}
+
+net.on('wave.start', (msg) => {
+  if (!game.waveMode) return;
+  game.phase = 'live';
+  game.wave = msg.wave; game.waveTotal = msg.total; game.botsLeft = msg.botsLeft;
+  clearOthers();
+  for (const fdata of msg.fighters) {
+    if (fdata.id === net.id) {
+      if (me.dead || me.hp <= 0) {   // fallen heroes come back each wave
+        me.pos = { ...fdata.pos }; me.ry = fdata.ry || 0;
+        me.vel = { x: 0, y: 0, z: 0 };
+        me.hp = 100; me.dead = false; me.reloading = 0;
+        me.weapon = game.loadout?.includes(me.weapon) ? me.weapon : 'handgun';
+        updateHpHud(); updateAmmoHud();
+      }
+      continue;
+    }
+    addOther(fdata);
+  }
+  banner('WAVE ' + msg.wave, 1100);
+  updateWaveTop();
+  sfx.roundStart();
+});
+
+net.on('wave.cleared', (msg) => {
+  if (!game.waveMode) return;
+  game.phase = 'break';
+  game.wave = msg.wave; game.waveTotal = msg.total;
+  game.stateUntil = msg.nextAt;
+  game.botsLeft = 0;
+  if (msg.wave > 0) { banner('WAVE ' + msg.wave + ' CLEARED!', 1600); sfx.win(); toast('Grab dropped weapons before the next wave!'); }
+  else banner('GET READY…', 1400);
+  updateWaveTop();
+});
+
+net.on('fighter.join', (msg) => {
+  if (!game.waveMode || msg.fighter.id === net.id) return;
+  addOther(msg.fighter);
+});
+
+// ---- weapon drops (bots drop what they were holding) ----
+const dropMeshes = new Map();
+function makeDropLabel(weapon) {
+  const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 72;
+  const c = cvs.getContext('2d');
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = '800 30px system-ui';
+  c.lineWidth = 7; c.strokeStyle = 'rgba(10,14,22,.9)';
+  const label = (WEAPON_ICONS[weapon] || '') + ' ' + (WEAPONS[weapon]?.name || weapon);
+  c.strokeText(label, 128, 36); c.fillStyle = '#ffd24a'; c.fillText(label, 128, 36);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cvs), transparent: true, depthTest: false }));
+  spr.scale.set(2.6, 0.72, 1);
+  return spr;
+}
+net.on('drop.spawn', (msg) => {
+  if (!game.waveMode) return;
+  const d = msg.d;
+  const g = new THREE.Group();
+  const gun = makeHeldWeapon(d.weapon);
+  gun.scale.setScalar(3.2);
+  g.add(gun);
+  const label = makeDropLabel(d.weapon);
+  label.position.y = 1.05;
+  g.add(label);
+  g.position.set(d.x, d.y, d.z);
+  scene.add(g);
+  dropMeshes.set(msg.d.id, g);
+});
+net.on('drop.take', (msg) => {
+  const g = dropMeshes.get(msg.id);
+  if (g) { scene.remove(g); dropMeshes.delete(msg.id); }
+});
+net.on('pickup', (msg) => {
+  game.loadout = [...msg.arsenal];
+  if (WEAPONS[msg.weapon]?.mag) me.ammo[msg.weapon] = { mag: WEAPONS[msg.weapon].mag, res: WEAPONS[msg.weapon].reserve };
+  toast('Picked up ' + (WEAPONS[msg.weapon]?.name || msg.weapon) + '! Press ' + (game.loadout.indexOf(msg.weapon) + 1) + ' to equip');
+  sfx.beep();
+  updateLoadoutHud();
+});
+
 net.on('snap', (msg) => {
   if (msg.players) { // lobby snapshot
     for (const pl of msg.players) {
@@ -1376,6 +1610,12 @@ net.on('snap', (msg) => {
       if (pl.weapon && o.heldId !== pl.weapon) { setHeld(o, pl.weapon); mountHeldToHand(o); }
     }
     return;
+  }
+  if (game.waveMode && msg.wave !== undefined) {
+    game.wave = msg.wave; game.botsLeft = msg.botsLeft; game.waveTotal = msg.waveTotal;
+    if (msg.state === 'break' || msg.state === 'live') game.phase = msg.state;
+    game.stateUntil = msg.until;
+    updateWaveTop();
   }
   for (const f of msg.fighters || []) {
     if (f.id === net.id) {
@@ -1481,13 +1721,17 @@ net.on('_disconnect', () => { toast('Disconnected — refresh to rejoin'); });
 // ============================ lobby / phases ============================
 function enterLobby(fromMatch) {
   game.phase = 'lobby';
+  game.waveMode = false; game.loadout = null;
+  $('#wave-top')?.classList.add('hidden');
+  for (const g of dropMeshes.values()) scene.remove(g);
+  dropMeshes.clear();
   game.mapId = 'lobby'; game.builtMap = 'lobby';
   buildMap(LOBBY);
   clearOthers();
   me.pos = { x: LOBBY.spawnsA[0].x, y: 0, z: LOBBY.spawnsA[0].z };
   me.ry = LOBBY.spawnsA[0].ry; me.pitch = 0;
   me.hp = 100; me.dead = false; me.weapon = 'ar';
-  me.ammo = { ar: { mag: 20, res: 100 }, handgun: { mag: 15, res: 90 }, sniper: { mag: 5, res: 25 } };
+  me.ammo = freshAmmo();
   me.grenades = WEAPONS.grenade.count;
   $('#match-top').classList.add('hidden');
   $('#freeze-count').classList.add('hidden');
@@ -1814,6 +2058,11 @@ function frame() {
     o.ctrl.setAnim(displayAnim(o));
     o.ctrl.update(dt);
   }
+  // wave survival: spinning weapon drops + top HUD countdown
+  if (game.waveMode) {
+    for (const g of dropMeshes.values()) { g.rotation.y += dt * 2.2; g.children[0].position.y = 0.12 + Math.sin(now * 2.4) * 0.08; }
+    updateWaveTop();
+  }
   // timers
   if (game.phase === 'freeze') {
     const left = Math.max(0, game.stateUntil - cn);
@@ -1844,7 +2093,7 @@ setupMobile(); updateMobileHud();
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
 await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI();
 net.connect();
-net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '', skins: mySkins.equipped });
+net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '', skins: mySkins.equipped, platform: platformKind() });
 net.startMovementStream(() => ({
   t: 'move',
   x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),

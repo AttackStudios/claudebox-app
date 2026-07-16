@@ -344,3 +344,15 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 .kb-switch i { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #cbd2dd; transition: transform .18s var(--spring, cubic-bezier(.22,1,.36,1)), background .18s; }
 .kb-switch.on { background: #6ee7ff; border-color: #6ee7ff; }
 .kb-switch.on i { transform: translateX(22px); background: #0b1017; }
+
+/* ==================== Wave Survival ==================== */
+#wave-top { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30;
+  display: flex; align-items: center; gap: 12px; padding: 8px 18px; border-radius: 999px;
+  background: rgba(10,14,22,.78); border: 1px solid rgba(87,224,255,.4); font-weight: 800; font-size: 16px;
+  color: #eaf4ff; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+#wave-top.hidden { display: none; }
+#wave-top span { color: #ffd24a; font-weight: 700; font-size: 14px; }
+.chip-av { position: relative; display: inline-block; }
+.plat-badge { position: absolute; right: -4px; bottom: -4px; font-style: normal; font-size: 13px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); pointer-events: none; }
+

@@ -37,7 +37,9 @@ export function tickBots(m, dt) {
   for (const f of m.fighters.values()) {
     if (!f.bot || f.dead) continue;
     const mem = f.botMem;
-    const skill = SKILLS[f.bot.skill] || SKILLS.normal;
+    const skill = typeof f.bot.skill === 'object' ? f.bot.skill : (SKILLS[f.bot.skill] || SKILLS.normal);
+    const myGun = f.bot.weapon && !WEAPONS[f.bot.weapon]?.melee ? f.bot.weapon : null;
+    const knifer = f.bot.weapon === 'scythe';
 
     // pick nearest living enemy
     let enemy = null, ed = Infinity;
@@ -68,6 +70,7 @@ export function tickBots(m, dt) {
     }
     else if (!los) { moveX = fwdX; moveZ = fwdZ; }            // hunt
     else if (dist > 18) { moveX = fwdX * 0.8 + strafeX * 0.5; moveZ = fwdZ * 0.8 + strafeZ * 0.5; }
+    else if (knifer) { moveX = fwdX; moveZ = fwdZ; }          // knife-rushers just charge
     else if (dist < 6 && f.weapon !== 'scythe') { moveX = -fwdX * 0.5 + strafeX; moveZ = -fwdZ * 0.5 + strafeZ; }
     else { moveX = strafeX; moveZ = strafeZ; }
     const sp = MOVE.sprint * skill.speed;
@@ -109,12 +112,14 @@ export function tickBots(m, dt) {
     }
 
     // ---- weapon choice ----
-    if (dist < 3.2 && los) f.weapon = 'scythe';
+    if (f.bot.weapon) {
+      f.weapon = f.bot.weapon;                        // wave bots keep their assigned gun (they drop it!)
+    } else if (dist < 3.2 && los) f.weapon = 'scythe';
     else if (dist > 3.8 && f.weapon === 'scythe') f.weapon = 'ar';
 
     // ---- combat ----
     if (los && mem.sawAt && now - mem.sawAt >= skill.reaction) {
-      if (f.weapon === 'scythe') { meleeSwing(m, f, 'scythe'); continue; }
+      if (f.weapon === 'scythe') { if (dist < 3.4) meleeSwing(m, f, 'scythe'); continue; }
       // burst-fire management
       if (mem.pauseUntil && now < mem.pauseUntil) continue;
       mem.shots = mem.shots || 0;
@@ -126,7 +131,7 @@ export function tickBots(m, dt) {
       const dirX = ax / al + (Math.random() - 0.5) * err;
       const dirY = ay / al + (Math.random() - 0.5) * err;
       const dirZ = az / al + (Math.random() - 0.5) * err;
-      fireHitscan(m, f, dirX, dirY, dirZ, 'ar');
+      fireHitscan(m, f, dirX, dirY, dirZ, myGun || 'ar');
       mem.shots++;
       if (mem.shots >= skill.burst) { mem.shots = 0; mem.pauseUntil = now + skill.pause; }
       // occasional grenade at range
