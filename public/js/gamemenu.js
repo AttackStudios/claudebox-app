@@ -230,3 +230,115 @@
 
   function gameId() { const m = location.pathname.match(/\/games\/([^/?#]+)/); return m ? m[1] : (location.pathname.replace(/\//g, '') || 'unknown'); }
 })();
+
+
+// ================= 📱 Landscape mode for phones =================
+// iPhones can't lock orientation from the web, so when the phone stays
+// portrait (rotation lock!) we rotate the whole game 90° with CSS and patch
+// the coordinate APIs (innerWidth/Height, mouse/touch positions, element
+// rects) so every game believes the screen really is landscape.
+(function () {
+  if (window.__cbxLandscape) return;
+  window.__cbxLandscape = true;
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (!isTouch) return;
+
+  // physical viewport getters, captured before we shadow them
+  const wDesc = Object.getOwnPropertyDescriptor(window, 'innerWidth') || Object.getOwnPropertyDescriptor(Window.prototype, 'innerWidth');
+  const hDesc = Object.getOwnPropertyDescriptor(window, 'innerHeight') || Object.getOwnPropertyDescriptor(Window.prototype, 'innerHeight');
+  if (!wDesc?.get || !hDesc?.get) return;
+  const realW = () => wDesc.get.call(window);
+  const realH = () => hDesc.get.call(window);
+  const R = { on: false, native: false };
+  const physPortrait = () => realH() > realW();
+
+  // logical coords: x' = physY, y' = physW - physX  (pure 90° rotation)
+  function patchPoint(proto, xProp, yProp) {
+    const xd = Object.getOwnPropertyDescriptor(proto, xProp);
+    const yd = Object.getOwnPropertyDescriptor(proto, yProp);
+    if (!xd?.get || !yd?.get) return;
+    Object.defineProperty(proto, xProp, { configurable: true, get() { return R.on ? yd.get.call(this) : xd.get.call(this); } });
+    Object.defineProperty(proto, yProp, { configurable: true, get() { return R.on ? realW() - xd.get.call(this) : yd.get.call(this); } });
+  }
+  try {
+    patchPoint(MouseEvent.prototype, 'clientX', 'clientY');
+    patchPoint(MouseEvent.prototype, 'pageX', 'pageY');
+    if (window.Touch) { patchPoint(Touch.prototype, 'clientX', 'clientY'); patchPoint(Touch.prototype, 'pageX', 'pageY'); }
+    const realGBCR = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      const r = realGBCR.call(this);
+      if (!R.on) return r;
+      return new DOMRect(r.top, realW() - r.right, r.height, r.width);
+    };
+    Object.defineProperty(window, 'innerWidth', { configurable: true, get: () => (R.on ? realH() : realW()) });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => (R.on ? realW() : realH()) });
+  } catch { return; }
+
+  const st = document.createElement('style');
+  st.textContent = `
+  html.cbx-land, html.cbx-land body { overflow: hidden !important; overscroll-behavior: none; }
+  html.cbx-land body { position: fixed !important; top: 0 !important; left: 0 !important; margin: 0 !important;
+    transform: rotate(90deg) translateY(-100%); transform-origin: 0 0;
+    width: var(--cbx-lw) !important; height: var(--cbx-lh) !important; }
+  html.cbx-land #game-canvas, html.cbx-land canvas.game-canvas { width: 100% !important; height: 100% !important; }
+  #cbx-land-btn { position: fixed; top: 12px; left: 66px; z-index: 100000; width: 46px; height: 46px; border: none;
+    border-radius: 13px; background: rgba(20,24,34,.72); backdrop-filter: blur(10px); color: #fff; font-size: 21px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.45); cursor: pointer; -webkit-appearance: none; display: none; }
+  #cbx-land-btn.show { display: block; }`;
+  document.head.appendChild(st);
+
+  const btn = document.createElement('button');
+  btn.id = 'cbx-land-btn'; btn.textContent = '🔄'; btn.title = 'Landscape mode';
+  function syncBtn() { btn.classList.toggle('show', physPortrait() || R.on); btn.textContent = R.on ? '↩️' : '🔄'; }
+
+  function apply(on) {
+    R.on = on;
+    const de = document.documentElement;
+    if (on) { de.style.setProperty('--cbx-lw', realH() + 'px'); de.style.setProperty('--cbx-lh', realW() + 'px'); }
+    de.classList.toggle('cbx-land', on);
+    try { sessionStorage.setItem('cbx.landscape', on ? '1' : ''); } catch {}
+    syncBtn();
+    dispatchEvent(new Event('resize'));
+  }
+
+  // Android path: real fullscreen + orientation lock. iOS throws → CSS rotation.
+  async function tryNativeLock() {
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      await screen.orientation.lock('landscape');
+      R.native = true; syncBtn();
+      return true;
+    } catch { try { if (document.fullscreenElement) document.exitFullscreen(); } catch {} return false; }
+  }
+  function releaseNative() {
+    R.native = false;
+    try { screen.orientation.unlock?.(); } catch {}
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+  }
+
+  btn.addEventListener('click', async () => {
+    if (R.on) { apply(false); return; }
+    if (R.native) { releaseNative(); syncBtn(); return; }
+    if (await tryNativeLock()) return;
+    apply(true);
+  });
+
+  addEventListener('resize', () => {
+    if (R.on) {
+      if (!physPortrait()) { apply(false); return; }   // physically rotated: native landscape wins
+      const de = document.documentElement;
+      de.style.setProperty('--cbx-lw', realH() + 'px');
+      de.style.setProperty('--cbx-lh', realW() + 'px');
+    }
+    syncBtn();
+  });
+
+  function boot() {
+    document.body.appendChild(btn);
+    syncBtn();
+    let saved = '';
+    try { saved = sessionStorage.getItem('cbx.landscape') || ''; } catch {}
+    if (saved === '1' && physPortrait()) apply(true);
+  }
+  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
+})();
