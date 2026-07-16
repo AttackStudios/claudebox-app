@@ -454,9 +454,30 @@ function collideMove(nx, ny, nz) {
   const r = MOVE.radius;
   const h = me.crouch || me.sliding ? MOVE.heightCrouch : MOVE.heightStand;
   // horizontal push-out per axis
+  const rampSurfaceY = (b, x, z) => {
+    const len = b.ramp.axis === 'x' ? b.sx : b.sz;
+    let f = ((b.ramp.axis === 'x' ? x - b.x : z - b.z) + len / 2) / len;
+    if (b.ramp.up < 0) f = 1 - f;
+    return (b.y - b.sy / 2) + Math.max(0, Math.min(1, f)) * b.ramp.rise;
+  };
   const solveAxis = (x, z) => {
     for (const b of mapBoxes) {
-      if (b.ramp) continue;   // slopes are walkable floors — never block horizontally
+      if (b.ramp) {
+        // slopes are walkable — but only where you can actually step up onto
+        // the surface. Walking into the TALL side/underside is a wall, not a
+        // door (you could phase straight through the wedge before).
+        const minX = b.x - b.sx / 2 - r, maxX = b.x + b.sx / 2 + r;
+        const minZ = b.z - b.sz / 2 - r, maxZ = b.z + b.sz / 2 + r;
+        if (x > minX && x < maxX && z > minZ && z < maxZ) {
+          const hh = rampSurfaceY(b, x, z);
+          if (hh - ny > 0.75 && ny + h > b.y - b.sy / 2 + 0.05) {
+            const dl = x - minX, dr = maxX - x, dn = z - minZ, df = maxZ - z;
+            const m2 = Math.min(dl, dr, dn, df);
+            if (m2 === dl) x = minX; else if (m2 === dr) x = maxX; else if (m2 === dn) z = minZ; else z = maxZ;
+          }
+        }
+        continue;
+      }
       const top = b.y + b.sy / 2, bot = b.y - b.sy / 2;
       if (ny + h < bot + 0.01 || ny > top - 0.28) continue;   // can step onto low tops
       const minX = b.x - b.sx / 2 - r, maxX = b.x + b.sx / 2 + r;
@@ -738,7 +759,7 @@ async function loadMySkins() {
 function buildSkinsUI() {
   if (document.getElementById('sk-open')) return;
   const st = document.createElement('style'); st.textContent = `
-  #sk-open{position:fixed;right:14px;bottom:14px;z-index:40;background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.14);color:#fff;font-weight:800;font-size:14px;padding:11px 16px;border-radius:12px;cursor:pointer;backdrop-filter:blur(8px);}
+  #sk-open{position:fixed;right:12px;top:10px;z-index:40;background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.14);color:#fff;font-weight:800;font-size:14px;padding:11px 16px;border-radius:12px;cursor:pointer;backdrop-filter:blur(8px);}
   #sk-open:hover{background:rgba(40,48,66,.9);}
   #sk-panel{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(6,8,14,.6);backdrop-filter:blur(6px);font-family:-apple-system,system-ui,sans-serif;}
   #sk-panel.hidden{display:none;}
@@ -762,7 +783,7 @@ function buildSkinsUI() {
   .sk-drop b{display:block;font-size:15px;margin-top:4px;} .sk-drop .w{color:#8a94a8;font-size:12px;} .sk-drop .r{font-size:11px;font-weight:800;text-transform:uppercase;}
   @keyframes skpop{from{transform:scale(.3);opacity:0}}
   .sk-rev-in button{margin-top:20px;background:#2f6fed;border:none;color:#fff;font-weight:800;padding:12px 28px;border-radius:12px;cursor:pointer;font-size:15px;}
-  @media(max-width:640px){#sk-open{bottom:auto;top:10px;right:10px;}}`;
+  `;
   document.head.appendChild(st);
   const btn = document.createElement('button'); btn.id = 'sk-open'; btn.textContent = '🎁 Skins';
   const panel = document.createElement('div'); panel.id = 'sk-panel'; panel.className = 'hidden';

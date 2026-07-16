@@ -506,7 +506,7 @@ main {
 /* ======================================================================
    MOBILE — bottom tab bar
    ====================================================================== */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 480px) and (pointer: coarse) {
   :root { --topbar-h: 56px; }
   #topbar { gap: 10px; }
   #tabs {
@@ -633,7 +633,7 @@ main {
 #me-chip .title-badge { display: none; }
 @media (min-width: 520px) { #me-chip .title-badge { display: inline-block; } }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 480px) and (pointer: coarse) {
   #wallet-chip { padding: 6px 10px; gap: 7px; font-size: 12.5px; }
   .wallet-actions { grid-template-columns: 1fr; }
   .chal-grid { grid-template-columns: 1fr; }

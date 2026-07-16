@@ -23,7 +23,7 @@ const C = {
   asphalt: new THREE.Color('#46464a'),
   shoulder: new THREE.Color('#6e6356'),
   scorched: new THREE.Color('#4a423c'),
-  basalt: new THREE.Color('#33302c'),
+  basalt: new THREE.Color('#4d4741'),   // lighter so steep cuts read as rock, not voids
   mud: new THREE.Color('#8a7150'),
   underwater: new THREE.Color('#c7b683'),
   caveFloor: new THREE.Color('#5a5450'),

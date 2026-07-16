@@ -12,7 +12,10 @@ export function buildRoads() {
   const roadMat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
   const shoulderMat = new THREE.MeshLambertMaterial({ color: '#6e5a40', side: THREE.DoubleSide });
 
+  let roadIdx = 0;
   for (const road of ROADS) {
+    // stagger each road's height a hair so crossings never Z-fight
+    const yLift = 0.06 + (roadIdx++ % 6) * 0.02;
     // resample the polyline at ~7u steps with smoothed corners
     const pts = resample(road.pts, 7);
     const rv = [], ruv = [], ridx = [];       // asphalt ribbon
@@ -26,7 +29,7 @@ export function buildRoads() {
       const nrm = new THREE.Vector2(-dir.y, dir.x);
       const hw = road.width / 2;
       const ri = roadInfo(p.x, p.z);
-      const y = roadElevation(ri) + 0.06;
+      const y = roadElevation(ri) + yLift;
       if (i > 0) dist += Math.hypot(p.x - prev.x, p.z - prev.z);
 
       // road edge points
@@ -58,6 +61,16 @@ export function buildRoads() {
 
     group.add(buildMesh(rv, ridx, roadMat, ruv));
     group.add(buildMesh(sv, sidx, shoulderMat));
+
+    // rounded end caps so roads never stop on a hard straight edge
+    for (const p of [pts[0], pts[pts.length - 1]]) {
+      const ri2 = roadInfo(p.x, p.z);
+      const y2 = roadElevation(ri2) + yLift;
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(road.width * 0.62, 18).rotateX(-Math.PI / 2), roadMat);
+      cap.position.set(p.x, y2, p.z);
+      cap.receiveShadow = true;
+      group.add(cap);
+    }
   }
   return group;
 }

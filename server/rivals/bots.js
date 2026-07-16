@@ -17,7 +17,23 @@ function collideXZ(boxes, x, z, y) {
   const r = MOVE.radius;
   for (let pass = 0; pass < 2; pass++) {
     for (const b of boxes) {
-      if (b.ramp) continue;   // slopes are walkable — don't wedge bots on them
+      if (b.ramp) {
+        // block only the tall side of a slope (bots used to phase through)
+        const minX = b.x - b.sx / 2 - r, maxX = b.x + b.sx / 2 + r;
+        const minZ = b.z - b.sz / 2 - r, maxZ = b.z + b.sz / 2 + r;
+        if (x > minX && x < maxX && z > minZ && z < maxZ) {
+          const len = b.ramp.axis === 'x' ? b.sx : b.sz;
+          let f = ((b.ramp.axis === 'x' ? x - b.x : z - b.z) + len / 2) / len;
+          if (b.ramp.up < 0) f = 1 - f;
+          const hh = (b.y - b.sy / 2) + Math.max(0, Math.min(1, f)) * b.ramp.rise;
+          if (hh - y > 0.9) {
+            const dl = x - minX, dr = maxX - x, dn = z - minZ, df = maxZ - z;
+            const m2 = Math.min(dl, dr, dn, df);
+            if (m2 === dl) x = minX; else if (m2 === dr) x = maxX; else if (m2 === dn) z = minZ; else z = maxZ;
+          }
+        }
+        continue;
+      }
       if (y + 1.6 < b.y - b.sy / 2 || y > b.y + b.sy / 2) continue;
       const minX = b.x - b.sx / 2 - r, maxX = b.x + b.sx / 2 + r;
       const minZ = b.z - b.sz / 2 - r, maxZ = b.z + b.sz / 2 + r;

@@ -144,28 +144,44 @@ export function buildProps(sky, quality = 'high') {
     group.userData.lavaMesh = lava;
   }
 
-  // ================= VOLCANO ROAD TUNNEL =================
+  // ================= ROAD TUNNELS (solid half-pipe shells) =================
+  // The old widely-spaced torus arches read as a broken rib cage from above.
+  // Each tunnel is now a continuous rock tube: overlapping half-cylinder
+  // segments that follow the roadbed's slope, with portal rings at both ends.
   for (const t of WORLD.tunnels) {
     const rockMat = lambert('#4a423c', { side: THREE.DoubleSide });
     const len = Math.hypot(t.bx - t.ax, t.bz - t.az);
-    const segs = Math.max(8, Math.round(len / 18));
+    const segs = Math.max(6, Math.round(len / 14));
+    const segLen = len / segs;
     const yaw = Math.atan2(t.bx - t.ax, t.bz - t.az);
-    for (let i = 0; i <= segs; i++) {
-      const k = i / segs;
+    for (let i = 0; i < segs; i++) {
+      const k = (i + 0.5) / segs;
       const x = t.ax + (t.bx - t.ax) * k;
       const z = t.az + (t.bz - t.az) * k;
       const ri = roadInfo(x, z);
       const y = height(ri.px, ri.pz);
-      // arch roof spanning the cut, scaled to the tunnel radius
-      const arch = new THREE.Mesh(new THREE.TorusGeometry(t.r * 0.55, t.r * 0.16, 8, 12, Math.PI), rockMat);
-      arch.position.set(x, y + 0.4, z);
-      arch.rotation.y = yaw;
-      group.add(arch);
+      const shell = new THREE.Mesh(
+        new THREE.CylinderGeometry(t.r * 0.62, t.r * 0.62, segLen * 1.22, 14, 1, true, 0, Math.PI),
+        rockMat);
+      shell.rotation.order = 'YXZ';
+      shell.rotation.y = yaw;
+      shell.rotation.x = -Math.PI / 2;   // lay the tube along the road
+      shell.position.set(x, y + 0.35, z);
+      group.add(shell);
       if (i % 2 === 1) {
         const sideX = Math.cos(yaw) * t.r * 0.5 * (i % 4 === 1 ? 1 : -1);
         const sideZ = -Math.sin(yaw) * t.r * 0.5 * (i % 4 === 1 ? 1 : -1);
         addTorch(group, sky, x + sideX, y, z + sideZ);
       }
+    }
+    // chunky portal rings at the two mouths
+    for (const [px2, pz2] of [[t.ax, t.az], [t.bx, t.bz]]) {
+      const ri = roadInfo(px2, pz2);
+      const y = height(ri.px, ri.pz);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(t.r * 0.62, t.r * 0.2, 8, 14, Math.PI), rockMat);
+      ring.position.set(px2, y + 0.35, pz2);
+      ring.rotation.y = yaw;
+      group.add(ring);
     }
   }
 

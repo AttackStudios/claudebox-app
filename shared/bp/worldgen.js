@@ -61,19 +61,10 @@ export const ROADS = [
 // Roundabouts: circular ring-roads at major junctions (appended to ROADS so
 // the height/mesh/collision systems treat them as roads). Rendered with a
 // grassy island in props.
-export const ROUNDABOUTS = [
-  { x: -550, z: 460, r: 46 },     // west junction
-  { x: 1060, z: 420, r: 50 },     // east junction near the volcano spur
-];
-for (const rb of ROUNDABOUTS) {
-  const pts = [];
-  const n = 16;
-  for (let i = 0; i <= n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    pts.push([rb.x + Math.cos(a) * rb.r, rb.z + Math.sin(a) * rb.r]);
-  }
-  ROADS.push({ id: 'roundabout', width: 9, pts, roundabout: true });
-}
+// Roundabouts retired: the giant ring-junctions read as broken "rings on the
+// roads" and their grading gouged the terrain. Junctions are now plain
+// crossings. Kept as an (empty) export for the props/minimap code.
+export const ROUNDABOUTS = [];
 
 // Paved parking lots (rendered with a pergola + marked spaces + lights).
 // Every lot has an explicit pad height (y): terrain is flattened EXACTLY to it
@@ -309,9 +300,12 @@ export function height(x, z) {
   // notches (a covering arch is rendered over them in props), so vehicles can
   // always drive at road level.
   const ri = roadInfo(x, z);
-  const reach = ri.width * 2.6;
+  const rel = roadElevation(ri);
+  // widen the cut where terrain towers far above the roadbed, so mountain
+  // roads carve gentle benches instead of narrow vertical gashes
+  const reach = ri.width * 2.6 + Math.min(70, Math.max(0, h - rel) * 1.5);
   if (ri.dist < reach) {
-    h = lerp(roadElevation(ri), h, smoothstep(ri.width * 0.55, reach, ri.dist));
+    h = lerp(rel, h, smoothstep(ri.width * 0.55, reach, ri.dist));
   }
   // parking lots LAST: terrain inside a pad is exactly lot.y (flat), easing
   // back to natural ground over an 18-unit skirt. Roads can't re-carve pads.
