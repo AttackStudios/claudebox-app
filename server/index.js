@@ -13,6 +13,7 @@ import { handleMessage, onDisconnect, makeBroadcaster, npcPublic } from './proto
 import { topUpItems, tickItems } from './items.js';
 import { spawnNpcs, tickNpcs } from './npcs.js';
 import { hubRouter, FF_MAINTENANCE, BP_MAINTENANCE } from './hub.js';
+import { voiceConnection } from './voice.js';
 import { startSync } from './persist.js';
 import { state as bpState, genId as bpGenId, publicPlayer as bpPublicPlayer, publicVan, publicBear, clock01 } from './backpacking/state.js';
 import { handleMessage as bpHandle, onDisconnect as bpDisconnect, makeBroadcaster as bpBroadcaster, killPlayer as bpKill, tickVans } from './backpacking/protocol.js';
@@ -98,6 +99,8 @@ const bkWss = new WebSocketServer({ noServer: true });
 const tyWss = new WebSocketServer({ noServer: true });
 const wrWss = new WebSocketServer({ noServer: true });
 const pzWss = new WebSocketServer({ noServer: true });
+const vcWss = new WebSocketServer({ noServer: true });
+vcWss.on('connection', (ws) => voiceConnection(ws));
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://x');
   if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -110,6 +113,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/tycoon-ws') tyWss.handleUpgrade(req, socket, head, (ws) => tyWss.emit('connection', ws, req));
   else if (pathname === '/webrush-ws') wrWss.handleUpgrade(req, socket, head, (ws) => wrWss.emit('connection', ws, req));
   else if (pathname === '/pizza-ws') pzWss.handleUpgrade(req, socket, head, (ws) => pzWss.emit('connection', ws, req));
+  else if (pathname === '/voice-ws') vcWss.handleUpgrade(req, socket, head, (ws) => vcWss.emit('connection', ws, req));
   else socket.destroy();
 });
 

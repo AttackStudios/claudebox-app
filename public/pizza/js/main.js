@@ -412,18 +412,30 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 $('#btn-action').addEventListener('touchstart', (e) => { e.preventDefault(); if (promptAction) promptAction(); }, { passive: false });
+$('#btn-action').addEventListener('click', () => { if (promptAction) promptAction(); });
 $('#btn-chat').addEventListener('touchstart', (e) => { e.preventDefault(); const inp = $('#chat-input'); inp.classList.remove('hidden'); inp.focus(); }, { passive: false });
+if (isTouch) {
+  $('#move-cluster').classList.remove('hidden');
+  $('#btn-action').classList.remove('hidden');
+  $('#btn-chat').classList.remove('hidden');
+}
 
-// drag look (mouse + right-half touch)
-let dragging = false, lastX = 0, lastY = 0;
-canvas.addEventListener('pointerdown', (e) => { if (!isTouch || e.clientX > innerWidth * 0.45) { dragging = true; lastX = e.clientX; lastY = e.clientY; } });
+// drag look (mouse + right-half touch). Exactly ONE pointer owns the camera:
+// without tracking pointerId, the joystick finger also fires pointermove and
+// the camera spins wildly on phones.
+let dragId = null, lastX = 0, lastY = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  if (dragId !== null) return;
+  if (!isTouch || e.clientX > innerWidth * 0.45) { dragId = e.pointerId; lastX = e.clientX; lastY = e.clientY; }
+});
 addEventListener('pointermove', (e) => {
-  if (!dragging) return;
+  if (e.pointerId !== dragId) return;
   camYaw -= (e.clientX - lastX) * 0.0052;
   camPitch = Math.max(-1.1, Math.min(-0.06, camPitch - (e.clientY - lastY) * 0.004));
   lastX = e.clientX; lastY = e.clientY;
 });
-addEventListener('pointerup', () => { dragging = false; });
+addEventListener('pointerup', (e) => { if (e.pointerId === dragId) dragId = null; });
+addEventListener('pointercancel', (e) => { if (e.pointerId === dragId) dragId = null; });
 
 // joystick
 const joy = { x: 0, z: 0 };
@@ -713,6 +725,6 @@ function frame() {
   myAvatarRec.parts.armR && (myAvatarRec.armRHost = true);
   net.connect();
   net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '' });
-  window.__pizza = { me, others, net, scene, get orders() { return orders; } };
+  window.__pizza = { me, others, net, scene, joy, get orders() { return orders; }, get camYaw() { return camYaw; } };
   frame();
 })();

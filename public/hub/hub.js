@@ -7,6 +7,7 @@ import { drawAvatarHead } from './avatarModel.js';
 import { preloadAvatars, makeAvatar, CLOTHING } from '/shared/avatar3d.js';
 import { sfx } from './sounds.js';
 import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID, AVATAR_CATS } from '/shared/rewards.js';
+import { initVoice } from '/js/voice.js';
 
 const USER_KEY = 'claudebox.user';
 const SETTINGS_KEY = 'claudebox.settings';
@@ -699,7 +700,7 @@ function closeDMs() { $('dm-overlay').classList.add('hidden'); clearInterval(dmP
 function showDmList() {
   dmWith = null; clearInterval(dmPoll); dmPoll = null;
   $('dm-thread-view').classList.add('hidden'); $('dm-list').classList.remove('hidden');
-  $('dm-back').classList.add('hidden'); $('dm-title').textContent = 'Messages';
+  $('dm-back').classList.add('hidden'); $('dm-call').classList.add('hidden'); $('dm-title').textContent = 'Messages';
 }
 async function loadDmInbox() {
   try {
@@ -727,10 +728,55 @@ async function openThread(name) {
   dmWith = name;
   $('dm-list').classList.add('hidden'); $('dm-thread-view').classList.remove('hidden');
   $('dm-back').classList.remove('hidden'); $('dm-title').textContent = name;
+  $('dm-call').classList.remove('hidden');
+  syncDmCallUi();
   await refreshThread();
   $('dm-input').focus();
   clearInterval(dmPoll); dmPoll = setInterval(refreshThread, 3000);
 }
+
+// ---------------- DM voice calls ----------------
+// Both people tap 📞 in the same chat to connect (P2P audio via /voice-ws).
+// Starting a call drops a line in the chat so the other person knows to join.
+let dmVc = null, dmVcWith = null;
+const dmRoom = (a, b) => 'dm:' + [a, b].map((n) => n.toLowerCase().replace(/[^a-z0-9_-]/g, '-')).sort().join('|');
+function endDmCall() {
+  dmVc?.destroy(); dmVc = null; dmVcWith = null;
+  syncDmCallUi();
+}
+async function startDmCall() {
+  if (!dmWith) return;
+  if (dmVc && dmVcWith === dmWith) return;   // already in this call — controls are in the bar
+  endDmCall();
+  const withName = dmWith;
+  const vc = initVoice({ room: dmRoom(stateHub.me.name, withName), chip: false });
+  dmVc = vc; dmVcWith = withName;
+  vc.onUpdate(syncDmCallUi);
+  await vc.join();
+  if (!vc.joined) { if (dmVc === vc) endDmCall(); return; }   // mic denied
+  syncDmCallUi();
+  // if nobody's there yet after a moment, leave them a note in the chat
+  setTimeout(() => {
+    if (dmVc === vc && vc.joined && !vc.peers.length) {
+      api('/dm/send', { name: stateHub.me.name, to: withName, text: '📞 Voice call started — open this chat and tap 📞 to join!' })
+        .then((d) => { if (dmWith === withName) renderMessages(d.messages || []); }).catch(() => {});
+    }
+  }, 1500);
+}
+function syncDmCallUi() {
+  const inThisCall = !!(dmVc && dmVc.joined && dmVcWith === dmWith);
+  $('dm-call').classList.toggle('oncall', inThisCall);
+  $('dm-callbar').classList.toggle('hidden', !inThisCall);
+  if (inThisCall) {
+    const peers = dmVc.peers;
+    $('dm-call-status').textContent = peers.length ? `📞 In call with ${peers.join(', ')}` : '📞 Calling… waiting for them to join';
+    $('dm-call-mute').textContent = dmVc.muted ? 'Unmute' : 'Mute';
+    $('dm-call-mute').classList.toggle('muted', dmVc.muted);
+  }
+}
+$('dm-call').addEventListener('click', startDmCall);
+$('dm-call-mute').addEventListener('click', () => { dmVc?.toggleMute(); });
+$('dm-call-end').addEventListener('click', endDmCall);
 async function refreshThread() {
   if (!dmWith) return;
   try {

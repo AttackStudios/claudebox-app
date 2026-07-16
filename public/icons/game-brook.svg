@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4aa3d8"/>
+      <stop offset="1" stop-color="#2a5f8a"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="28" fill="url(#bg)"/>
+  <!-- sun -->
+  <circle cx="156" cy="44" r="16" fill="#ffd76a"/>
+  <!-- houses -->
+  <g>
+    <rect x="28" y="92" width="52" height="52" rx="4" fill="#f4ede2"/>
+    <path d="M22 96 L54 66 L86 96 Z" fill="#d8574a"/>
+    <rect x="46" y="114" width="16" height="30" rx="2" fill="#7a5236"/>
+    <rect x="98" y="102" width="48" height="42" rx="4" fill="#efe3cf"/>
+    <path d="M92 106 L122 80 L152 106 Z" fill="#5a8a4a"/>
+    <rect x="106" y="112" width="14" height="12" rx="2" fill="#bfe0f2"/>
+    <rect x="126" y="112" width="14" height="12" rx="2" fill="#bfe0f2"/>
+  </g>
+  <!-- road -->
+  <rect x="0" y="150" width="200" height="50" fill="#3a4250"/>
+  <rect x="14" y="172" width="26" height="6" rx="3" fill="#f2c14a"/>
+  <rect x="60" y="172" width="26" height="6" rx="3" fill="#f2c14a"/>
+  <rect x="106" y="172" width="26" height="6" rx="3" fill="#f2c14a"/>
+  <rect x="152" y="172" width="26" height="6" rx="3" fill="#f2c14a"/>
+  <!-- car -->
+  <g>
+    <rect x="118" y="152" width="56" height="20" rx="8" fill="#e2574f"/>
+    <rect x="130" y="144" width="30" height="14" rx="6" fill="#f2f7fb"/>
+    <circle cx="132" cy="174" r="8" fill="#1c2230"/>
+    <circle cx="160" cy="174" r="8" fill="#1c2230"/>
+  </g>
+</svg>

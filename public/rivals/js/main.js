@@ -1487,7 +1487,7 @@ function vcBtn() {
   if (!b) {
     const st = document.createElement('style');
     st.textContent = `
-    #vc-btn{position:fixed;left:14px;bottom:64px;z-index:40;display:none;align-items:center;gap:7px;
+    #vc-btn{position:fixed;left:14px;bottom:64px;z-index:95;display:none;align-items:center;gap:7px;touch-action:none;
       background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.16);color:#fff;font-weight:800;font-size:13.5px;
       padding:10px 14px;border-radius:999px;cursor:pointer;backdrop-filter:blur(8px);}
     #vc-btn.on{border-color:rgba(90,220,140,.55);}

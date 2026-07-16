@@ -247,10 +247,16 @@
     <div class="dm-head">
       <button id="dm-back" class="hidden" aria-label="Back">‹</button>
       <h2 id="dm-title">Messages</h2>
+      <button id="dm-call" class="hidden" aria-label="Voice call">📞</button>
       <button id="dm-close" aria-label="Close">✕</button>
     </div>
     <div id="dm-list"></div>
     <div id="dm-thread-view" class="hidden">
+      <div id="dm-callbar" class="hidden">
+        <span id="dm-call-status">📞 Calling…</span>
+        <button id="dm-call-mute">Mute</button>
+        <button id="dm-call-end">Hang up</button>
+      </div>
       <div id="dm-messages"></div>
       <div class="dm-compose">
         <input id="dm-input" maxlength="500" placeholder="Type a message…" autocomplete="off">

@@ -75,7 +75,7 @@ const GAMES = [
     id: 'brook',
     title: 'Brooktown RP',
     tagline: 'Live the town life. Drive cars, hang out, roleplay.',
-    art: '/icons/game-brook.png',
+    art: '/icons/game-brook.svg',
     url: '/games/brook',
     creators: ['ClaudeBox Studios'],
     tags: ['Roleplay', 'Town', 'Multiplayer'],
