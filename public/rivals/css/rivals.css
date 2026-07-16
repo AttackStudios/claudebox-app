@@ -53,7 +53,7 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 @keyframes dmgRise { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-34px)} }
 
 /* queue banner */
-#queue-banner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 30;
+#queue-banner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 70;
   display: flex; align-items: center; gap: 10px; background: rgba(14,16,22,.88); border: 1px solid rgba(255,255,255,.12);
   border-radius: 14px; padding: 10px 14px; backdrop-filter: blur(10px); font-size: 14px; }
 #queue-banner .qb-text b { margin-left: 6px; color: #6ee7ff; }
@@ -121,7 +121,7 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 .rv-toast { background: rgba(47,127,214,.92); border-radius: 10px; padding: 8px 16px; font-size: 14px; font-weight: 700; animation: kfIn .2s ease; }
 
 /* overlays */
-.overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(6,8,12,.55); backdrop-filter: blur(6px); }
+.overlay { position: fixed; inset: 0; z-index: 80;   /* above the mobile touch zones (60) so panels stay tappable */ display: grid; place-items: center; background: rgba(6,8,12,.55); backdrop-filter: blur(6px); }
 .overlay.solid { background: #05070a; backdrop-filter: none; }
 .panel { background: linear-gradient(160deg,#191d27,#12151d); border: 1px solid rgba(255,255,255,.12); border-radius: 22px; padding: 28px; width: min(560px, 92vw); text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
 .panel h2 { margin-bottom: 18px; font-size: 24px; font-weight: 850; }
@@ -279,7 +279,7 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 #m-crouch { right: 30px; bottom: 214px; width: 54px; height: 54px; font-size: 24px; }
 #m-reload.small { right: 108px; bottom: 232px; width: 50px; height: 50px; font-size: 22px; }
 /* lobby play button */
-#m-play { position: absolute; pointer-events: auto; z-index: 63; left: 50%; bottom: 42px; transform: translateX(-50%);
+#m-play { position: absolute; pointer-events: auto; z-index: 64; left: 44%; bottom: 170px; transform: translateX(-50%);
   padding: 16px 40px; font-size: 22px; font-weight: 900; color: #fff; border: none; border-radius: 40px;
   background: linear-gradient(180deg,#4aa3ff,#2f7de0); box-shadow: 0 6px 20px rgba(47,125,224,.5); }
 #m-play.hidden { display: none; }

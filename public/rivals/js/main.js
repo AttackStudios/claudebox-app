@@ -396,7 +396,11 @@ function updateMobileHud() {
   if (!mobileOn) return;
   const lobby = game.phase === 'lobby';
   $('#m-play').classList.toggle('hidden', !lobby);
-  for (const id of ['#m-fire', '#m-jump', '#m-aim', '#m-crouch', '#m-reload'])
+  // warmup arena: keep fire/jump/crouch up in the lobby (shoot + slide freely)
+  // but drop aim/reload there so the small screen doesn't get crowded
+  for (const id of ['#m-fire', '#m-jump', '#m-crouch'])
+    $(id).style.display = 'flex';
+  for (const id of ['#m-aim', '#m-reload'])
     $(id).style.display = lobby ? 'none' : 'flex';
 }
 

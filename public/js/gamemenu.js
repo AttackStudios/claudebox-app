@@ -93,6 +93,7 @@
     <div class="cbx-tabs">
       <button class="cbx-tab sel" data-t="people"><span class="ti">👥</span><span class="tl">People</span></button>
       <button class="cbx-tab" data-t="settings"><span class="ti">⚙️</span><span class="tl">Settings</span></button>
+      <button class="cbx-tab" data-t="controls"><span class="ti">🎮</span><span class="tl">Controls</span></button>
       <button class="cbx-tab" data-t="report"><span class="ti">🚩</span><span class="tl">Report</span></button>
       <button class="cbx-tab" data-t="help"><span class="ti">❔</span><span class="tl">Help</span></button>
     </div>
@@ -122,8 +123,131 @@
   function open() { killBack(); menu.classList.remove('hidden'); try { document.exitPointerLock && document.exitPointerLock(); } catch {} render(); }
   function close() { menu.classList.add('hidden'); }
 
+  // ============ customizable touch controls (shared by every game) ============
+  // Size / transparency / handedness + drag-anywhere layouts, saved per game.
+  const CTL_SELECTORS = [
+    '#joystick-zone', '#stick',
+    '#btn-a', '#btn-b', '#btn-jump', '#btn-fly', '#btn-descend',
+    '#btn-action', '#btn-horn', '#btn-phone-m', '#btn-chat',
+    '#t-jump', '#t-enter', '#t-fire',
+    '#action-stack',
+    '#m-fire', '#m-jump', '#m-aim', '#m-crouch', '#m-reload', '#m-chat', '#m-play',   // Rivals
+  ];
+  const CTL_CONTAINERS = ['#move-cluster', '#touch', '#action-stack', '#mobile'];   // force-shown while arranging
+  const ctlPrefs = () => { try { return { scale: 1, opacity: 1, mirror: false, ...JSON.parse(localStorage.getItem('bd.controls') || '{}') }; } catch { return { scale: 1, opacity: 1, mirror: false }; } };
+  const ctlSavePrefs = (p) => { try { localStorage.setItem('bd.controls', JSON.stringify(p)); } catch {} };
+  const ctlPosAll = () => { try { return JSON.parse(localStorage.getItem('bd.controls.pos') || '{}'); } catch { return {}; } };
+  const ctlPos = () => ctlPosAll()[location.pathname] || {};
+  const ctlSavePos = (m) => { try { const a = ctlPosAll(); a[location.pathname] = m; localStorage.setItem('bd.controls.pos', JSON.stringify(a)); } catch {} };
+  function ctlEls() {
+    const out = [];
+    for (const sel of CTL_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (el && !out.some((o) => o.el.contains(el) || el.contains(o.el))) out.push({ sel, el });
+    }
+    return out;
+  }
+  // Idempotent: remember each element's untouched inline style, restore it,
+  // then layer on mirror + saved offset + scale + opacity as one transform.
+  function ctlApply() {
+    const p = ctlPrefs(); const pos = ctlPos();
+    for (const { sel, el } of ctlEls()) {
+      if (el.dataset.cbxOrig === undefined) el.dataset.cbxOrig = el.getAttribute('style') || '';
+      el.setAttribute('style', el.dataset.cbxOrig);
+      let mx = 0;
+      if (p.mirror) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0) mx = innerWidth - r.right - r.left;   // flip to the other side
+      }
+      const o = pos[sel] || { dx: 0, dy: 0 };
+      const t = `translate(${(o.dx || 0) + mx}px, ${o.dy || 0}px) scale(${p.scale})`;
+      el.style.transform = (el.dataset.cbxOrig.includes('transform') ? '' : '') + t;
+      el.style.transformOrigin = 'center bottom';
+      el.style.opacity = String(p.opacity);
+    }
+  }
+  // controls appear after each game boots its touch UI — apply a few times
+  [800, 2500, 6000].forEach((ms) => setTimeout(ctlApply, ms));
+  addEventListener('resize', () => setTimeout(ctlApply, 60));
+
+  // ---- arrange mode: drag any control where you like ----
+  function ctlArrange() {
+    close();
+    const shown = [];
+    for (const sel of CTL_CONTAINERS) { const el = document.querySelector(sel); if (el && el.classList.contains('hidden')) { el.classList.remove('hidden'); shown.push(el); } }
+    ctlApply();
+    const ov = document.createElement('div');
+    ov.id = 'cbx-ctl-arrange';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100050;background:rgba(10,16,30,.35);touch-action:none';
+    ov.innerHTML = `<div style="position:fixed;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:rgba(12,18,32,.95);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 14px;font:600 13px system-ui;color:#fff">
+      ✋ Drag your buttons anywhere
+      <button id="cbx-ctl-reset" style="border:0;border-radius:9px;padding:7px 12px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;cursor:pointer">Reset</button>
+      <button id="cbx-ctl-done" style="border:0;border-radius:9px;padding:7px 12px;background:#3aa0ff;color:#fff;font-weight:800;cursor:pointer">Done</button>
+    </div>`;
+    const marks = [];
+    const mark = () => {
+      marks.forEach((m) => m.remove()); marks.length = 0;
+      for (const { el } of ctlEls()) {
+        const r = el.getBoundingClientRect(); if (!r.width) continue;
+        const m = document.createElement('div');
+        m.style.cssText = `position:fixed;left:${r.left - 4}px;top:${r.top - 4}px;width:${r.width + 8}px;height:${r.height + 8}px;border:2px dashed #7cc4ff;border-radius:14px;pointer-events:none`;
+        ov.appendChild(m); marks.push(m);
+      }
+    };
+    let drag = null;
+    ov.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      let best = null;
+      for (const { sel, el } of ctlEls()) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || e.clientX < r.left - 14 || e.clientX > r.right + 14 || e.clientY < r.top - 14 || e.clientY > r.bottom + 14) continue;
+        if (!best || r.width * r.height < best.area) best = { sel, el, area: r.width * r.height };
+      }
+      if (!best) return;
+      const cur = ctlPos()[best.sel] || { dx: 0, dy: 0 };
+      drag = { sel: best.sel, sx: e.clientX, sy: e.clientY, dx: cur.dx || 0, dy: cur.dy || 0 };
+      ov.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    ov.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const m = ctlPos();
+      m[drag.sel] = { dx: drag.dx + (e.clientX - drag.sx), dy: drag.dy + (e.clientY - drag.sy) };
+      ctlSavePos(m); ctlApply(); mark();
+    });
+    const endDrag = () => { drag = null; };
+    ov.addEventListener('pointerup', endDrag); ov.addEventListener('pointercancel', endDrag);
+    ov.querySelector('#cbx-ctl-reset').addEventListener('click', () => { ctlSavePos({}); ctlApply(); mark(); });
+    ov.querySelector('#cbx-ctl-done').addEventListener('click', () => {
+      ov.remove();
+      for (const el of shown) el.classList.add('hidden');
+      ctlApply();
+    });
+    document.body.appendChild(ov);
+    mark();
+  }
+
+  function renderControls() {
+    const p = ctlPrefs();
+    body().innerHTML = `
+      <div class="cbx-set"><label>Button size <span id="cbx-ctlsv">${Math.round(p.scale * 100)}%</span></label><input type="range" id="cbx-ctls" min="0.7" max="1.6" step="0.05" value="${p.scale}"></div>
+      <div class="cbx-set"><label>See-through <span id="cbx-ctlov">${Math.round(p.opacity * 100)}%</span></label><input type="range" id="cbx-ctlo" min="0.3" max="1" step="0.05" value="${p.opacity}"></div>
+      <div class="cbx-set"><label>Left-handed (swap sides) <span></span></label><div class="cbx-kb"><span>Joystick on the right, buttons on the left</span><input type="checkbox" id="cbx-ctlm" ${p.mirror ? 'checked' : ''} style="width:22px;height:22px;accent-color:#3aa0ff"></div></div>
+      <div class="cbx-set"><label>Layout</label>
+        <div class="cbx-kb"><span>Drag every button exactly where you like</span><button id="cbx-ctlarr" style="border:0;border-radius:9px;padding:8px 14px;background:#3aa0ff;color:#fff;font-weight:800;cursor:pointer">✋ Arrange</button></div>
+        <div class="cbx-kb"><span>Back to the normal layout (this game)</span><button id="cbx-ctlrst" style="border:0;border-radius:9px;padding:8px 14px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;cursor:pointer">Reset</button></div>
+      </div>
+      <p style="font-size:12px;opacity:.6;margin:4px 2px">Tip: these are for touch screens — your layout is saved per game.</p>`;
+    const upd = (patch) => { ctlSavePrefs({ ...ctlPrefs(), ...patch }); ctlApply(); };
+    body().querySelector('#cbx-ctls').addEventListener('input', (e) => { upd({ scale: +e.target.value }); body().querySelector('#cbx-ctlsv').textContent = Math.round(+e.target.value * 100) + '%'; });
+    body().querySelector('#cbx-ctlo').addEventListener('input', (e) => { upd({ opacity: +e.target.value }); body().querySelector('#cbx-ctlov').textContent = Math.round(+e.target.value * 100) + '%'; });
+    body().querySelector('#cbx-ctlm').addEventListener('change', (e) => upd({ mirror: e.target.checked }));
+    body().querySelector('#cbx-ctlarr').addEventListener('click', ctlArrange);
+    body().querySelector('#cbx-ctlrst').addEventListener('click', () => { ctlSavePos({}); ctlApply(); });
+  }
+
   // ---- render tabs ----
-  function render() { ({ people: renderPeople, settings: renderSettings, report: renderReport, help: renderHelp }[tab] || renderPeople)(); }
+  function render() { ({ people: renderPeople, settings: renderSettings, controls: renderControls, report: renderReport, help: renderHelp }[tab] || renderPeople)(); }
 
   async function playerList() {
     // ONLY players actually in this game session — never platform-wide online users.
@@ -291,15 +415,26 @@
   btn.id = 'cbx-land-btn'; btn.textContent = '🔄'; btn.title = 'Landscape mode';
   function syncBtn() { btn.classList.toggle('show', physPortrait() || R.on); btn.textContent = R.on ? '↩️' : '🔄'; }
 
+  // physical size of the visible area — visualViewport tracks iOS toolbar
+  // collapse better than innerWidth/Height, killing the black bar
+  const physW = () => Math.round(window.visualViewport?.width || realW());
+  const physH = () => Math.round(window.visualViewport?.height || realH());
+  function sizeVars() {
+    const de = document.documentElement;
+    de.style.setProperty('--cbx-lw', physH() + 'px');
+    de.style.setProperty('--cbx-lh', physW() + 'px');
+  }
   function apply(on) {
     R.on = on;
     const de = document.documentElement;
-    if (on) { de.style.setProperty('--cbx-lw', realH() + 'px'); de.style.setProperty('--cbx-lh', realW() + 'px'); }
+    if (on) sizeVars();
     de.classList.toggle('cbx-land', on);
     try { sessionStorage.setItem('cbx.landscape', on ? '1' : ''); } catch {}
     syncBtn();
     dispatchEvent(new Event('resize'));
   }
+  window.visualViewport?.addEventListener('resize', () => { if (R.on) { sizeVars(); dispatchEvent(new Event('resize')); } });
+  setInterval(() => { if (R.on) sizeVars(); }, 900);
 
   // Android path: real fullscreen + orientation lock. iOS throws → CSS rotation.
   async function tryNativeLock() {
@@ -326,9 +461,7 @@
   addEventListener('resize', () => {
     if (R.on) {
       if (!physPortrait()) { apply(false); return; }   // physically rotated: native landscape wins
-      const de = document.documentElement;
-      de.style.setProperty('--cbx-lw', realH() + 'px');
-      de.style.setProperty('--cbx-lh', realW() + 'px');
+      sizeVars();
     }
     syncBtn();
   });
