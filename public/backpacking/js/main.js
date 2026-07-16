@@ -6,6 +6,7 @@ import {
   WORLD, height, groundAt, waterAt, lavaAt, regionAt, inLodge,
 } from '/shared/bp/worldgen.js';
 import { device, effectiveMode } from '/js/device.js';
+import { fpFade } from '/js/fpzoom.js';
 import { audio } from './audio.js';
 import { Net, InterpBuffer } from './net.js';
 import { loadIdentity, buildPlayerAvatar, makePlayerAnimState, animatePlayer, makeRagdoll } from './player/avatar.js';
@@ -1062,6 +1063,8 @@ function frame() {
   } else {
     orbit.update(dt, player.pos, 1.6);
   }
+  // first-person zoom: fade MY avatar (nametag rides inside meGroup) when close
+  fpFade(meGroup, orbit.dist);
 
   // ---- flashlight: shine from the player along the camera's look direction ----
   if (game.flashlightOn) {

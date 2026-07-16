@@ -9,7 +9,7 @@ export class OrbitCamera {
     this.yaw = Math.PI;
     this.pitch = 0.32;
     this.dist = 7;
-    this.minDist = 2.2;
+    this.minDist = 0.3; // fully zoomed in = first-person (fpFade hides the avatar)
     this.maxDist = 26;
     this.sensitivity = 1;
     this.invertY = false;

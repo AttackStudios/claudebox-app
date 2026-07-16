@@ -6,6 +6,7 @@
 // last one out of the water wins.
 
 import * as THREE from 'three';
+import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
@@ -678,7 +679,36 @@ addEventListener('mousemove', (e) => {
   lastX = e.clientX; lastY = e.clientY;
 });
 function clampPitch() { orbit.pitch = Math.max(-0.2, Math.min(1.25, orbit.pitch)); }
-canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(5, Math.min(24, orbit.dist + e.deltaY * 0.01)); }, { passive: false });
+const clampDist = (d) => Math.max(0.3, Math.min(24, d));   // 0.3 = zoomed all the way in (first-person)
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = clampDist(orbit.dist + e.deltaY * 0.01); }, { passive: false });
+
+// touch: one-finger drag on the canvas looks around, two-finger pinch zooms.
+// The joystick/jump buttons are separate elements, so their touches never land here.
+const camTouches = new Map();
+let pinchDist = 0;
+canvas.addEventListener('touchstart', (e) => {
+  for (const t of e.changedTouches) camTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+  if (camTouches.size === 2) {
+    const [a, b] = [...camTouches.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  for (const t of e.changedTouches) {
+    const p = camTouches.get(t.identifier); if (!p) continue;
+    if (camTouches.size === 1) { orbit.yaw -= (t.clientX - p.x) * 0.005; orbit.pitch += (t.clientY - p.y) * 0.005; clampPitch(); }
+    p.x = t.clientX; p.y = t.clientY;
+  }
+  if (camTouches.size === 2) {
+    const [a, b] = [...camTouches.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchDist) orbit.dist = clampDist(orbit.dist - (d - pinchDist) * 0.02);   // spread = zoom in
+    pinchDist = d;
+  }
+}, { passive: true });
+const endCamTouch = (e) => { for (const t of e.changedTouches) camTouches.delete(t.identifier); pinchDist = 0; };
+canvas.addEventListener('touchend', endCamTouch, { passive: true });
+canvas.addEventListener('touchcancel', endCamTouch, { passive: true });
 
 function readInput() {
   const x = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
@@ -758,6 +788,9 @@ function frame(now) {
     myAvatar.ctrl.update(dt);
     myAvatar.group.position.set(player.pos.x, player.pos.y, player.pos.z);
     myAvatar.group.rotation.y = player.ry;
+    // first-person zoom: fade MY avatar out as the camera zooms all the way in
+    // (only the local player fades; there's no local nametag — remotes keep theirs)
+    fpFade(myAvatar.group, orbit.dist);
     sun.position.set(player.pos.x + 80, player.pos.y + 160, player.pos.z + 60);
     sun.target.position.set(player.pos.x, player.pos.y, player.pos.z);
   }

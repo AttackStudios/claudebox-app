@@ -3,6 +3,7 @@
 // (or touch lava) and you respawn. Staff/Owner get ;fly and a Troll menu.
 
 import * as THREE from 'three';
+import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
@@ -492,7 +493,20 @@ addEventListener('mousemove', (e) => {
   lastX = e.clientX; lastY = e.clientY;
 });
 function unlock() { if (locked) document.exitPointerLock?.(); }
-canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(4, Math.min(20, orbit.dist + e.deltaY * 0.01)); }, { passive: false });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(0.3, Math.min(20, orbit.dist + e.deltaY * 0.01)); }, { passive: false });
+
+// two-finger pinch = zoom (same clamp as the wheel); one finger stays free for look/joystick
+let pinchGap = 0;
+const touchGap = (e) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+canvas.addEventListener('touchstart', (e) => { if (e.touches.length === 2) pinchGap = touchGap(e); }, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length !== 2) return;
+  e.preventDefault();
+  const gap = touchGap(e);
+  if (pinchGap > 0) orbit.dist = Math.max(0.3, Math.min(20, orbit.dist * (pinchGap / gap)));
+  pinchGap = gap;
+}, { passive: false });
+canvas.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinchGap = 0; }, { passive: true });
 
 function readInput() {
   const x = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
@@ -557,6 +571,7 @@ function frame(now) {
     myAvatar.group.rotation.y = player.ry;
     sun.position.set(player.pos.x + 50, player.pos.y + 120, player.pos.z + 40);
     sun.target.position.set(player.pos.x, player.pos.y, player.pos.z);
+    fpFade(myAvatar.group, orbit.dist);   // fade MY avatar out when zoomed to first-person
   }
   updateCamera();
   updateTrollButton();

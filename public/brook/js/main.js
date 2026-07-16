@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
+import { fpFade } from '/js/fpzoom.js';
 import { SPAWN, CARS, BUILDINGS, ROADS, GROUND } from '/shared/brook/town.js';
 import { sfx, toggleRadio, radioIsOn } from './sfx.js';
 
@@ -233,6 +234,7 @@ let myAvatar = { ctrl: null, group: null };
 // ---------------- camera ----------------
 const orbit = { yaw: Math.PI, pitch: 0.45, dist: 9 };
 function clampPitch() { orbit.pitch = Math.max(-0.15, Math.min(1.2, orbit.pitch)); }
+function clampDist(d) { return Math.max(0.3, Math.min(20, d)); }   // 0.3 = first-person on foot (car cam is fixed at 12)
 function updateCamera() {
   let tx, ty, tz, dist = orbit.dist;
   if (game.car) { tx = game.car.x; ty = 1.6; tz = game.car.z; dist = 12; }
@@ -263,7 +265,7 @@ addEventListener('mousemove', (e) => {
   orbit.yaw -= (e.clientX - lastX) * 0.005; orbit.pitch += (e.clientY - lastY) * 0.005; clampPitch();
   lastX = e.clientX; lastY = e.clientY;
 });
-canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(4, Math.min(20, orbit.dist + e.deltaY * 0.01)); }, { passive: false });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = clampDist(orbit.dist + e.deltaY * 0.01); }, { passive: false });
 addEventListener('keydown', (e) => {
   if (typing()) { if (e.code === 'Enter') sendChat(); else if (e.code === 'Escape') closeChat(); return; }
   if (e.code === 'Enter') { openChat(); e.preventDefault(); return; }
@@ -290,9 +292,24 @@ let stick = null;
   zone.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) if (t.identifier === tid) { let dx = t.clientX - cx, dy = t.clientY - cy; const d = Math.hypot(dx, dy), max = 46; if (d > max) { dx *= max / d; dy *= max / d; } knob.style.left = (32 + dx) + 'px'; knob.style.top = (32 + dy) + 'px'; s.x = dx / max; s.z = -dy / max; } }, { passive: true });
   zone.addEventListener('touchend', () => { tid = null; s.x = s.z = 0; knob.style.left = '32px'; knob.style.top = '32px'; }, { passive: true });
   const look = $('#look-zone'); let lid = null, lx = 0, ly = 0;
-  look.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; lid = t.identifier; lx = t.clientX; ly = t.clientY; }, { passive: true });
-  look.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) if (t.identifier === lid) { orbit.yaw -= (t.clientX - lx) * 0.006; orbit.pitch += (t.clientY - ly) * 0.006; clampPitch(); lx = t.clientX; ly = t.clientY; } }, { passive: true });
-  look.addEventListener('touchend', () => lid = null, { passive: true });
+  const pinch = new Map(); let pinchDist = 0;   // two-finger pinch = zoom
+  const pinchSpan = () => { const [a, b] = [...pinch.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  look.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) pinch.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (pinch.size >= 2) { pinchDist = pinchSpan(); lid = null; }
+    else { const t = e.changedTouches[0]; lid = t.identifier; lx = t.clientX; ly = t.clientY; }
+  }, { passive: true });
+  look.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) if (pinch.has(t.identifier)) pinch.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (pinch.size >= 2) { const d = pinchSpan(); if (pinchDist && d) orbit.dist = clampDist(orbit.dist * (pinchDist / d)); pinchDist = d; return; }
+    for (const t of e.changedTouches) if (t.identifier === lid) { orbit.yaw -= (t.clientX - lx) * 0.006; orbit.pitch += (t.clientY - ly) * 0.006; clampPitch(); lx = t.clientX; ly = t.clientY; }
+  }, { passive: true });
+  look.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) { pinch.delete(t.identifier); if (t.identifier === lid) lid = null; }
+    if (pinch.size < 2) pinchDist = 0;
+    if (pinch.size === 1 && lid === null) { const [[id, p]] = [...pinch.entries()]; lid = id; lx = p.x; ly = p.y; }
+  }, { passive: true });
+  look.addEventListener('touchcancel', () => { pinch.clear(); pinchDist = 0; lid = null; }, { passive: true });
   $('#btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); keys.add('Space'); }, { passive: false });
   $('#btn-jump').addEventListener('touchend', () => keys.delete('Space'), { passive: false });
   $('#btn-action').addEventListener('touchstart', (e) => { e.preventDefault(); interact(); }, { passive: false });
@@ -564,6 +581,9 @@ function frame() {
     if (s) { c.mesh.position.set(s[0], 0, s[1]); c.mesh.rotation.y = s[2]; }
   }
   updateCamera();
+  // first-person zoom: fade MY avatar out as the camera zooms in (on foot).
+  // In a car the camera dist is fixed at 12, so this restores the seated avatar.
+  if (myAvatar.group) fpFade(myAvatar.group, game.car ? 12 : orbit.dist);
   renderer.render(scene, camera);
 }
 

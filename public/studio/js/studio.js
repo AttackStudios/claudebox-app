@@ -4,6 +4,7 @@
 // real avatar and run the triggers. Levels save per-slot to the server.
 
 import * as THREE from 'three';
+import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { BEHAVIORS, PALETTE, SHAPES, newPart, sanitizeLevel, starterLevel } from '/shared/studio/format.js';
@@ -241,7 +242,28 @@ addEventListener('pointermove', (e) => {
 });
 addEventListener('pointerup', () => { dragging = null; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(6, Math.min(300, orbit.dist + e.deltaY * 0.03)); }, { passive: false });
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (state.mode === 'play') orbit.dist = Math.max(0.3, Math.min(300, orbit.dist + e.deltaY * 0.01));   // 0.3 = first-person
+  else orbit.dist = Math.max(6, Math.min(300, orbit.dist + e.deltaY * 0.03));
+}, { passive: false });
+
+// two-finger pinch zoom (play mode only — editor pointer handling untouched)
+let pinchDist = 0;
+canvas.addEventListener('touchstart', (e) => {
+  if (state.mode === 'play' && e.touches.length === 2) {
+    pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  if (state.mode !== 'play' || e.touches.length !== 2 || !pinchDist) return;
+  e.preventDefault();
+  const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  if (d > 0) orbit.dist = Math.max(0.3, Math.min(300, orbit.dist * (pinchDist / d)));   // spread = zoom in
+  pinchDist = d;
+}, { passive: false });
+canvas.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinchDist = 0; });
+canvas.addEventListener('touchcancel', () => { pinchDist = 0; });
 
 addEventListener('keydown', (e) => {
   if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
@@ -343,7 +365,8 @@ function stopPlay() {
   play.paused = false;
   document.querySelectorAll('#palette,#inspector,#topbar').forEach((e) => { e.style.opacity = 1; e.style.pointerEvents = 'auto'; });
   $('#playhud').classList.add('hidden'); $('#btn-play').textContent = '▶ Play';
-  if (play.avatar) play.avatar.group.visible = false;
+  if (play.avatar) { fpFade(play.avatar.group, 10); play.avatar.group.visible = false; }   // un-fade, then hide
+  orbit.dist = Math.max(6, orbit.dist);   // editor keeps its own zoom range
   for (const rec of state.built.values()) if (rec._base) { rec.mesh.position.copy(rec._base.p); rec.mesh.rotation.copy(rec._base.r); }
 }
 function respawnPlayer() {
@@ -512,6 +535,8 @@ function frame(now) {
   spawnMarker.visible = state.mode === 'edit';
   grid.visible = state.mode === 'edit';
   if (state.mode === 'play') stepPlay(dt, t);
+  // first-person zoom: fade MY avatar as the camera closes in (no nametag to hide — the play avatar has none)
+  if (state.mode === 'play' && play.avatar) fpFade(play.avatar.group, orbit.dist);
   sun.position.set(orbit.target.x + 60, 120, orbit.target.z + 40); sun.target.position.copy(orbit.target);
   updateCamera();
   renderer.render(scene, camera);

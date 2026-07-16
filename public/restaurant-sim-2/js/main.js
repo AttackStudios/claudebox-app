@@ -7,6 +7,7 @@ import {
 } from '/shared/rs2/world.js';
 import * as catalogMod from '/shared/rs2/catalog.js';
 import { device, effectiveMode } from '/js/device.js';
+import { fpFade } from '/js/fpzoom.js';
 import { audio } from './audio.js';
 import { Net, InterpBuffer } from './net.js';
 import { loadIdentity, buildPlayerAvatar, makePlayerAnimState, animatePlayer } from '/backpacking/js/player/avatar.js';
@@ -223,14 +224,14 @@ game.player = player;
 
 // camera (BP orbit pattern)
 const orbit = {
-  yaw: Math.PI, pitch: 0.4, dist: 9, sensitivity: game.settings.camSensitivity, invertY: false,
+  yaw: Math.PI, pitch: 0.4, dist: 9, camDist: 9, sensitivity: game.settings.camSensitivity, invertY: false,
   target: { x: SPAWN.x, y: 4, z: SPAWN.z },
   rotate(dx, dy) {
     const s = 0.0042 * this.sensitivity;
     this.yaw -= dx * s;
     this.pitch = Math.max(-0.4, Math.min(1.3, this.pitch + dy * s));
   },
-  zoom(d) { this.dist = Math.max(3, Math.min(26, this.dist * (1 + d * 0.0014))); },
+  zoom(d) { this.dist = Math.max(0.3, Math.min(26, this.dist * (1 + d * 0.0014))); },
   update(dt, pos) {
     const k = Math.min(1, dt * 10);
     this.target.x += (pos.x - this.target.x) * k;
@@ -253,8 +254,9 @@ const orbit = {
           if (px > c.minX && px < c.maxX && pz > c.minZ && pz < c.maxZ) { blocked = true; break; }
         } else if (Math.hypot(px - c.x, pz - c.z) < c.r) { blocked = true; break; }
       }
-      if (blocked) { usable = Math.max(1.6, (this.dist * (s - 1)) / steps - 0.3); break; }
+      if (blocked) { usable = Math.max(0.3, (this.dist * (s - 1)) / steps - 0.3); break; }
     }
+    this.camDist = usable;
     let cx = this.target.x + dirX * usable;
     let cy = this.target.y + dirY * usable;
     let cz = this.target.z + dirZ * usable;
@@ -1012,6 +1014,7 @@ function frame() {
 
   lights.tick(camera);
   orbit.update(dt, player.pos);
+  fpFade(meGroup, orbit.camDist); // fade my avatar (tag included) when zoomed to first-person
   renderer.render(scene, camera);
 }
 

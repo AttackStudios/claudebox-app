@@ -3,6 +3,7 @@
 // server-authoritative PvP (projectiles / damage / respawns).
 
 import * as THREE from 'three';
+import { fpFade } from '/js/fpzoom.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
 import {
@@ -343,6 +344,8 @@ const player = { pos: { x: 0, y: 0, z: 0 }, vy: 0, ry: 0, anim: 'idle', onGround
 let myAvatar = null;
 let spawned = false;   // becomes true on welcome; gates the movement stream
 let camYaw = 0, camPitch = -0.15;
+const CAM_DIST = 6.8, CAM_MIN = 0.3, CAM_MAX = 8;   // zoom range — at CAM_MIN you're first-person
+let camDist = CAM_DIST;
 const keys = new Set();
 
 // economy state (persisted per user)
@@ -454,6 +457,8 @@ canvas.addEventListener('mousedown', (e) => {
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === canvas) { const sn = (window.ClaudeBox?.settings?.sensitivity) || 1; camYaw -= e.movementX * 0.0026 * sn; camPitch = clamp(camPitch - e.movementY * 0.0022 * sn, -1.15, 0.85); }
 });
+// scroll to zoom — all the way in fades your avatar out (first-person)
+addEventListener('wheel', (e) => { if (!chatOpen) camDist = clamp(camDist + e.deltaY * 0.01, CAM_MIN, CAM_MAX); }, { passive: true });
 // drag-look fallback (no pointer lock)
 let dragId = null, lastX = 0, lastY = 0;
 canvas.addEventListener('pointerdown', (e) => {
@@ -673,7 +678,7 @@ function updatePlayer(dt) {
 const camRay = new THREE.Raycaster(); const _camDir = new THREE.Vector3(), _camOrigin = new THREE.Vector3();
 function updateCamera() {
   const tx = player.pos.x, ty = player.pos.y + 1.7, tz = player.pos.z;
-  const dist = 6.8, cp = Math.cos(camPitch);
+  const dist = camDist, cp = Math.cos(camPitch);
   _camDir.set(-Math.sin(camYaw) * cp, -Math.sin(camPitch) + 0.03, -Math.cos(camYaw) * cp).normalize();
   let d = dist;
   // pull the camera in if a wall/roof is between it and the player
@@ -681,7 +686,7 @@ function updateCamera() {
   if (mp && mp.sideBuilds.size) {
     _camOrigin.set(tx, ty, tz); camRay.set(_camOrigin, _camDir); camRay.far = dist;
     const hits = camRay.intersectObjects([...mp.sideBuilds.values()], true);
-    if (hits.length) d = Math.max(1.6, hits[0].distance - 0.4);
+    if (hits.length) d = clamp(hits[0].distance - 0.4, CAM_MIN, dist);
   }
   camera.position.set(tx + _camDir.x * d, ty + _camDir.y * d, tz + _camDir.z * d);
   if (camera.position.y < 0.8) camera.position.y = 0.8;
@@ -762,11 +767,23 @@ function setupTouch() {
     }
   }, { passive: false });
   addEventListener('touchend', (e) => { for (const t of e.changedTouches) if (t.identifier === sid) { sid = null; knob.style.transform = ''; touchVec.x = touchVec.y = 0; touchRun = false; } });
-  // look drag on right half
+  // look drag on right half + two-finger pinch zoom (joystick lives on #stick, so it never lands here)
   let lid = null, lx = 0, ly = 0;
-  canvas.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; if (t.clientX > innerWidth / 2 && lid === null) { lid = t.identifier; lx = t.clientX; ly = t.clientY; } }, { passive: false });
-  canvas.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) if (t.identifier === lid) { camYaw -= (t.clientX - lx) * 0.006; camPitch = clamp(camPitch - (t.clientY - ly) * 0.005, -1.15, 0.85); lx = t.clientX; ly = t.clientY; } }, { passive: false });
-  canvas.addEventListener('touchend', (e) => { for (const t of e.changedTouches) if (t.identifier === lid) lid = null; });
+  const pinch = new Map(); let pinchD = 0;   // canvas touches by id → {x,y}; last finger gap
+  const pinchGap = () => { const [a, b] = [...pinch.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  canvas.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) pinch.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (pinch.size >= 2) { lid = null; pinchD = pinchGap(); return; }   // second finger → zoom, stop looking
+    const t = e.changedTouches[0]; if (t.clientX > innerWidth / 2 && lid === null) { lid = t.identifier; lx = t.clientX; ly = t.clientY; }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) if (pinch.has(t.identifier)) pinch.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (pinch.size >= 2) { const d = pinchGap(); if (pinchD && d) camDist = clamp(camDist * pinchD / d, CAM_MIN, CAM_MAX); pinchD = d; e.preventDefault(); return; }
+    for (const t of e.changedTouches) if (t.identifier === lid) { camYaw -= (t.clientX - lx) * 0.006; camPitch = clamp(camPitch - (t.clientY - ly) * 0.005, -1.15, 0.85); lx = t.clientX; ly = t.clientY; }
+  }, { passive: false });
+  const touchDone = (e) => { for (const t of e.changedTouches) { pinch.delete(t.identifier); if (t.identifier === lid) lid = null; } pinchD = pinch.size >= 2 ? pinchGap() : 0; };
+  canvas.addEventListener('touchend', touchDone);
+  canvas.addEventListener('touchcancel', touchDone);
   $('#t-jump').addEventListener('touchstart', (e) => { touchJump = true; e.preventDefault(); }, { passive: false });
   $('#t-fire').addEventListener('touchstart', (e) => { castSelected(); e.preventDefault(); }, { passive: false });
   // tap plot button to buy
@@ -870,6 +887,8 @@ function frame() {
   }
   updateZone();
   updateCamera();
+  // first-person: fade MY avatar out as the camera zooms in (local player only)
+  if (myAvatar && !player.dead) fpFade(myAvatar.group, camDist);
   renderer.render(scene, camera);
 }
 function updateZone() {
@@ -908,7 +927,7 @@ async function boot() {
   window.ClaudeBox?.registerGame?.({
     players: () => [{ name: localStorage.getItem('claudebox.user') }, ...[...remotes.values()].map((r) => ({ name: r.name }))].filter((p) => p.name && !/^🤖/.test(p.name)),
     resetCharacter: () => { const mp = plots.find((p) => p.ownerId === net.id); const pl = mp?.def || PLOTS[0]; player.pos.x = pl.x + (Math.random() * 4 - 2); player.pos.z = pl.z + (Math.random() * 4 - 2); player.pos.y = 0; player.vy = 0; player.dead = false; setHealth(MAX_HP); $('#dead-overlay')?.classList.add('hidden'); },
-    keybinds: [{ keys: 'WASD', action: 'Move' }, { keys: 'Shift', action: 'Run' }, { keys: 'Space', action: 'Jump' }, { keys: 'Mouse', action: 'Aim' }, { keys: 'Click', action: 'Fire power' }, { keys: '1–5', action: 'Pick power' }, { keys: 'E', action: 'Buy / build' }, { keys: 'Enter', action: 'Chat' }],
+    keybinds: [{ keys: 'WASD', action: 'Move' }, { keys: 'Shift', action: 'Run' }, { keys: 'Space', action: 'Jump' }, { keys: 'Mouse', action: 'Aim' }, { keys: 'Scroll', action: 'Zoom (first-person)' }, { keys: 'Click', action: 'Fire power' }, { keys: '1–5', action: 'Pick power' }, { keys: 'E', action: 'Buy / build' }, { keys: 'Enter', action: 'Chat' }],
     help: 'Grow your plot to earn cash, buy elemental powers, then fight in the arena. Build a house with the side pads. You can only be hurt inside the red arena.',
   });
   const applyFov = (s) => { camera.fov = clamp(s.fov || 64, 60, 100); camera.updateProjectionMatrix(); };

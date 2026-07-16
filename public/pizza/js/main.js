@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { loadIdentity, buildPlayerAvatar, makePlayerAnimState, animatePlayer } from '/backpacking/js/player/avatar.js';
+import { fpFade } from '/js/fpzoom.js';
 import { Net, InterpBuffer } from './net.js';
 import {
   JOBS, JOB_META, PAY, REGISTERS, QUEUE_SLOTS, DOOR, TICKET_BOARD, BINS, OVENS,
@@ -437,6 +438,45 @@ addEventListener('pointermove', (e) => {
 addEventListener('pointerup', (e) => { if (e.pointerId === dragId) dragId = null; });
 addEventListener('pointercancel', (e) => { if (e.pointerId === dragId) dragId = null; });
 
+// zoom (wheel + two-finger pinch). Dropping camDist to 0.3 puts the camera at
+// head height and fpFade turns the view first-person.
+const CAM_MIN = 0.3, CAM_MAX = 16;
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, camDist + e.deltaY * 0.01)); }, { passive: false });
+// pinch: touches that start on the joystick target its own element, so only
+// canvas touches land here; while two fingers are down we release the drag
+// pointer so pinching never spins the camera.
+const pinch = new Map();
+let pinchDist = 0;
+canvas.addEventListener('touchstart', (e) => {
+  for (const t of e.changedTouches) pinch.set(t.identifier, { x: t.clientX, y: t.clientY });
+  if (pinch.size === 2) {
+    const [a, b] = [...pinch.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    dragId = null;
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  for (const t of e.changedTouches) {
+    const p = pinch.get(t.identifier);
+    if (p) { p.x = t.clientX; p.y = t.clientY; }
+  }
+  if (pinch.size === 2 && pinchDist) {
+    const [a, b] = [...pinch.values()];
+    const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, camDist * (pinchDist / d)));
+    pinchDist = d;
+  }
+}, { passive: true });
+const pinchEnd = (e) => {
+  for (const t of e.changedTouches) pinch.delete(t.identifier);
+  if (pinch.size === 2) {
+    const [a, b] = [...pinch.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+  } else pinchDist = 0;
+};
+canvas.addEventListener('touchend', pinchEnd, { passive: true });
+canvas.addEventListener('touchcancel', pinchEnd, { passive: true });
+
 // joystick
 const joy = { x: 0, z: 0 };
 {
@@ -654,6 +694,11 @@ function frame() {
     myAvatarRec.anim.anim = me.anim;
     myAvatarRec.anim.speed = me.anim === 'run' ? 10 : me.anim === 'walk' ? 6.4 : 0;
     animatePlayer(myAvatarRec.parts, myAvatarRec.anim, dt);
+    // first-person fade: zooming all the way in hides my avatar (nametag and
+    // held item live in the same group, so they fade too). Skipped while
+    // driving — update() owns visibility in the car, and fpFade would
+    // otherwise force the group visible again.
+    if (!me.carId) fpFade(myAvatar.group, camDist);
   }
 
   // remotes

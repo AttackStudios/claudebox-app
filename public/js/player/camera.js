@@ -16,8 +16,9 @@ export class OrbitCamera {
     this.pitchMin = -0.55;
     this.pitchMax = 1.35;
     this.dist = 10;
-    this.minDist = 2.5;
+    this.minDist = 0.3;   // all the way in = first-person (the bird fades out)
     this.maxDist = 40;
+    this.curDist = this.dist;  // effective camera→bird distance this frame
     this.sensitivity = 1;
     this.invertY = false;
     this.target = { x: 0, y: 2, z: 0 };
@@ -57,6 +58,7 @@ export class OrbitCamera {
 
     // camera eases further back the faster you fly — pure sense of speed
     const d = this.dist * Math.max(0.75, size * 0.8) * (1 + speedT * 0.4);
+    this.curDist = d;   // callers use this for the first-person fade
     const cp = Math.cos(this.pitch), spn = Math.sin(this.pitch);
     let cx = this.target.x + Math.sin(this.yaw) * cp * d;
     let cy = this.target.y + spn * d;

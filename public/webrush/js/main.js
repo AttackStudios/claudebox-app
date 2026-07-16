@@ -1,6 +1,7 @@
 // Web Rush — Spider-style web-swinging across a city, with crime-scene combat.
 import * as THREE from 'three';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { fpFade } from '/js/fpzoom.js';
 import { Net, InterpBuffer } from './net.js';
 import { GROUND, SPAWN, BUILDINGS, CRIMES, MAX_HP, GRAVITY, WEB_RANGE, BLOCK, ROAD, SPAN, N, PLAZAS } from '/shared/webrush/city.js';
 
@@ -202,6 +203,8 @@ for (const c of CRIMES) {
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), ry: 0, hp: MAX_HP, dead: false, onGround: false, swinging: false, anchor: null, ropeLen: 0, wall: null };
 let myAvatar = null;
 let camYaw = 0, camPitch = -0.05;
+const CAM_DEF = 9;         // default follow distance
+let camZoom = CAM_DEF;     // wheel / pinch zoom — 0.3 ≈ first-person
 const keys = new Set();
 
 // ---- web rope: a real 3D strand (not a 1px line) ----
@@ -269,6 +272,7 @@ addEventListener('mouseup', (e) => { if (e.button === 2) rmb = false; });
 addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas) rmb = false; });
 addEventListener('mousemove', (e) => { if (document.pointerLockElement === canvas) { const sn = (window.ClaudeBox?.settings?.sensitivity) || 1; camYaw -= e.movementX * 0.0024 * sn; camPitch = clamp(camPitch - e.movementY * 0.002 * sn, -1.2, 0.9); } });
+addEventListener('wheel', (e) => { camZoom = clamp(camZoom + e.deltaY * 0.01, 0.3, CAM_DEF); }, { passive: true });   // zoom — all the way in = first-person
 
 // ---------------- web anchoring ----------------
 const ray = new THREE.Raycaster(); ray.far = WEB_RANGE;
@@ -448,13 +452,14 @@ function update(dt) {
 // ---------------- camera (smoothed, FOV kicks with speed) ----------------
 let shakeT = 0, hitstop = 0;
 function shake(a) { shakeT = Math.min(1, shakeT + a); }
-const camPos = new THREE.Vector3(); let camInit = false, curFov = 72;
+const camPos = new THREE.Vector3(); let camInit = false, curFov = 72, camDist = CAM_DEF;
 function updateCamera(dt) {
   const tx = player.pos.x, ty = player.pos.y + 1.9, tz = player.pos.z;
   const spd = player.vel.length();
-  const dist = 9 + clamp((spd - 14) * 0.06, 0, 2.4);   // pull back slightly at speed
+  const dist = camZoom + clamp((spd - 14) * 0.06, 0, 2.4) * (camZoom / CAM_DEF);   // speed pullback scales with zoom — stays first-person at min
+  camDist = dist;
   const cp = Math.cos(camPitch);
-  let cx = tx - Math.sin(camYaw) * cp * dist, cy = ty - Math.sin(camPitch) * dist + 1.2, cz = tz - Math.cos(camYaw) * cp * dist;
+  let cx = tx - Math.sin(camYaw) * cp * dist, cy = ty - Math.sin(camPitch) * dist + 1.2 * Math.min(1, dist / CAM_DEF), cz = tz - Math.cos(camYaw) * cp * dist;
   if (cy < 0.6) cy = 0.6;
   if (!camInit) { camPos.set(cx, cy, cz); camInit = true; }
   const k = 1 - Math.exp(-dt * 11);   // critically-damped-ish follow
@@ -951,6 +956,17 @@ function setupTouch() {
   canvas.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; if (t.clientX > innerWidth / 2 && lid === null) { lid = t.identifier; lx = t.clientX; ly = t.clientY; } }, { passive: false });
   canvas.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) if (t.identifier === lid) { camYaw -= (t.clientX - lx) * 0.006; camPitch = clamp(camPitch - (t.clientY - ly) * 0.005, -1.2, 0.9); lx = t.clientX; ly = t.clientY; } }, { passive: false });
   canvas.addEventListener('touchend', (e) => { for (const t of e.changedTouches) if (t.identifier === lid) lid = null; });
+  // two-finger pinch on the canvas zooms the camera (all the way in = first-person)
+  const pinch = new Map(); let pinchD = 0;
+  canvas.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) pinch.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (pinch.size === 2) { const [a, b] = [...pinch.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); lid = null; }   // pinch takes over from look
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) { const p = pinch.get(t.identifier); if (p) { p.x = t.clientX; p.y = t.clientY; } }
+    if (pinch.size === 2 && pinchD) { const [a, b] = [...pinch.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); camZoom = clamp(camZoom - (d - pinchD) * 0.03, 0.3, CAM_DEF); pinchD = d; }
+  }, { passive: false });
+  canvas.addEventListener('touchend', (e) => { for (const t of e.changedTouches) pinch.delete(t.identifier); if (pinch.size < 2) pinchD = 0; });
   $('#t-web').addEventListener('touchstart', (e) => { tWeb = true; e.preventDefault(); }, { passive: false });
   $('#t-web').addEventListener('touchend', (e) => { tWeb = false; e.preventDefault(); }, { passive: false });
   $('#t-jump').addEventListener('touchstart', (e) => { tJump = true; e.preventDefault(); }, { passive: false });
@@ -972,6 +988,7 @@ function frame() {
   worldT += dt;
   if (respawnT > 0) { respawnT -= rawDt; $('#respawn-n').textContent = Math.ceil(respawnT); if (respawnT <= 0) respawn(); }
   update(dt); updateThugs(dt); updateCrime(); updateCamera(dt);
+  if (myAvatar && !player.dead) fpFade(myAvatar.group, camDist);   // fade MY avatar out when zoomed to first-person
   if (myAvatar) myAvatar.update(dt);
   tickPopups(dt); tickCars(dt); tickShots(dt); tickPacks(dt);
 
@@ -1028,7 +1045,7 @@ async function boot() {
   window.ClaudeBox?.registerGame?.({
     players: () => [...remotes.values()].map((r) => ({ name: r.data?.name })).filter((p) => p.name),
     resetCharacter: respawn,
-    keybinds: [{ keys: 'Right-Click', action: 'Web-swing (hold)' }, { keys: 'Space', action: 'Jump / wall-jump' }, { keys: 'WASD', action: 'Steer / run' }, { keys: 'W (swinging)', action: 'Reel up' }, { keys: 'Click', action: 'Punch (3-hit combo)' }, { keys: 'Click (mid-air)', action: 'Dive slam' }, { keys: 'Q', action: 'Dodge roll' }, { keys: 'E', action: 'Web-yank a thug' }, { keys: 'F', action: 'Web-stun a thug' }, { keys: 'Shift', action: 'Web-zip' }, { keys: 'U', action: 'Suits' }, { keys: 'Mouse', action: 'Look' }],
+    keybinds: [{ keys: 'Right-Click', action: 'Web-swing (hold)' }, { keys: 'Space', action: 'Jump / wall-jump' }, { keys: 'WASD', action: 'Steer / run' }, { keys: 'W (swinging)', action: 'Reel up' }, { keys: 'Click', action: 'Punch (3-hit combo)' }, { keys: 'Click (mid-air)', action: 'Dive slam' }, { keys: 'Q', action: 'Dodge roll' }, { keys: 'E', action: 'Web-yank a thug' }, { keys: 'F', action: 'Web-stun a thug' }, { keys: 'Shift', action: 'Web-zip' }, { keys: 'U', action: 'Suits' }, { keys: 'Mouse', action: 'Look' }, { keys: 'Scroll / pinch', action: 'Zoom (all the way in = first-person)' }],
     help: 'Hold Right-Click to web-swing — release on the upswing for a boost. Space jumps (and wall-jumps). Punch chains a 3-hit combo; punch mid-air to dive slam. Q dodges gunfire and swings, E yanks a thug to you, F webs one up for double damage. Buy suits with U.',
   });
 }

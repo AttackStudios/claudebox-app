@@ -31,6 +31,7 @@ import { buildWarpPanel } from './ui/warp.js';
 import { buildCardPanel } from './ui/namecard.js';
 import { buildActionsPanel } from './ui/actions.js';
 import { FxSystem } from './fx.js';
+import { fpFade } from '/js/fpzoom.js';
 
 const LAST_KEY = 'featherfriends.lastProfile';
 
@@ -446,9 +447,20 @@ const meRec = {
 meRec.group.rotation.order = 'YXZ';   // yaw, then pitch, then roll
 scene.add(meRec.group);
 rebuildRecBird(meRec);
+unshareMyMaterials();
+
+// Bird materials are shared per color via the factory's cache — clone mine so
+// the first-person zoom fade never dims other birds wearing the same colors.
+function unshareMyMaterials() {
+  meRec.bird.group.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
+  });
+}
 
 game.refreshMyBird = () => {
   rebuildRecBird(meRec);
+  unshareMyMaterials();
   saveLastProfile();
 };
 
@@ -1103,6 +1115,14 @@ function frame() {
     airspeed: player.airspeed,
     flap: player.flapPulse,
   });
+
+  // first-person zoom: fully zoomed in, my own bird fades out of view.
+  // Only MY bird — the fade root is my bird's group, never other players/NPCs.
+  const fpT = fpFade(meRec.bird.group, orbit.curDist);
+  // the nametag sprite hangs on meRec.group (outside the fade root) — fade it
+  // in step and hide it entirely once the view is first-person
+  meRec.nametag.sprite.material.opacity = fpT;
+  meRec.nametag.sprite.visible = fpT > 0.02;
 
   renderer.render(scene, camera);
 }
