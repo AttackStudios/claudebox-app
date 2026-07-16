@@ -102,6 +102,16 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'pizza',
+    title: 'Pizza Works',
+    tagline: 'Take orders, build pies, bake, box, and deliver — together.',
+    art: '/icons/game-pizza.svg',
+    url: '/games/pizza',
+    creators: ['ClaudeBox Studios'],
+    tags: ['Jobs', 'Roleplay', 'Co-op', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'webrush',
     title: 'Web Rush',
     tagline: 'Web-swing across the city and stop the crime wave.',

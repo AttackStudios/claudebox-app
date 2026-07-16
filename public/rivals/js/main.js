@@ -1336,6 +1336,7 @@ net.on('match.start', (msg) => {
   game.queued = null;
   $('#queue-banner').classList.add('hidden');
   $('#vote').classList.remove('hidden');
+  syncVcBtn();
   document.querySelectorAll('.vote-card').forEach((x) => x.classList.remove('picked'));
   document.querySelectorAll('.vc-pct').forEach((x) => x.textContent = '');
   document.exitPointerLock?.();
@@ -1471,6 +1472,130 @@ net.on('match.end', (msg) => {
 net.on('lobby', (msg) => { enterLobby(true); for (const p of msg.players) addOther({ ...p, team: 'A' }); });
 
 
+// ============================ VOICE CHAT ============================
+// Peer-to-peer WebRTC audio between the humans in your match. The game
+// socket relays the signaling; audio never touches the server. Opt-in via
+// the 🎙️ button (asks for the mic), then the button toggles mute.
+const vc = { on: false, muted: false, stream: null, peers: new Map(), remoteOn: new Set(), audios: new Map() };
+const VC_RTC = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+function vcHumans() {
+  return (game.roster || []).filter((r) => !r.bot && r.id !== net.id).map((r) => r.id);
+}
+function vcBtn() {
+  let b = document.getElementById('vc-btn');
+  if (!b) {
+    const st = document.createElement('style');
+    st.textContent = `
+    #vc-btn{position:fixed;left:14px;bottom:64px;z-index:40;display:none;align-items:center;gap:7px;
+      background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.16);color:#fff;font-weight:800;font-size:13.5px;
+      padding:10px 14px;border-radius:999px;cursor:pointer;backdrop-filter:blur(8px);}
+    #vc-btn.on{border-color:rgba(90,220,140,.55);}
+    #vc-btn.muted{border-color:rgba(255,160,90,.55);}
+    #vc-btn .dot{width:8px;height:8px;border-radius:50%;background:#7f8898;}
+    #vc-btn.on .dot{background:#5adc8c;box-shadow:0 0 8px #5adc8c;}
+    #vc-btn.muted .dot{background:#ffa05a;}
+    @media (pointer: coarse){#vc-btn{bottom:170px;}}`;
+    document.head.appendChild(st);
+    b = document.createElement('button');
+    b.id = 'vc-btn';
+    b.innerHTML = '<span class="dot"></span><span class="lbl">Join Voice</span>';
+    b.addEventListener('click', vcToggle);
+    document.body.appendChild(b);
+  }
+  return b;
+}
+function syncVcBtn() {
+  const b = vcBtn();
+  const inMatch = game.phase !== 'lobby' && game.roster?.length;
+  const others = vcHumans().length;
+  b.style.display = inMatch && others ? 'flex' : 'none';
+  b.classList.toggle('on', vc.on && !vc.muted);
+  b.classList.toggle('muted', vc.on && vc.muted);
+  const n = [...vc.peers.values()].filter((p) => p.connectionState === 'connected').length;
+  b.querySelector('.lbl').textContent = !vc.on ? '🎙️ Join Voice'
+    : vc.muted ? `🔇 Muted${n ? ' · ' + n : ''}` : `🎙️ Voice on${n ? ' · ' + n : ''}`;
+}
+async function vcToggle() {
+  if (!vc.on) {
+    try {
+      vc.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch { toast('Mic blocked — allow the microphone to use voice'); return; }
+    vc.on = true; vc.muted = false;
+    net.send({ t: 'vc.state', on: true });
+    for (const id of vcHumans()) if (vc.remoteOn.has(id)) vcConnect(id);
+    toast('Voice on! Click again to mute');
+  } else {
+    vc.muted = !vc.muted;
+    for (const tr of vc.stream?.getAudioTracks() || []) tr.enabled = !vc.muted;
+  }
+  syncVcBtn();
+}
+function vcStop() {
+  if (vc.on) net.send({ t: 'vc.state', on: false });
+  for (const pc of vc.peers.values()) { try { pc.close(); } catch {} }
+  vc.peers.clear();
+  for (const a of vc.audios.values()) { try { a.srcObject = null; a.remove(); } catch {} }
+  vc.audios.clear();
+  vc.remoteOn.clear();
+  for (const tr of vc.stream?.getTracks() || []) tr.stop();
+  vc.stream = null; vc.on = false; vc.muted = false;
+  syncVcBtn();
+}
+function vcPeer(id) {
+  let pc = vc.peers.get(id);
+  if (pc) return pc;
+  pc = new RTCPeerConnection(VC_RTC);
+  vc.peers.set(id, pc);
+  for (const tr of vc.stream.getAudioTracks()) pc.addTrack(tr, vc.stream);
+  pc.onicecandidate = (e) => { if (e.candidate) net.send({ t: 'vc.sig', to: id, data: { ice: e.candidate } }); };
+  pc.ontrack = (e) => {
+    let a = vc.audios.get(id);
+    if (!a) { a = document.createElement('audio'); a.autoplay = true; document.body.appendChild(a); vc.audios.set(id, a); }
+    a.srcObject = e.streams[0];
+  };
+  pc.onconnectionstatechange = () => {
+    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) { vc.peers.delete(id); vc.audios.get(id)?.remove(); vc.audios.delete(id); }
+    syncVcBtn();
+  };
+  return pc;
+}
+async function vcConnect(id) {
+  if (!vc.on || vc.peers.has(id)) return;
+  if (net.id < id) {   // deterministic initiator avoids offer glare
+    const pc = vcPeer(id);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    net.send({ t: 'vc.sig', to: id, data: { sdp: pc.localDescription } });
+  }
+}
+net.on('vc.state', (msg) => {
+  if (msg.id === net.id) return;
+  if (msg.on) { vc.remoteOn.add(msg.id); if (vc.on) vcConnect(msg.id); }
+  else {
+    vc.remoteOn.delete(msg.id);
+    vc.peers.get(msg.id)?.close(); vc.peers.delete(msg.id);
+    vc.audios.get(msg.id)?.remove(); vc.audios.delete(msg.id);
+  }
+  syncVcBtn();
+});
+net.on('vc.sig', async (msg) => {
+  if (!vc.on) return;
+  const pc = vcPeer(msg.from);
+  try {
+    if (msg.data?.sdp) {
+      await pc.setRemoteDescription(msg.data.sdp);
+      if (msg.data.sdp.type === 'offer') {
+        const ans = await pc.createAnswer();
+        await pc.setLocalDescription(ans);
+        net.send({ t: 'vc.sig', to: msg.from, data: { sdp: pc.localDescription } });
+      }
+    } else if (msg.data?.ice) {
+      await pc.addIceCandidate(msg.data.ice);
+    }
+  } catch {}
+});
+
 // ============================ WAVE SURVIVAL ============================
 function ensureWaveTop() {
   let el = $('#wave-top');
@@ -1537,6 +1662,7 @@ function startWaveMatch(msg) {
   updateHpHud(); updateAmmoHud();
   updateWaveTop();
   banner(msg.joinLive ? 'YOU JOINED THE FIGHT!' : 'WAVE SURVIVAL', 1400);
+  syncVcBtn();
   sfx.roundStart();
   try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
 }
@@ -1578,6 +1704,10 @@ net.on('wave.cleared', (msg) => {
 net.on('fighter.join', (msg) => {
   if (!game.waveMode || msg.fighter.id === net.id) return;
   addOther(msg.fighter);
+  if (!msg.fighter.bot && !game.roster.some((r) => r.id === msg.fighter.id)) {
+    game.roster.push({ id: msg.fighter.id, name: msg.fighter.name, avatar: msg.fighter.avatar, team: 'A', bot: false, platform: msg.fighter.platform });
+  }
+  syncVcBtn();
 });
 
 // ---- weapon drops (bots drop what they were holding) ----
@@ -1742,6 +1872,7 @@ net.on('_disconnect', () => { toast('Disconnected — refresh to rejoin'); });
 // ============================ lobby / phases ============================
 function enterLobby(fromMatch) {
   game.phase = 'lobby';
+  vcStop();
   game.waveMode = false; game.loadout = null;
   $('#wave-top')?.classList.add('hidden');
   for (const g of dropMeshes.values()) scene.remove(g);

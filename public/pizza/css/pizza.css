@@ -1,0 +1,66 @@
+/* Pizza Works — warm pizzeria HUD in the ClaudeBox house style */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: #161a22; font-family: 'Trebuchet MS', -apple-system, system-ui, sans-serif; color: #f2ede2; }
+#game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hidden { display: none !important; }
+
+#topbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; gap: 10px; }
+.chip { background: rgba(20,16,12,.82); border: 1px solid rgba(255,200,120,.35); border-radius: 999px;
+  padding: 9px 16px; font-weight: 800; font-size: 15px; backdrop-filter: blur(8px); box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+#cash-chip b { color: #8fd18a; }
+#job-chip { cursor: default; }
+
+#prompt { position: fixed; left: 50%; bottom: 24%; transform: translateX(-50%); z-index: 30; text-align: center;
+  background: rgba(20,16,12,.9); border: 1px solid rgba(255,200,120,.5); border-radius: 14px; padding: 10px 18px; }
+#prompt b { display: block; font-size: 16px; }
+#prompt span { font-size: 12.5px; opacity: .8; }
+#prompt kbd { background: #f2c14a; color: #3a2c10; border-radius: 5px; padding: 1px 7px; font-weight: 900; }
+
+#tickets { position: fixed; right: 14px; top: 64px; z-index: 30; width: min(280px, 80vw);
+  background: rgba(20,16,12,.92); border: 1px solid rgba(255,200,120,.4); border-radius: 14px; padding: 12px 14px; }
+#tickets h3 { font-size: 14px; margin-bottom: 8px; }
+.ticket { background: rgba(255,255,255,.06); border-radius: 10px; padding: 7px 10px; margin-bottom: 6px; font-size: 12.5px; }
+.ticket b { color: #f2c14a; }
+.ticket .tk-steps { opacity: .85; }
+.ticket .tk-done { color: #8fd18a; }
+
+#pz-toasts { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 35;
+  display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
+.pz-toast { background: rgba(20,16,12,.92); border: 1px solid rgba(255,200,120,.45); border-radius: 999px;
+  padding: 8px 16px; font-weight: 700; font-size: 13.5px; animation: tIn .25s ease; }
+.pz-toast.pay { border-color: rgba(140,220,130,.6); color: #b8e8b0; }
+@keyframes tIn { from { opacity: 0; transform: translateY(-8px); } }
+
+#chat { position: fixed; left: 16px; bottom: 16px; z-index: 30; width: min(340px, 70vw); pointer-events: none; }
+#chat-log { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.chat-line { background: rgba(16,14,10,.72); border-radius: 9px; padding: 4px 9px; font-size: 12.5px; max-width: 100%; }
+.chat-line b { color: #f2c14a; }
+#chat-input { pointer-events: auto; width: 100%; background: rgba(16,14,10,.9); border: 1px solid rgba(255,200,120,.4);
+  border-radius: 9px; color: #fff; padding: 8px 10px; font-size: 13px; outline: none; }
+
+#hint-bar { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 25;
+  background: rgba(16,14,10,.7); border-radius: 999px; padding: 6px 14px; font-size: 12px; opacity: .85; }
+#hint-bar b { color: #f2c14a; }
+
+#loading { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 35%, #2a2018, #14100c); }
+#loading p { margin-top: 82px; opacity: .75; font-weight: 700; }
+.spinner { width: 54px; height: 54px; border-radius: 50%; border: 5px solid rgba(255,200,120,.25);
+  border-top-color: #f2c14a; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* mobile controls (standard ClaudeBox ids so the Controls customizer works) */
+#move-cluster { position: fixed; left: 0; bottom: 0; width: 45%; height: 55%; z-index: 40; }
+#joystick-zone { position: absolute; inset: 0; }
+#joystick-base { position: absolute; left: 34px; bottom: 44px; width: 110px; height: 110px; border-radius: 50%;
+  background: rgba(255,255,255,.09); border: 2px solid rgba(255,255,255,.16); }
+#joystick-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px;
+  border-radius: 50%; background: rgba(255,255,255,.35); }
+#btn-action { position: fixed; right: 26px; bottom: 96px; z-index: 40; width: 74px; height: 74px; border-radius: 50%;
+  border: 2px solid rgba(255,200,120,.5); background: rgba(30,22,14,.85); font-size: 30px; }
+#btn-chat { position: fixed; right: 40px; bottom: 190px; z-index: 40; width: 52px; height: 52px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25); background: rgba(30,22,14,.85); font-size: 22px; }
+@media (pointer: coarse) {
+  #move-cluster, #btn-action, #btn-chat { display: block !important; }
+  #hint-bar { display: none; }
+}

@@ -145,6 +145,22 @@ export function handleMessage(p, msg, ctx) {
       else lobbySend(out);
       return;
     }
+    // ---- voice chat: WebRTC signaling relayed between match members ----
+    case 'vc.sig': {
+      const m = p.matchId && state.matches.get(p.matchId);
+      if (!m || !msg.to) return;
+      const target = state.players.get(msg.to);
+      if (!target || target.matchId !== m.id) return;   // only within your match
+      if (target.ws?.readyState === 1) target.ws.send(JSON.stringify({ t: 'vc.sig', from: p.id, data: msg.data }));
+      return;
+    }
+    case 'vc.state': {
+      const m = p.matchId && state.matches.get(p.matchId);
+      if (!m) return;
+      p.vcOn = !!msg.on;
+      matchSend(m, { t: 'vc.state', id: p.id, on: p.vcOn });
+      return;
+    }
     case 'match.leave': return leaveMatch(p, ctx, true);
     case 'range.hit': return; // shooting-range targets are client-side
   }

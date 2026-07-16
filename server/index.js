@@ -35,6 +35,8 @@ import { state as tyState, makePlayer as tyMakePlayer } from './tycoon/state.js'
 import { handleMessage as tyHandle, onDisconnect as tyDisconnect, makeBroadcaster as tyBroadcaster, simulate as tySimulate, snapshot as tySnapshot } from './tycoon/protocol.js';
 import { state as wrState, genId as wrGenId, publicPlayer as wrPublicPlayer, clock as wrClock } from './webrush/state.js';
 import { handleMessage as wrHandle, onDisconnect as wrDisconnect, makeBroadcaster as wrBroadcaster } from './webrush/protocol.js';
+import { state as pzState, genId as pzGenId } from './pizza/state.js';
+import { handleMessage as pzHandle, onDisconnect as pzDisconnect, makeBroadcaster as pzBroadcaster, setBroadcast as pzSetBroadcast, tickPizza, snapshotPizza } from './pizza/protocol.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8787;
@@ -75,6 +77,7 @@ app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'r
 app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
 app.get('/games/tycoon', (req, res) => res.sendFile(path.join(ROOT, 'public', 'tycoon', 'index.html')));
 app.get('/games/webrush', (req, res) => res.sendFile(path.join(ROOT, 'public', 'webrush', 'index.html')));
+app.get('/games/pizza', (req, res) => res.sendFile(path.join(ROOT, 'public', 'pizza', 'index.html')));
 app.get('/mod', (req, res) => res.sendFile(path.join(ROOT, 'public', 'mod', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
@@ -94,6 +97,7 @@ const rvWss = new WebSocketServer({ noServer: true });
 const bkWss = new WebSocketServer({ noServer: true });
 const tyWss = new WebSocketServer({ noServer: true });
 const wrWss = new WebSocketServer({ noServer: true });
+const pzWss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://x');
   if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -105,6 +109,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/brook-ws') bkWss.handleUpgrade(req, socket, head, (ws) => bkWss.emit('connection', ws, req));
   else if (pathname === '/tycoon-ws') tyWss.handleUpgrade(req, socket, head, (ws) => tyWss.emit('connection', ws, req));
   else if (pathname === '/webrush-ws') wrWss.handleUpgrade(req, socket, head, (ws) => wrWss.emit('connection', ws, req));
+  else if (pathname === '/pizza-ws') pzWss.handleUpgrade(req, socket, head, (ws) => pzWss.emit('connection', ws, req));
   else socket.destroy();
 });
 
@@ -410,6 +415,30 @@ tyWss.on('connection', (ws) => {
 });
 setInterval(() => { tySimulate(tyCtx); }, 1000 / 30);      // projectiles + hits + respawns
 setInterval(() => { tyBroadcast(tySnapshot()); }, 1000 / 18); // positions + projectiles
+
+// ====================== Pizza Works (co-op pizzeria) ======================
+const pzJoined = () => [...pzState.players.values()].filter((p) => p.joined);
+const pzBroadcast = pzBroadcaster(pzJoined);
+pzSetBroadcast(pzBroadcast);
+pzWss.on('connection', (ws) => {
+  const p = {
+    id: pzGenId('p'), ws, joined: false,
+    name: '', nameLower: '', avatar: null,
+    pos: { x: 0, y: 0, z: 0 }, ry: 0, anim: 'idle',
+    job: 'cashier', carry: null, carId: null,
+  };
+  pzState.players.set(p.id, p);
+  const ctx = { broadcast: pzBroadcast, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
+  ws.on('message', (raw) => {
+    if (raw.length > 4096) return;
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    try { pzHandle(p, msg, ctx); } catch (err) { console.error('[pizza]', msg?.t, err); }
+  });
+  ws.on('close', () => pzDisconnect(p));
+  ws.on('error', () => {});
+});
+setInterval(() => { try { tickPizza(0.1); } catch (err) { console.error('[pizza tick]', err); } }, 100);
+setInterval(() => { try { snapshotPizza(); } catch (err) { console.error('[pizza snap]', err); } }, 1000 / 12);
 
 // ====================== Web Rush (web-swinging) ======================
 const wrJoined = () => [...wrState.players.values()].filter((p) => p.joined);

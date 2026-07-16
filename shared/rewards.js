@@ -45,6 +45,11 @@ export const CHALLENGES = [
   { id: 'studio-publish',game: 'studio',          emoji: '🛠️', title: 'Level Designer',     hint: 'Save a level in ClaudeBox Studio.',     stars: 60 },
 
   // Web Rush
+  // Pizza Works
+  { id: 'pizza-first',   game: 'pizza',           emoji: '🍕', title: 'First Shift',        hint: 'Earn your first pay at Pizza Works.',   stars: 40 },
+  { id: 'pizza-deliver', game: 'pizza',           emoji: '🛵', title: 'Special Delivery',   hint: 'Deliver a pizza to a house.',           stars: 120 },
+  { id: 'pizza-rich',    game: 'pizza',           emoji: '💵', title: 'Payday',             hint: 'Earn $100 lifetime at Pizza Works.',    stars: 200 },
+
   { id: 'webrush-swing', game: 'webrush',         emoji: '🕸️', title: 'Web-Slinger',        hint: 'Shoot your first web and swing.',       stars: 40 },
   { id: 'webrush-hero',  game: 'webrush',         emoji: '🦸', title: 'Neighborhood Hero',   hint: 'Stop a crime scene in Web Rush.',       stars: 120 },
   { id: 'webrush-city',  game: 'webrush',         emoji: '🌃', title: 'City Savior',         hint: 'Stop all crime scenes across the city.', stars: 300 },
