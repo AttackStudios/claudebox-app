@@ -51,7 +51,7 @@ export function startMotion(opts = {}) {
     // becomes the new neutral instead of pinning the UI off-centre
     baseG += (e.gamma - baseG) * 0.006;
     baseB += (e.beta - baseB) * 0.006;
-    setTarget((e.gamma - baseG) / 18, (e.beta - baseB) / 18);
+    setTarget((e.gamma - baseG) / 12, (e.beta - baseB) / 12);
     report(tx, ty);
   };
   // fallback: some iOS builds (notably home-screen apps) grant permission but
@@ -68,7 +68,7 @@ export function startMotion(opts = {}) {
     if (baseGX === null) { baseGX = g.x; baseGY = g.y; }
     baseGX += (g.x - baseGX) * 0.006;
     baseGY += (g.y - baseGY) * 0.006;
-    setTarget(-(g.x - baseGX) / 4.5, (g.y - baseGY) / 4.5);
+    setTarget(-(g.x - baseGX) / 3.2, (g.y - baseGY) / 3.2);
     report(tx, ty);
   };
   const attach = (gated) => {

@@ -1000,10 +1000,20 @@ img.bal-emoji { width: 34px; height: 34px; }
 /* smoother momentum everywhere */
 html { scroll-behavior: smooth; }
 
-/* phones get a stronger tilt response — small screens swallow subtlety */
+/* phones get a MUCH stronger tilt response — small screens swallow subtlety */
 @media (pointer: coarse) {
-  #aurora { transform: translate3d(calc(var(--mx, 0) * 46px), calc(var(--my, 0) * 34px), 0); }
-  #hero, #hero:hover { transform: perspective(1100px) rotateY(calc(var(--mx, 0) * 3.4deg)) rotateX(calc(var(--my, 0) * -2.6deg)); }
-  #hero .hero-bg { transform: scale(1.1) translate3d(calc(var(--mx, 0) * -18px), calc(var(--my, 0) * -12px), 0); }
-  .game-tile .art::before { opacity: .85; }
+  #aurora { transform: translate3d(calc(var(--mx, 0) * 90px), calc(var(--my, 0) * 66px), 0); }
+  #hero, #hero:hover { transform: perspective(1000px) rotateY(calc(var(--mx, 0) * 6.5deg)) rotateX(calc(var(--my, 0) * -5deg)); }
+  #hero .hero-bg { transform: scale(1.14) translate3d(calc(var(--mx, 0) * -30px), calc(var(--my, 0) * -22px), 0); }
+  /* every game card leans with the phone — the most visible surface there is */
+  .game-tile .art {
+    transform: perspective(700px) rotateY(calc(var(--mx, 0) * 5deg)) rotateX(calc(var(--my, 0) * -4deg));
+  }
+  .game-tile .art::before {
+    opacity: 1;
+    background: radial-gradient(150% 100% at calc(50% + var(--mx, 0) * 55%) calc(18% + var(--my, 0) * 35%),
+      rgba(255,255,255,.22), transparent 55%);
+  }
+  #topbar::before { transform: translate3d(calc(var(--mx, 0) * -10px), 0, 0) scale(1.06); }
+  .friend-circle, #me-chip { transform: translate3d(calc(var(--mx, 0) * 5px), calc(var(--my, 0) * 4px), 0); }
 }
