@@ -1339,7 +1339,17 @@ function initSettingsTab() {
 
   $('accent-input').addEventListener('input', () => { settings.accent = $('accent-input').value; applyAccent(); saveSettings(); });
   $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); motionCtl.setReduce(settings.reduceMotion); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
-  $('gyro-input').addEventListener('change', () => { settings.gyro = $('gyro-input').checked; motionCtl.setGyro(settings.gyro); saveSettings(); (settings.gyro ? sfx.toggleOn : sfx.toggleOff)(); });
+  $('gyro-input').addEventListener('change', () => {
+    settings.gyro = $('gyro-input').checked;
+    motionCtl.setGyro(settings.gyro);
+    saveSettings();
+    (settings.gyro ? sfx.toggleOn : sfx.toggleOff)();
+    // turning it ON is a real tap — the perfect moment to (re-)ask iOS for
+    // motion access if it hasn't been granted yet
+    if (settings.gyro) motionCtl.request().then((r) => {
+      if (r === 'denied') toast('Motion access is blocked — turn on “Motion & Orientation Access” in iPhone Settings → Apps → Safari', '📱');
+    });
+  });
   $('sound-input').addEventListener('change', () => {
     settings.sound = $('sound-input').checked; sfx.setEnabled(settings.sound); saveSettings(); syncSoundBtn();
     if (settings.sound) sfx.toggleOn(); else sfx.setAmbient(false);

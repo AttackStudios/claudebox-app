@@ -45,18 +45,33 @@ export function startMotion(opts = {}) {
   const attach = () => addEventListener('deviceorientation', onOrient);
 
   const hasAPI = typeof DeviceOrientationEvent !== 'undefined';
-  if (hasAPI && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS: sensor access needs a user gesture — ask on the first tap
+  const needsAsk = hasAPI && typeof DeviceOrientationEvent.requestPermission === 'function';
+  let permGranted = false;
+  // iOS: sensor access is permission-gated and the request MUST run inside a
+  // real user gesture. Callable again later (e.g. from the settings toggle)
+  // because Safari only shows its dialog when it feels like the gesture is
+  // clean — a failed first ask must not brick the feature.
+  const request = () => {
+    if (!needsAsk) return Promise.resolve('granted');
+    if (permGranted) return Promise.resolve('granted');
+    return DeviceOrientationEvent.requestPermission()
+      .then((r) => {
+        if (r === 'granted') { permGranted = true; attach(); }
+        return r;
+      })
+      .catch(() => 'error');
+  };
+  if (needsAsk) {
+    // every iOS device with this API has a gyroscope — support is a
+    // permission question, never a hardware one, so keep the toggle live
+    decide(true);
     const ask = () => {
-      removeEventListener('pointerdown', ask);
-      DeviceOrientationEvent.requestPermission()
-        .then((r) => {
-          if (r === 'granted') { attach(); setTimeout(() => decide(gyroSeen), 1500); }
-          else decide(false);
-        })
-        .catch(() => decide(false));
+      removeEventListener('click', ask, true);
+      removeEventListener('touchend', ask, true);
+      request();
     };
-    addEventListener('pointerdown', ask);
+    addEventListener('click', ask, true);
+    addEventListener('touchend', ask, true);
   } else if (hasAPI) {
     attach();
     setTimeout(() => decide(gyroSeen), 2500);   // silence = no gyroscope
@@ -77,5 +92,6 @@ export function startMotion(opts = {}) {
   return {
     setGyro(on) { gyroOn = on; if (!on) reset(); },
     setReduce(on) { reduce = on; if (on) reset(); },
+    request,   // re-ask for iOS motion permission (call from a tap handler)
   };
 }
