@@ -36,10 +36,14 @@ export function startMotion(opts = {}) {
   const reset = () => { baseG = baseB = null; setTarget(0, 0); };
 
   // ---------------- gyroscope ----------------
-  let statusT = 0;
+  let statusT = 0, orientSeen = false;
+  const report = (x, y) => {
+    const now = Date.now();
+    if (now - statusT > 250) { statusT = now; setStatus('active', { x, y }); }
+  };
   const onOrient = (e) => {
     if (e.gamma == null && e.beta == null) return;   // desktops fire empty events
-    gyroSeen = true; decide(true);
+    gyroSeen = true; orientSeen = true; decide(true);
     if (status !== 'active') setStatus('active', { x: 0, y: 0 });
     if (!gyroOn || reduce) return;
     if (baseG === null) { baseG = e.gamma; baseB = e.beta; }
@@ -48,14 +52,42 @@ export function startMotion(opts = {}) {
     baseG += (e.gamma - baseG) * 0.006;
     baseB += (e.beta - baseB) * 0.006;
     setTarget((e.gamma - baseG) / 18, (e.beta - baseB) / 18);
-    const now = Date.now();
-    if (now - statusT > 250) { statusT = now; setStatus('active', { x: tx, y: ty }); }
+    report(tx, ty);
   };
-  const attach = (report) => {
+  // fallback: some iOS builds (notably home-screen apps) grant permission but
+  // never deliver deviceorientation — while devicemotion still flows. Derive
+  // tilt from the gravity vector instead; same rolling-baseline treatment.
+  let baseGX = null, baseGY = null;
+  const onMotion = (e) => {
+    if (orientSeen) return;                    // real orientation data wins
+    const g = e.accelerationIncludingGravity;
+    if (!g || g.x == null) return;
+    gyroSeen = true; decide(true);
+    if (status !== 'active') setStatus('active', { x: 0, y: 0 });
+    if (!gyroOn || reduce) return;
+    if (baseGX === null) { baseGX = g.x; baseGY = g.y; }
+    baseGX += (g.x - baseGX) * 0.006;
+    baseGY += (g.y - baseGY) * 0.006;
+    setTarget(-(g.x - baseGX) / 4.5, (g.y - baseGY) / 4.5);
+    report(tx, ty);
+  };
+  const attach = (gated) => {
     addEventListener('deviceorientation', onOrient);
-    // permission granted but the sensor stays silent → say so (iOS only;
-    // on desktops silence just means "no gyro" and support handles that)
-    if (report) setTimeout(() => { if (!gyroSeen) setStatus('nodata'); }, 2500);
+    addEventListener('devicemotion', onMotion);
+    // permission granted but the sensors stay silent → iOS sometimes only
+    // wakes them after a reload. Reload once automatically, then say so.
+    if (gated) setTimeout(() => {
+      if (gyroSeen) return;
+      try {
+        if (!sessionStorage.getItem('cbx.tiltReload')) {
+          sessionStorage.setItem('cbx.tiltReload', '1');
+          setStatus('retrying');
+          setTimeout(() => location.reload(), 600);
+          return;
+        }
+      } catch {}
+      setStatus('nodata');
+    }, 2500);
   };
 
   const hasAPI = typeof DeviceOrientationEvent !== 'undefined';
@@ -69,13 +101,20 @@ export function startMotion(opts = {}) {
     if (!needsAsk) return Promise.resolve('granted');
     if (permGranted) return Promise.resolve('granted');
     setStatus('asking');
-    return DeviceOrientationEvent.requestPermission()
-      .then((r) => {
-        if (r === 'granted') { permGranted = true; setStatus('granted'); attach(true); }
-        else setStatus('denied');
+    // ask for BOTH sensors in this same gesture — the devicemotion fallback
+    // needs its own grant on iOS (one Apple dialog usually covers both)
+    const motionAsk = typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'
+      ? DeviceMotionEvent.requestPermission().catch(() => 'error')
+      : Promise.resolve('granted');
+    return Promise.all([
+      DeviceOrientationEvent.requestPermission().catch(() => 'error'),
+      motionAsk,
+    ])
+      .then(([r, rm]) => {
+        if (r === 'granted' || rm === 'granted') { permGranted = true; setStatus('granted'); attach(true); return 'granted'; }
+        setStatus(r === 'error' ? 'error' : 'denied');
         return r;
-      })
-      .catch(() => { setStatus('error'); return 'error'; });
+      });
   };
   if (needsAsk) {
     // every iOS device with this API has a gyroscope — support is a

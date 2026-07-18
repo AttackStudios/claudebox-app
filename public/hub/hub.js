@@ -45,7 +45,8 @@ const GYRO_STATUS_TEXT = {
   granted: 'Motion access allowed — move your phone!',
   denied: 'Motion access is blocked. Flip this switch to ask again — if no prompt appears, clear this site under iPhone Settings → Safari → Advanced → Website Data, then reload.',
   error: 'Motion permission errored — reload and try again.',
-  nodata: 'Motion is allowed but no tilt data is arriving. Close and reopen the app.',
+  retrying: 'Waking up the sensors…',
+  nodata: 'Motion is allowed but iOS isn’t sending tilt data. Fully close and reopen the app — or open ClaudeBox in Safari itself.',
 };
 const motionCtl = startMotion({
   gyro: settings.gyro,
