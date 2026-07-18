@@ -14,6 +14,11 @@ export function startMotion(opts = {}) {
   let gyroSeen = false, decided = false;
   const decide = (ok) => { if (!decided) { decided = true; opts.onSupport?.(ok); } };
 
+  // status — surfaced under the settings switch so permission problems are
+  // visible instead of silently doing nothing. 'active' comes with live x/y.
+  let status = 'idle';
+  const setStatus = (s, extra) => { status = s; opts.onStatus?.(s, extra); };
+
   const apply = () => { root.setProperty('--mx', cx.toFixed(4)); root.setProperty('--my', cy.toFixed(4)); };
   let raf = null;
   const tick = () => {
@@ -31,18 +36,27 @@ export function startMotion(opts = {}) {
   const reset = () => { baseG = baseB = null; setTarget(0, 0); };
 
   // ---------------- gyroscope ----------------
+  let statusT = 0;
   const onOrient = (e) => {
     if (e.gamma == null && e.beta == null) return;   // desktops fire empty events
     gyroSeen = true; decide(true);
+    if (status !== 'active') setStatus('active', { x: 0, y: 0 });
     if (!gyroOn || reduce) return;
     if (baseG === null) { baseG = e.gamma; baseB = e.beta; }
     // the baseline slowly follows the current angle, so a new resting grip
     // becomes the new neutral instead of pinning the UI off-centre
     baseG += (e.gamma - baseG) * 0.006;
     baseB += (e.beta - baseB) * 0.006;
-    setTarget((e.gamma - baseG) / 22, (e.beta - baseB) / 22);
+    setTarget((e.gamma - baseG) / 18, (e.beta - baseB) / 18);
+    const now = Date.now();
+    if (now - statusT > 250) { statusT = now; setStatus('active', { x: tx, y: ty }); }
   };
-  const attach = () => addEventListener('deviceorientation', onOrient);
+  const attach = (report) => {
+    addEventListener('deviceorientation', onOrient);
+    // permission granted but the sensor stays silent → say so (iOS only;
+    // on desktops silence just means "no gyro" and support handles that)
+    if (report) setTimeout(() => { if (!gyroSeen) setStatus('nodata'); }, 2500);
+  };
 
   const hasAPI = typeof DeviceOrientationEvent !== 'undefined';
   const needsAsk = hasAPI && typeof DeviceOrientationEvent.requestPermission === 'function';
@@ -54,17 +68,20 @@ export function startMotion(opts = {}) {
   const request = () => {
     if (!needsAsk) return Promise.resolve('granted');
     if (permGranted) return Promise.resolve('granted');
+    setStatus('asking');
     return DeviceOrientationEvent.requestPermission()
       .then((r) => {
-        if (r === 'granted') { permGranted = true; attach(); }
+        if (r === 'granted') { permGranted = true; setStatus('granted'); attach(true); }
+        else setStatus('denied');
         return r;
       })
-      .catch(() => 'error');
+      .catch(() => { setStatus('error'); return 'error'; });
   };
   if (needsAsk) {
     // every iOS device with this API has a gyroscope — support is a
     // permission question, never a hardware one, so keep the toggle live
     decide(true);
+    setStatus('waiting-tap');
     const ask = () => {
       removeEventListener('click', ask, true);
       removeEventListener('touchend', ask, true);
@@ -73,10 +90,11 @@ export function startMotion(opts = {}) {
     addEventListener('click', ask, true);
     addEventListener('touchend', ask, true);
   } else if (hasAPI) {
-    attach();
+    attach(false);
     setTimeout(() => decide(gyroSeen), 2500);   // silence = no gyroscope
   } else {
     decide(false);
+    setStatus('unsupported');
   }
 
   // ---------------- pointer parallax (mouse machines) ----------------
@@ -93,5 +111,6 @@ export function startMotion(opts = {}) {
     setGyro(on) { gyroOn = on; if (!on) reset(); },
     setReduce(on) { reduce = on; if (on) reset(); },
     request,   // re-ask for iOS motion permission (call from a tap handler)
+    get status() { return status; },
   };
 }

@@ -38,6 +38,15 @@ function applyMotion() { document.body.classList.toggle('reduce-motion', setting
 
 // tilt/parallax layer — gyro on phones, pointer on desktops (see motion.js).
 // The settings switch greys out if the device turns out to have no gyroscope.
+let tiltToasted = false;
+const GYRO_STATUS_TEXT = {
+  'waiting-tap': 'Tap anywhere, then Allow when iPhone asks for motion access.',
+  asking: 'Asking for motion access…',
+  granted: 'Motion access allowed — move your phone!',
+  denied: 'Motion access is blocked. Flip this switch to ask again — if no prompt appears, clear this site under iPhone Settings → Safari → Advanced → Website Data, then reload.',
+  error: 'Motion permission errored — reload and try again.',
+  nodata: 'Motion is allowed but no tilt data is arriving. Close and reopen the app.',
+};
 const motionCtl = startMotion({
   gyro: settings.gyro,
   reduce: settings.reduceMotion,
@@ -47,6 +56,17 @@ const motionCtl = startMotion({
     row.classList.toggle('disabled', !ok);
     $('gyro-input').disabled = !ok;
     $('gyro-hint').classList.toggle('hidden', ok);
+  },
+  onStatus(s, live) {
+    const el = $('gyro-status');
+    if (el) {
+      const txt = s === 'active'
+        ? `Tilt active ✓${live ? `  (x ${(+live.x).toFixed(2)} · y ${(+live.y).toFixed(2)})` : ''}`
+        : GYRO_STATUS_TEXT[s] || '';
+      el.textContent = txt;
+      el.classList.toggle('hidden', !txt);
+    }
+    if (s === 'active' && !tiltToasted) { tiltToasted = true; toast('Tilt effects on — move your phone', '📱'); }
   },
 });
 function applyTheme() { document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark'); }
@@ -1347,7 +1367,7 @@ function initSettingsTab() {
     // turning it ON is a real tap — the perfect moment to (re-)ask iOS for
     // motion access if it hasn't been granted yet
     if (settings.gyro) motionCtl.request().then((r) => {
-      if (r === 'denied') toast('Motion access is blocked — turn on “Motion & Orientation Access” in iPhone Settings → Apps → Safari', '📱');
+      if (r === 'denied') toast('Motion access is blocked — see the note under the Tilt effects switch', '📱');
     });
   });
   $('sound-input').addEventListener('change', () => {
