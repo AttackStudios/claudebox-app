@@ -891,3 +891,111 @@ img.bal-emoji { width: 34px; height: 34px; }
 /* subtle white-on-dark surfaces flip to faint dark tints so they read on light */
 :root[data-theme="light"] .tile, :root[data-theme="light"] .connect-card, :root[data-theme="light"] .wallet-card,
 :root[data-theme="light"] #wallet-hero, :root[data-theme="light"] .gt-foot, :root[data-theme="light"] .browse-bar { background: var(--glass); }
+
+/* ======================================================================
+   DEPTH & MOTION — --mx/--my (-1..1) come from motion.js: gyroscope tilt
+   on phones, pointer parallax on desktops. Everything below degrades to
+   perfectly still when the vars sit at 0.
+   ====================================================================== */
+#aurora {
+  transform: translate3d(calc(var(--mx, 0) * 30px), calc(var(--my, 0) * 22px), 0);
+}
+#grain {
+  transform: translate3d(calc(var(--mx, 0) * -8px), calc(var(--my, 0) * -6px), 0);
+}
+#hero {
+  transform: perspective(1100px) rotateY(calc(var(--mx, 0) * 2.2deg)) rotateX(calc(var(--my, 0) * -1.6deg));
+  transition: transform .35s var(--spring);
+}
+#hero:hover {
+  transform: perspective(1100px) rotateY(calc(var(--mx, 0) * 2.2deg)) rotateX(calc(var(--my, 0) * -1.6deg)) translateY(-2px);
+}
+#hero .hero-bg {
+  transform: scale(1.08) translate3d(calc(var(--mx, 0) * -12px), calc(var(--my, 0) * -8px), 0);
+  transition: transform .25s var(--ease);
+}
+#hero:hover .hero-bg {
+  transform: scale(1.12) translate3d(calc(var(--mx, 0) * -12px), calc(var(--my, 0) * -8px), 0);
+}
+#avatar-stage .stage-glow, .store-preview .stage-glow {
+  transform: translate3d(calc(var(--mx, 0) * 16px), calc(var(--my, 0) * 10px), 0);
+}
+/* card glare that follows the light source (tilt or cursor) */
+.game-tile .art::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: radial-gradient(150% 100% at calc(50% + var(--mx, 0) * 55%) calc(18% + var(--my, 0) * 35%),
+    rgba(255,255,255,.13), transparent 52%);
+  opacity: .55; transition: opacity .3s var(--ease);
+}
+.game-tile:hover .art::before { opacity: 1; }
+.login-card {
+  transform: perspective(900px) rotateY(calc(var(--mx, 0) * 1.6deg)) rotateX(calc(var(--my, 0) * -1.2deg));
+}
+.reduce-motion #aurora, .reduce-motion #grain, .reduce-motion #hero, .reduce-motion .hero-bg,
+.reduce-motion .stage-glow, .reduce-motion .login-card { transform: none !important; }
+
+/* ======================================================================
+   QUALITY PASS — finish details across the whole hub
+   ====================================================================== */
+/* staggered tile entrances — rows cascade in instead of popping at once */
+.tile-grid .game-tile:nth-child(1), .tile-row .game-tile:nth-child(1) { animation-delay: .02s; }
+.tile-grid .game-tile:nth-child(2), .tile-row .game-tile:nth-child(2) { animation-delay: .05s; }
+.tile-grid .game-tile:nth-child(3), .tile-row .game-tile:nth-child(3) { animation-delay: .08s; }
+.tile-grid .game-tile:nth-child(4), .tile-row .game-tile:nth-child(4) { animation-delay: .11s; }
+.tile-grid .game-tile:nth-child(5), .tile-row .game-tile:nth-child(5) { animation-delay: .14s; }
+.tile-grid .game-tile:nth-child(6), .tile-row .game-tile:nth-child(6) { animation-delay: .17s; }
+.tile-grid .game-tile:nth-child(7), .tile-row .game-tile:nth-child(7) { animation-delay: .20s; }
+.tile-grid .game-tile:nth-child(8), .tile-row .game-tile:nth-child(8) { animation-delay: .23s; }
+.tile-grid .game-tile:nth-child(n+9), .tile-row .game-tile:nth-child(n+9) { animation-delay: .26s; }
+
+/* shine sweep across a card on hover */
+.game-tile .art::after {
+  content: ''; position: absolute; inset: -40% auto -40% -80%; width: 55%; pointer-events: none;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.16), transparent);
+  transform: translateX(0) rotate(8deg); opacity: 0;
+}
+.game-tile:hover .art::after { animation: artSweep .8s var(--ease) .05s; }
+@keyframes artSweep {
+  from { transform: translateX(0) rotate(8deg); opacity: 0; }
+  30% { opacity: 1; }
+  to { transform: translateX(420%) rotate(8deg); opacity: 0; }
+}
+
+/* keyboard focus that matches the design language */
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; border-radius: 6px; }
+
+/* considered scrollbars (desktop) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.14); border-radius: var(--r-pill);
+  border: 3px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.26); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background-color: rgba(15,25,45,.22); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background-color: rgba(15,25,45,.36); }
+
+/* text selection in the accent */
+::selection { background: var(--accent); color: #fff; }
+
+/* toasts: icon pops, subtle accent ring */
+.hub-toast { box-shadow: var(--sh-2), 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent); }
+.hub-toast > span:first-child { animation: toastIco .5s var(--spring) .08s both; }
+@keyframes toastIco { from { transform: scale(.4) rotate(-14deg); } 60% { transform: scale(1.22) rotate(6deg); } to { transform: none; } }
+
+/* chart rows lift like cards */
+.chart-row { transition: transform .2s var(--spring), background .2s var(--ease); }
+.chart-row:hover { transform: translateY(-2px); }
+
+/* switches: springier thumb with a little squash mid-travel */
+.switch .track::after { transition: transform .34s var(--spring), width .34s var(--spring); }
+.switch .track:active::after { width: 29px; }
+.switch input:checked + .track:active::after { transform: translateX(17px); }
+
+/* a settings row the device can't use */
+.settings-row.disabled { opacity: .42; }
+.settings-row.disabled .switch .track { cursor: not-allowed; }
+.settings-row.disabled + .settings-hint { color: var(--faint); }
+
+/* smoother momentum everywhere */
+html { scroll-behavior: smooth; }

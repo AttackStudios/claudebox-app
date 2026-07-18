@@ -8,6 +8,7 @@ import { preloadAvatars, makeAvatar, CLOTHING } from '/shared/avatar3d.js';
 import { sfx } from './sounds.js';
 import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID, AVATAR_CATS } from '/shared/rewards.js';
 import { initVoice } from '/js/voice.js';
+import { startMotion } from './motion.js';
 
 const USER_KEY = 'claudebox.user';
 const SETTINGS_KEY = 'claudebox.settings';
@@ -15,7 +16,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------------- per-device settings ----------------
 const settings = (() => {
-  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark' };
+  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark', gyro: true };
   try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
   catch { return d; }
 })();
@@ -34,6 +35,20 @@ function applyAccent() {
   root.setProperty('--accent-ink', lum > 0.62 ? '#06232e' : '#eafaff');
 }
 function applyMotion() { document.body.classList.toggle('reduce-motion', settings.reduceMotion); }
+
+// tilt/parallax layer — gyro on phones, pointer on desktops (see motion.js).
+// The settings switch greys out if the device turns out to have no gyroscope.
+const motionCtl = startMotion({
+  gyro: settings.gyro,
+  reduce: settings.reduceMotion,
+  onSupport(ok) {
+    const row = $('gyro-row');
+    if (!row) return;
+    row.classList.toggle('disabled', !ok);
+    $('gyro-input').disabled = !ok;
+    $('gyro-hint').classList.toggle('hidden', ok);
+  },
+});
 function applyTheme() { document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark'); }
 applyAccent();
 applyMotion();
@@ -1314,6 +1329,7 @@ function initSettingsTab() {
   $('settings-name').textContent = stateHub.me.name;
   $('accent-input').value = settings.accent;
   $('motion-input').checked = settings.reduceMotion;
+  $('gyro-input').checked = settings.gyro;
   $('sound-input').checked = settings.sound;
   $('ambient-input').checked = settings.ambient;
   const themeSel = $('theme-input'); if (themeSel) themeSel.value = settings.theme;
@@ -1322,7 +1338,8 @@ function initSettingsTab() {
   if (themeSel) themeSel.addEventListener('change', () => { settings.theme = themeSel.value === 'light' ? 'light' : 'dark'; applyTheme(); saveSettings(); sfx.tap && sfx.tap(); });
 
   $('accent-input').addEventListener('input', () => { settings.accent = $('accent-input').value; applyAccent(); saveSettings(); });
-  $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
+  $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); motionCtl.setReduce(settings.reduceMotion); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
+  $('gyro-input').addEventListener('change', () => { settings.gyro = $('gyro-input').checked; motionCtl.setGyro(settings.gyro); saveSettings(); (settings.gyro ? sfx.toggleOn : sfx.toggleOff)(); });
   $('sound-input').addEventListener('change', () => {
     settings.sound = $('sound-input').checked; sfx.setEnabled(settings.sound); saveSettings(); syncSoundBtn();
     if (settings.sound) sfx.toggleOn(); else sfx.setAmbient(false);
