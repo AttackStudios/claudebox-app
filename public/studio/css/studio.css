@@ -85,3 +85,6 @@ button.primary:hover { background: #3a90ea; }
 .shop-no { background: #2a3340; color: #cfd7e2; }
 .shop-buy { background: linear-gradient(150deg, #2f7fd6, #52b7ff); color: #051826; }
 .shop-buy:disabled { filter: saturate(.4); cursor: default; }
+
+/* RBLXS map designation */
+#btn-rblxs.active { background: #b8860b; border-color: #ffd24a; color: #fff; box-shadow: 0 0 0 2px rgba(255, 210, 74, .35); }

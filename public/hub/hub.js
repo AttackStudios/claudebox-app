@@ -26,7 +26,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------------- per-device settings ----------------
 const settings = (() => {
-  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark', gyro: true };
+  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark', gyro: true, rblxsMaps: false };
   try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
   catch { return d; }
 })();
@@ -781,6 +781,25 @@ async function openThread(name) {
   clearInterval(dmPoll); dmPoll = setInterval(refreshThread, 3000);
 }
 
+// beta gate for RBLXS Maps: the toggle only flips after this is acknowledged
+function rblxsWarning() {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.className = 'rw-overlay';
+    ov.innerHTML = `<div class="rw-card">
+      <div class="rw-title">!WARNING!</div>
+      <p><b>RBLXS Maps is a beta experiment.</b> Maps imported from Roblox Studio can be unstable — broken collision, flattened rotations, missing triggers, or a Playground that fails to load.</p>
+      <p>If things break, turn this off and the regular map comes back. Nothing is lost.</p>
+      <div class="rw-btns">
+        <button class="rw-ok">I understand — turn it on</button>
+        <button class="rw-no">Cancel</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('.rw-ok').addEventListener('click', () => { ov.remove(); resolve(true); });
+    ov.querySelector('.rw-no').addEventListener('click', () => { ov.remove(); resolve(false); });
+  });
+}
+
 // ---------------- DM voice calls ----------------
 // Both people tap 📞 in the same chat to connect (P2P audio via /voice-ws).
 // Starting a call drops a line in the chat so the other person knows to join.
@@ -1399,6 +1418,7 @@ function initSettingsTab() {
   $('accent-input').value = settings.accent;
   $('motion-input').checked = settings.reduceMotion;
   $('gyro-input').checked = settings.gyro;
+  $('rblxs-input').checked = !!settings.rblxsMaps;
   $('sound-input').checked = settings.sound;
   $('ambient-input').checked = settings.ambient;
   const themeSel = $('theme-input'); if (themeSel) themeSel.value = settings.theme;
@@ -1408,6 +1428,16 @@ function initSettingsTab() {
 
   $('accent-input').addEventListener('input', () => { settings.accent = $('accent-input').value; applyAccent(); saveSettings(); });
   $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); motionCtl.setReduce(settings.reduceMotion); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
+  $('rblxs-input').addEventListener('change', async () => {
+    if ($('rblxs-input').checked && !await rblxsWarning()) {
+      $('rblxs-input').checked = false;
+      return;
+    }
+    settings.rblxsMaps = $('rblxs-input').checked;
+    saveSettings();
+    (settings.rblxsMaps ? sfx.toggleOn : sfx.toggleOff)();
+    if (settings.rblxsMaps) toast('RBLXS map on — the Playground now plays your Studio-marked slot', '🧱');
+  });
   $('gyro-input').addEventListener('change', () => {
     settings.gyro = $('gyro-input').checked;
     motionCtl.setGyro(settings.gyro);

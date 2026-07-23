@@ -77,6 +77,15 @@ const state = {
   mode: 'edit',
   slug: (params.get('play') || params.get('slug') || 'playground'),
 };
+// RBLXS Maps (BETA): when the hub setting is on, playing the Playground loads
+// the slot you designated in Studio (🧱 RBLXS) instead of the regular one
+if (params.get('play')) {
+  try {
+    const hubSettings = JSON.parse(localStorage.getItem('claudebox.settings') || '{}');
+    const rblxsSlot = localStorage.getItem('cbx.rblxsSlot');
+    if (hubSettings.rblxsMaps && rblxsSlot) state.slug = rblxsSlot;
+  } catch {}
+}
 
 function applyMesh(rec) {
   const s = rec.spec;
@@ -283,7 +292,19 @@ addEventListener('keydown', (e) => {
 
 // ---------- save / load / export / import ----------
 $('#slot').value = state.slug;
-$('#slot').onchange = () => { state.slug = $('#slot').value; loadSlot(); };
+const syncRblxsBtn = () => $('#btn-rblxs').classList.toggle('active', localStorage.getItem('cbx.rblxsSlot') === state.slug);
+$('#slot').onchange = () => { state.slug = $('#slot').value; syncRblxsBtn(); loadSlot(); };
+$('#btn-rblxs').onclick = () => {
+  if (localStorage.getItem('cbx.rblxsSlot') === state.slug) {
+    localStorage.removeItem('cbx.rblxsSlot');
+    status('RBLXS map cleared — Playground plays its regular slot');
+  } else {
+    localStorage.setItem('cbx.rblxsSlot', state.slug);
+    status(`"${state.slug}" is your RBLXS map — turn on RBLXS Maps (BETA) in hub Settings to play it`);
+  }
+  syncRblxsBtn();
+};
+syncRblxsBtn();
 $('#level-name').oninput = (e) => { state.level.name = e.target.value; };
 $('#btn-save').onclick = async () => {
   state.level = sanitizeLevel(state.level);
