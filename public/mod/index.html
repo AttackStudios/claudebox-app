@@ -79,9 +79,23 @@ function locked() {
     <p>This dashboard is for the ClaudeBox owner. Sign in as the owner in the hub first.</p>
     <a class="back" href="/">← Back to ClaudeBox</a></div>`;
 }
+const banBox = `<div class="top"><h3>🔨 Ban a player</h3>
+    <div class="bar" style="margin:0">
+      <input id="ban-name" placeholder="Exact username…" maxlength="20"
+        style="background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.15);color:#e9edf5;font:inherit;font-weight:700;padding:9px 13px;border-radius:10px;min-width:220px">
+      <button class="btn danger" id="ban-go">🔨 Ban + their devices</button>
+    </div>
+    <div class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px">Bans the name everywhere AND locks out every device it has logged in from — a new username on the same device won't get in.</div></div>`;
+function wireBanBox() {
+  $('#ban-go').onclick = () => { const t = $('#ban-name').value.trim(); if (t) banPlayer(t); };
+  $('#ban-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ban-go').click(); });
+}
 function render(reports) {
   if (!reports.length) {
-    $('#main').innerHTML = `<div class="empty"><div class="em">✅</div><p>No reports right now. All clear!</p><a class="back" href="/">← Back to ClaudeBox</a></div>`;
+    $('#main').innerHTML = `<div class="empty" style="padding:40px 20px"><div class="em">✅</div><p>No reports right now. All clear!</p><a class="back" href="/">← Back to ClaudeBox</a></div>`
+      + banBox + `<div id="bans" style="margin-top:28px"></div>`;
+    wireBanBox();
+    loadBans();
     return;
   }
   const counts = {};
@@ -100,7 +114,8 @@ function render(reports) {
       ${x.details ? `<div class="det">${esc(x.details)}</div>` : ''}
       <div class="acts"><button class="btn danger ban" data-t="${esc(x.target)}">🔨 Ban ${esc(x.target)}</button><button class="btn dismiss">Dismiss</button></div>
     </div>`).join('');
-  $('#main').innerHTML = bar + cards + `<div id="bans" style="margin-top:28px"></div>`;
+  $('#main').innerHTML = bar + cards + `<div style="margin-top:28px"></div>` + banBox + `<div id="bans" style="margin-top:28px"></div>`;
+  wireBanBox();
   $('#refresh').onclick = () => { load(); loadBans(); };
   $('#clear').onclick = async () => { if (!confirm('Clear ALL reports?')) return; await api('/reports/clear', { method: 'POST', body: JSON.stringify({ name: me() }) }); load(); loadBans(); };
   document.querySelectorAll('.card .dismiss').forEach((b) => b.onclick = async (e) => {
@@ -114,7 +129,9 @@ function render(reports) {
 async function banPlayer(target) {
   const reason = prompt('Ban ' + target + ' from ClaudeBox?\n\nThey won\'t be able to log in or join any game.\nReason:', '');
   if (reason === null) return;
-  await api('/ban', { method: 'POST', body: JSON.stringify({ name: me(), target, reason }) });
+  const r = await api('/ban', { method: 'POST', body: JSON.stringify({ name: me(), target, reason }) });
+  const j = await r.json().catch(() => ({}));
+  if (j.ok) alert('Banned ' + target + (j.devices ? ` — ${j.devices} device${j.devices === 1 ? '' : 's'} locked out too.` : ' (no devices seen for this name yet — the name itself is blocked).'));
   load();
 }
 async function loadBans() {
@@ -125,7 +142,7 @@ async function loadBans() {
   box.innerHTML = `<div class="top"><h3>🔨 Banned players · ${bans.length}</h3></div>` + bans.map((b) => `
     <div class="card" style="border-color:rgba(224,80,60,.3)">
       <div class="r1"><span class="tgt">🔨 ${esc(b.name)}</span><span class="reason">${esc(b.reason || '')}</span></div>
-      <div class="meta">banned by <b>${esc(b.by)}</b> · ${ago(b.at)}</div>
+      <div class="meta">banned by <b>${esc(b.by)}</b> · ${ago(b.at)}${b.devices ? ` · 📵 ${b.devices} device${b.devices === 1 ? '' : 's'} locked` : ''}</div>
       <div class="acts"><button class="btn unban" data-t="${esc(b.name)}">Unban</button></div>
     </div>`).join('');
   box.querySelectorAll('.unban').forEach((btn) => btn.onclick = async () => { await api('/unban', { method: 'POST', body: JSON.stringify({ name: me(), target: btn.dataset.t }) }); loadBans(); });

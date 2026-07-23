@@ -170,9 +170,9 @@ export const DEFAULT_AVATAR = {
 function loadPlatform() {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {}, reports: raw.reports || [], bans: raw.bans || {} };
+    return { users: raw.users || {}, gameStats: raw.gameStats || {}, dms: raw.dms || {}, reports: raw.reports || [], bans: raw.bans || {}, devices: raw.devices || {} };
   } catch {
-    return { users: {}, gameStats: {}, dms: {}, reports: [], bans: {} };
+    return { users: {}, gameStats: {}, dms: {}, reports: [], bans: {}, devices: {} };
   }
 }
 
@@ -246,6 +246,22 @@ export function isBanned(name) {
   return !!(platform.bans && platform.bans[nl]);
 }
 export function banInfo(name) { return platform.bans ? platform.bans[String(name || '').toLowerCase()] : null; }
+
+// ---- device bans ----
+// Every browser mints a persistent `cbx_did` cookie (set client-side); logins
+// record which names a device has used. Banning a name also bans every device
+// it was seen on, so the same browser can't just pick a fresh username.
+const DID_RE = /^[a-zA-Z0-9-]{8,64}$/;
+export function didFromCookieHeader(cookieHeader) {
+  const m = /(?:^|;\s*)cbx_did=([^;]+)/.exec(String(cookieHeader || ''));
+  let did = m && m[1];
+  try { did = did && decodeURIComponent(did); } catch {}
+  return did && DID_RE.test(did) ? did : null;
+}
+export function isBannedDevice(did) {
+  return !!(did && platform.devices && platform.devices[did]?.ban);
+}
+export function deviceBanInfo(did) { return (did && platform.devices?.[did]?.ban) || null; }
 // games can register a live-kick fn; otherwise a ban simply blocks the next join
 const gameKickers = [];
 export function registerGameKicker(fn) { if (typeof fn === 'function') gameKickers.push(fn); }
@@ -514,7 +530,19 @@ export function hubRouter() {
     const name = clean(req.body?.name);
     if (!name) return res.status(400).json({ error: 'name required' });
     if (isBanned(name)) { const b = banInfo(name); return res.status(403).json({ error: 'banned', banned: true, reason: (b && b.reason) || 'You are banned from ClaudeBox.' }); }
+    const did = didFromCookieHeader(req.headers.cookie);
+    if (isBannedDevice(did)) {
+      const b = deviceBanInfo(did);
+      return res.status(403).json({ error: 'banned', banned: true, reason: (b && b.reason) || 'This device is banned from ClaudeBox.' });
+    }
     const u = ensureUser(name);
+    if (did) {   // remember which names this device plays as
+      if (!platform.devices) platform.devices = {};
+      const dev = platform.devices[did] || (platform.devices[did] = { names: [] });
+      dev.seen = Date.now();
+      const nl = name.toLowerCase();
+      if (!dev.names.includes(nl)) { if (dev.names.length < 30) dev.names.push(nl); save(); }
+    }
     lastHubSeen.set(name.toLowerCase(), Date.now());
     res.json({ profile: { name: u.name, avatar: u.avatar, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(name.toLowerCase()) } });
   });
@@ -752,7 +780,10 @@ export function hubRouter() {
   // owner ban controls
   r.get('/bans', (req, res) => {
     if (badgeFor(clean(req.query.name)) !== 'owner') return res.status(403).json({ error: 'owner only' });
-    const bans = Object.entries(platform.bans || {}).map(([nl, b]) => ({ name: b.name || nl, ...b })).sort((a, b) => b.at - a.at);
+    const bans = Object.entries(platform.bans || {}).map(([nl, b]) => ({
+      name: b.name || nl, ...b,
+      devices: Object.values(platform.devices || {}).filter((d) => d.ban?.name === nl).length,
+    })).sort((a, b) => b.at - a.at);
     res.json({ bans });
   });
   r.post('/ban', (req, res) => {
@@ -760,15 +791,24 @@ export function hubRouter() {
     const target = cleanCreator(req.body?.target); const nl = target.toLowerCase();
     if (!nl || nl === OWNER_NAME) return res.json({ ok: false });   // can't ban the owner
     if (!platform.bans) platform.bans = {};
-    platform.bans[nl] = { name: target, reason: cleanCreator(req.body?.reason).slice(0, 100) || 'No reason given', by: clean(req.body?.name), at: Date.now() };
+    const reason = cleanCreator(req.body?.reason).slice(0, 100) || 'No reason given';
+    platform.bans[nl] = { name: target, reason, by: clean(req.body?.name), at: Date.now() };
+    // lock out every device this name has logged in from
+    let devices = 0;
+    for (const dev of Object.values(platform.devices || {})) {
+      if (dev.names?.includes(nl) && !dev.ban) { dev.ban = { name: nl, reason, at: Date.now() }; devices++; }
+    }
     kickFromGames(nl);
     save();
-    res.json({ ok: true });
+    res.json({ ok: true, devices });
   });
   r.post('/unban', (req, res) => {
     if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false });
     const nl = cleanCreator(req.body?.target).toLowerCase();
     if (platform.bans) delete platform.bans[nl];
+    for (const dev of Object.values(platform.devices || {})) {
+      if (dev.ban?.name === nl) dev.ban = null;
+    }
     save();
     res.json({ ok: true });
   });

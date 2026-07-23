@@ -11,6 +11,17 @@
 (function () {
   if (window.ClaudeBox) return;
 
+  // persistent device id — the cookie rides every request and WS handshake,
+  // which is what lets the server enforce device-level bans
+  try {
+    let did = localStorage.getItem('cbx.did');
+    if (!did) {
+      did = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+      localStorage.setItem('cbx.did', did);
+    }
+    document.cookie = 'cbx_did=' + did + ';path=/;max-age=63072000;SameSite=Lax';
+  } catch {}
+
   const NAME_KEYS = ['claudebox.user'];
   const LOCAL_DONE = 'claudebox.challengesDone'; // client-side dedupe cache
   let overrideName = null;

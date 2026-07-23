@@ -11,6 +11,16 @@ import { initVoice } from '/js/voice.js';
 import { startMotion } from './motion.js';
 
 const USER_KEY = 'claudebox.user';
+
+// persistent device id cookie — rides every API call so device bans stick
+try {
+  let did = localStorage.getItem('cbx.did');
+  if (!did) {
+    did = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+    localStorage.setItem('cbx.did', did);
+  }
+  document.cookie = 'cbx_did=' + did + ';path=/;max-age=63072000;SameSite=Lax';
+} catch {}
 const SETTINGS_KEY = 'claudebox.settings';
 const $ = (id) => document.getElementById(id);
 

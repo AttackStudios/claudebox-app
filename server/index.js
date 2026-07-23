@@ -13,7 +13,7 @@ import { handleMessage, onDisconnect, makeBroadcaster, npcPublic } from './proto
 import { topUpItems, tickItems } from './items.js';
 import { spawnNpcs, tickNpcs } from './npcs.js';
 import { tickOffspring } from './offspring.js';
-import { hubRouter, FF_MAINTENANCE, BP_MAINTENANCE } from './hub.js';
+import { hubRouter, FF_MAINTENANCE, BP_MAINTENANCE, didFromCookieHeader, isBannedDevice } from './hub.js';
 import { voiceConnection } from './voice.js';
 import { startSync } from './persist.js';
 import { state as bpState, genId as bpGenId, publicPlayer as bpPublicPlayer, publicVan, publicBear, clock01 } from './backpacking/state.js';
@@ -103,6 +103,8 @@ const pzWss = new WebSocketServer({ noServer: true });
 const vcWss = new WebSocketServer({ noServer: true });
 vcWss.on('connection', (ws) => voiceConnection(ws));
 server.on('upgrade', (req, socket, head) => {
+  // banned devices don't get a socket to ANY game (or voice) — one chokepoint
+  if (isBannedDevice(didFromCookieHeader(req.headers.cookie))) { socket.destroy(); return; }
   const { pathname } = new URL(req.url, 'http://x');
   if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   else if (pathname === '/bp-ws') bpWss.handleUpgrade(req, socket, head, (ws) => bpWss.emit('connection', ws, req));
