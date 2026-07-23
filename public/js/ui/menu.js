@@ -1,14 +1,24 @@
-// Main menu: name, stage, breed grid with live 3D preview, colors, nametag.
-// Resolves with the chosen profile when Play is pressed.
+// Main menu, two screens over the living world: the title (logo + Play),
+// then the species picker — tabbed sheets of white cards, each with a real
+// rendered thumbnail of the bird. Picking Egg starts you as an egg of your
+// last (or default) breed; picking a species drops you in as an adult.
+// Colors + nametag are customized in-game (Customize / Name panels).
 
 import * as THREE from 'three';
 import { BREEDS, SETS, defaultColors, BREED_MIGRATIONS } from '../birds/breeds.js';
 import { buildBird } from '../birds/factory.js';
-import { animateBird, makeAnimState } from '../birds/animate.js';
-import { buildColorEditor } from './customize.js';
 import { audio } from '../audio.js';
 
 const LAST_KEY = 'featherfriends.lastProfile';
+const UNLOCK_CACHE_KEY = 'ff.unlockCache';
+
+// Server-confirmed unlock state, cached at every join. Missing cache
+// (first ever launch) => treat everything as unlocked; the server
+// enforces anyway and falls back gracefully.
+function readUnlockCache() {
+  try { return JSON.parse(localStorage.getItem(UNLOCK_CACHE_KEY) || 'null'); }
+  catch { return null; }
+}
 
 export function loadLastProfile() {
   try {
@@ -21,204 +31,189 @@ export function loadLastProfile() {
   } catch { return null; }
 }
 
+// the three picker tabs and which breed sets fill them
+const PICKER_TABS = [
+  { id: 'standard', label: 'Standard', sets: ['classic'] },
+  { id: 'unlock', label: 'Unlockables', sets: ['exotic', 'raptor'] },
+  { id: 'mythical', label: 'Mythical', sets: ['mythical'] },
+];
+
 export function runMenu() {
   return new Promise((resolve) => {
     const menuEl = document.getElementById('menu');
+    const titleEl = document.getElementById('title-screen');
+    const pickerEl = document.getElementById('picker-screen');
     const last = loadLastProfile();
 
-    const profile = {
-      name: last?.name || '',
-      stage: last?.stage || 'adult',
-      breed: last?.breed || 'robin',
-      colors: last?.colors && last?.breed ? { ...last.colors } : defaultColors('robin'),
-      nameStyle: last?.nameStyle || { color: '#ffffff', style: 'outline' },
-    };
-
-    // ---- name ----
     const nameInput = document.getElementById('menu-name');
-    nameInput.value = profile.name;
+    nameInput.value = last?.name || localStorage.getItem('claudebox.user') || '';
 
-    // ---- stage cards ----
-    const stageRow = document.getElementById('menu-stages');
-    const refreshStages = () => {
-      for (const btn of stageRow.querySelectorAll('.stage-card')) {
-        btn.classList.toggle('selected', btn.dataset.stage === profile.stage);
-      }
-    };
-    stageRow.addEventListener('click', (e) => {
-      const btn = e.target.closest('.stage-card');
-      if (!btn) return;
-      profile.stage = btn.dataset.stage;
-      refreshStages();
-      rebuildPreview();
-      audio.sfx('click');
-    });
-    refreshStages();
+    const unlockCache = readUnlockCache();
+    const priceOf = (id) => unlockCache?.prices?.[id] || 0;
+    const isLocked = (id) =>
+      !!unlockCache && priceOf(id) > 0 && !unlockCache.unlocked?.includes(id);
 
-    // ---- breed set tabs + grid ----
-    let currentSet = BREEDS[profile.breed]?.set || 'classic';
-    const tabsEl = document.getElementById('menu-set-tabs');
-    const gridEl = document.getElementById('menu-breeds');
-
-    const renderTabs = () => {
-      tabsEl.innerHTML = '';
-      for (const set of SETS) {
-        const tab = document.createElement('button');
-        tab.className = 'set-tab' + (set.id === currentSet ? ' selected' : '');
-        tab.textContent = set.label;
-        tab.addEventListener('click', () => {
-          currentSet = set.id;
-          renderTabs();
-          renderGrid();
-          audio.sfx('click');
-        });
-        tabsEl.appendChild(tab);
-      }
-    };
-
-    const renderGrid = () => {
-      gridEl.innerHTML = '';
-      for (const [id, def] of Object.entries(BREEDS)) {
-        if (def.set !== currentSet) continue;
-        const card = document.createElement('button');
-        card.className = 'breed-card'
-          + (id === profile.breed ? ' selected' : '')
-          + (def.set === 'mythical' ? ' mythical' : '');
-        const em = document.createElement('span');
-        em.className = 'breed-emoji';
-        em.textContent = def.emoji;
-        card.appendChild(em);
-        card.appendChild(document.createTextNode(def.label));
-        card.addEventListener('click', () => {
-          profile.breed = id;
-          profile.colors = defaultColors(id);
-          colorEditor.setAll(profile.colors);
-          renderGrid();
-          rebuildPreview();
-          audio.sfx('pop');
-        });
-        gridEl.appendChild(card);
-      }
-    };
-    renderTabs();
-    renderGrid();
-
-    // ---- color editor ----
-    const colorBox = document.getElementById('menu-colors');
-    const colorEditor = buildColorEditor(colorBox, profile.colors, () => {
-      preview.bird?.setColors(profile.colors);
-    });
-
-    // ---- nametag ----
-    const tagBox = document.getElementById('menu-nametag');
-    tagBox.innerHTML = '';
-    const tagColor = document.createElement('input');
-    tagColor.type = 'color';
-    tagColor.value = profile.nameStyle.color;
-    tagColor.addEventListener('input', () => { profile.nameStyle.color = tagColor.value; });
-    const tagStyle = document.createElement('select');
-    for (const [v, label] of [['outline', 'Outline'], ['glow', 'Glow'], ['plain', 'Plain']]) {
-      const o = document.createElement('option');
-      o.value = v; o.textContent = label;
-      tagStyle.appendChild(o);
-    }
-    tagStyle.value = profile.nameStyle.style;
-    tagStyle.style.padding = '6px 10px';
-    tagStyle.style.borderRadius = '10px';
-    tagStyle.style.border = '2px solid #cfe9f5';
-    tagStyle.addEventListener('change', () => { profile.nameStyle.style = tagStyle.value; });
-    const tagLabel = document.createElement('span');
-    tagLabel.textContent = 'Color + style:';
-    tagLabel.style.fontWeight = 'bold';
-    tagLabel.style.color = 'var(--ink)';
-    tagLabel.style.fontSize = '13px';
-    tagBox.append(tagLabel, tagColor, tagStyle);
-
-    // ---- 3D preview ----
-    const preview = createPreview(document.getElementById('menu-preview'));
-    const rebuildPreview = () => preview.setBird(profile.breed, profile.colors, profile.stage);
-    rebuildPreview();
-
-    // ---- music + play ----
+    // ---- music ----
     const startAudio = () => audio.unlock();
     window.addEventListener('pointerdown', startAudio, { once: true });
     window.addEventListener('keydown', startAudio, { once: true });
     audio.playMenu();
 
+    // ---- screen 1 -> screen 2 ----
+    let chosenName = 'Birb';
     document.getElementById('menu-play').addEventListener('click', () => {
-      profile.name = nameInput.value.trim().slice(0, 20) || 'Birb';
+      chosenName = nameInput.value.trim().slice(0, 20) || 'Birb';
       audio.unlock();
       audio.sfx('sparkle');
+      titleEl.classList.add('hidden');
+      pickerEl.classList.remove('hidden');
+      renderTabs();
+      renderGrid();
+    });
+
+    // ---- species picker ----
+    let currentTab = 'standard';
+    const tabsEl = document.getElementById('picker-tabs');
+    const gridEl = document.getElementById('picker-grid');
+    const hintEl = document.getElementById('picker-hint');
+
+    const renderTabs = () => {
+      tabsEl.innerHTML = '';
+      for (const tab of PICKER_TABS) {
+        const b = document.createElement('button');
+        b.className = 'picker-tab' + (tab.id === currentTab ? ' selected' : '');
+        b.innerHTML = `<span>${tab.label}</span>`;
+        b.addEventListener('click', () => {
+          currentTab = tab.id;
+          renderTabs();
+          renderGrid();
+          audio.sfx('click');
+        });
+        tabsEl.appendChild(b);
+      }
+    };
+
+    const pick = (breed, stage) => {
+      audio.sfx('sparkle');
+      const profile = {
+        name: chosenName,
+        stage,
+        breed,
+        colors: defaultColors(breed),
+        nameStyle: last?.nameStyle || { color: '#ffffff', style: 'outline' },
+      };
       localStorage.setItem(LAST_KEY, JSON.stringify(profile));
-      preview.stop();
+      thumbs.dispose();
       menuEl.classList.add('hidden');
       resolve(profile);
-    });
+    };
+
+    const showHint = (text) => {
+      hintEl.textContent = text;
+      hintEl.classList.remove('hidden');
+      clearTimeout(showHint.t);
+      showHint.t = setTimeout(() => hintEl.classList.add('hidden'), 3200);
+    };
+
+    const card = (label, { locked = 0, mythical = false } = {}) => {
+      const c = document.createElement('button');
+      c.className = 'pick-card' + (locked ? ' locked' : '') + (mythical ? ' mythical' : '');
+      const name = document.createElement('div');
+      name.className = 'pick-name';
+      name.textContent = label;
+      const imgBox = document.createElement('div');
+      imgBox.className = 'pick-img';
+      if (locked) {
+        const badge = document.createElement('span');
+        badge.className = 'pick-lock';
+        badge.textContent = `🔒 ${locked} 🪶`;
+        imgBox.appendChild(badge);
+      }
+      c.append(name, imgBox);
+      return c;
+    };
+
+    const renderGrid = () => {
+      gridEl.innerHTML = '';
+      const tab = PICKER_TABS.find((t) => t.id === currentTab);
+
+      // the Egg leads the Standard sheet — hatch into your bird the long way
+      if (currentTab === 'standard') {
+        const eggBreed = last?.breed && !isLocked(last.breed) ? last.breed : 'robin';
+        const c = card('Egg');
+        thumbs.into(c.querySelector('.pick-img'), eggBreed, 'egg');
+        c.addEventListener('click', () => pick(eggBreed, 'egg'));
+        gridEl.appendChild(c);
+      }
+
+      for (const [id, def] of Object.entries(BREEDS)) {
+        if (!tab.sets.includes(def.set)) continue;
+        const locked = isLocked(id) ? priceOf(id) : 0;
+        const c = card(def.label, { locked, mythical: def.set === 'mythical' });
+        thumbs.into(c.querySelector('.pick-img'), id, 'adult');
+        c.addEventListener('click', () => {
+          if (locked) {
+            c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+            showHint(`🔒 Unlock the ${def.label} in-game for ${locked} 🪶 — feathers drip in just for playing!`);
+            audio.sfx('click');
+            return;
+          }
+          pick(id, 'adult');
+        });
+        gridEl.appendChild(c);
+      }
+    };
+
+    // ---- 3D thumbnails, rasterized once per species ----
+    const thumbs = makeThumbnailer();
   });
 }
 
-function createPreview(canvas) {
+// One tiny offscreen renderer rasterizes every species card image on demand;
+// data-URLs are cached so tab flips are instant.
+function makeThumbnailer() {
+  const SIZE = 220;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = SIZE;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(1);
+  renderer.setSize(SIZE, SIZE, false);
   const scene = new THREE.Scene();
-  const cam = new THREE.PerspectiveCamera(38, canvas.clientWidth / canvas.clientHeight, 0.1, 50);
-  cam.position.set(0, 1.6, 5);
-  cam.lookAt(0, 0.9, 0);
-  scene.add(new THREE.AmbientLight('#cfe4f0', 1.3));
-  const sun = new THREE.DirectionalLight('#fff4dc', 2);
+  const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
+  scene.add(new THREE.AmbientLight('#dbe8f2', 1.35));
+  const sun = new THREE.DirectionalLight('#fff4dc', 1.9);
   sun.position.set(3, 5, 4);
   scene.add(sun);
-  // little grass disc
-  const disc = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.2, 2.4, 0.3, 18),
-    new THREE.MeshLambertMaterial({ color: '#6fbf5a', flatShading: true })
-  );
-  disc.position.y = -0.15;
-  scene.add(disc);
 
-  const state = { bird: null, animState: makeAnimState(), running: true };
+  const cache = new Map();   // `${breed}:${stage}` -> dataURL
 
-  const resize = () => {
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (w && h) {
-      renderer.setSize(w, h, false);
-      cam.aspect = w / h;
-      cam.updateProjectionMatrix();
-    }
-  };
-  resize();
-  window.addEventListener('resize', resize);
-
-  let lastT = performance.now();
-  const loop = () => {
-    if (!state.running) return;
-    requestAnimationFrame(loop);
-    const now = performance.now();
-    const dt = Math.min(0.05, (now - lastT) / 1000);
-    lastT = now;
-    if (state.bird) {
-      state.bird.group.rotation.y += dt * 0.6;
-      animateBird(state.bird, state.animState, dt);
-    }
+  function shot(breed, stage) {
+    const key = `${breed}:${stage}`;
+    if (cache.has(key)) return cache.get(key);
+    const bird = buildBird(breed, defaultColors(breed, stage), stage);
+    // three-quarter pose facing right, like a field-guide plate
+    bird.group.rotation.y = Math.PI / 2 + 0.55;
+    scene.add(bird.group);
+    const box = new THREE.Box3().setFromObject(bird.group);
+    const c = box.getCenter(new THREE.Vector3());
+    const r = box.getSize(new THREE.Vector3()).length() / 2;
+    cam.position.set(c.x + r * 0.4, c.y + r * 0.45, c.z + r * 2.5);
+    cam.lookAt(c);
     renderer.render(scene, cam);
-  };
-  loop();
+    const url = canvas.toDataURL();
+    scene.remove(bird.group);
+    cache.set(key, url);
+    return url;
+  }
 
   return {
-    get bird() { return state.bird; },
-    setBird(breed, colors, stage) {
-      if (state.bird) scene.remove(state.bird.group);
-      state.bird = buildBird(breed, colors, stage);
-      const def = BREEDS[breed];
-      const fit = 1 / Math.max(0.8, def.size * (stage === 'baby' ? 0.7 : 1));
-      state.bird.group.scale.setScalar(fit);
-      scene.add(state.bird.group);
-      state.animState = makeAnimState();
-      state.animState.anim = 'idle';
+    into(box, breed, stage) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.draggable = false;
+      img.src = shot(breed, stage);
+      box.appendChild(img);
     },
-    stop() {
-      state.running = false;
-      renderer.dispose();
-    },
+    dispose() { renderer.dispose(); },
   };
 }

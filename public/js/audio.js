@@ -10,6 +10,16 @@ const TRACKS = {
   ],
 };
 
+// Which synthesized voice each breed uses (see call() below).
+const CALL_FAMILY = {
+  robin: 'songbird', cardinal: 'songbird', sparrow: 'songbird', chickadee: 'songbird',
+  duck: 'duck', chicken: 'chicken', owl: 'owl',
+  flamingo: 'honk', dodo: 'honk', penguin: 'penguin',
+  toucan: 'squawk', parrot: 'squawk', peacock: 'peacock',
+  eagle: 'raptor', falcon: 'raptor', vulture: 'raptor', raven: 'raven',
+  phoenix: 'mythical', griffin: 'mythical', cockatrice: 'mythical', peryton: 'mythical',
+};
+
 class AudioManager {
   constructor() {
     this.musicVolume = 0.6;
@@ -66,8 +76,9 @@ class AudioManager {
   stop() { this.mode = null; this.el.pause(); }
 
   // ---- synthesized SFX ----
-  sfx(name) {
-    if (!this.ctx || this.sfxVolume <= 0) return;
+  // Shared voice: a fresh output bus plus tone/noise primitives, used by both
+  // the one-shot sfx() recipes and the per-breed call() recipes.
+  _voice() {
     const t = this.ctx.currentTime;
     const out = this.ctx.createGain();
     out.gain.value = this.sfxVolume * 0.5;
@@ -102,6 +113,13 @@ class AudioManager {
       node.connect(g); g.connect(out);
       src.start(t + delay);
     };
+    return { tone, noise };
+  }
+
+  sfx(name) {
+    if (!this.ctx || this.sfxVolume <= 0) return;
+    if (name.startsWith('call-')) return this.call(name.slice(5));
+    const { tone, noise } = this._voice();
 
     switch (name) {
       case 'chirp': tone(1400, 0.09, 'sine', 0, 600); tone(1700, 0.12, 'sine', 0.11, -500); break;
@@ -120,6 +138,77 @@ class AudioManager {
       case 'whoosh': noise(0.3, 0, 0.35, true); break;
       case 'nest': noise(0.1, 0, 0.3, true); tone(520, 0.15, 'triangle', 0.1, 140, 0.5); break;
       case 'toast': tone(660, 0.1, 'sine', 0, 0, 0.4); tone(880, 0.14, 'sine', 0.1, 0, 0.4); break;
+    }
+  }
+
+  // ---- per-breed bird calls ----
+  // Each breed family gets its own synthesized voice. Also reachable as
+  // sfx('call-<breed>'). Babies play a higher, quicker, smaller version:
+  //   audio.call('duck', { baby: true })  — or pass { rate } to scale pitch.
+  call(breed, opts = {}) {
+    if (!this.ctx || this.sfxVolume <= 0) return;
+    const rate = opts.rate || (opts.baby ? 1.7 : 1);
+    const squish = opts.baby ? 0.72 : 1;   // babies are quicker too
+    const loud = opts.baby ? 0.7 : 1;      // ...and quieter
+    const { tone, noise } = this._voice();
+    // rate-aware wrappers so one recipe serves adults and hatchlings
+    const T = (freq, dur, type, delay = 0, slide = 0, vol = 1) =>
+      tone(freq * rate, dur * squish, type, delay * squish, slide * rate, vol * loud);
+    const N = (dur, delay = 0, vol = 0.5, low = false) =>
+      noise(dur * squish, delay * squish, vol * loud, low);
+
+    switch (CALL_FAMILY[breed] || 'songbird') {
+      case 'songbird':   // bright 2-3 note trill
+        T(1450, 0.08, 'sine', 0, 520, 0.7);
+        T(1850, 0.07, 'sine', 0.1, -320, 0.65);
+        T(1600, 0.11, 'sine', 0.19, 450, 0.6);
+        break;
+      case 'duck':       // low nasal quack-quack: two saw-y bursts w/ a nasal octave
+        T(230, 0.14, 'sawtooth', 0, -55, 0.55); T(465, 0.13, 'sawtooth', 0, -110, 0.3);
+        T(210, 0.16, 'sawtooth', 0.19, -50, 0.55); T(425, 0.15, 'sawtooth', 0.19, -100, 0.3);
+        break;
+      case 'chicken':    // clucky staccato triplet, last cluck rises
+        T(430, 0.06, 'square', 0, -90, 0.4); N(0.03, 0, 0.25, true);
+        T(400, 0.06, 'square', 0.12, -80, 0.4); N(0.03, 0.12, 0.25, true);
+        T(480, 0.1, 'square', 0.24, 160, 0.45); N(0.04, 0.24, 0.25, true);
+        break;
+      case 'owl':        // soft low double hoot
+        T(340, 0.3, 'sine', 0, -35, 0.6);
+        T(300, 0.4, 'sine', 0.42, -45, 0.6);
+        break;
+      case 'honk':       // flamingo / dodo: one big goosey honk
+        T(290, 0.32, 'sawtooth', 0, -85, 0.5);
+        T(145, 0.32, 'sawtooth', 0, -40, 0.4);
+        N(0.1, 0, 0.15, true);
+        break;
+      case 'penguin':    // bray-ish trumpet: fast alternating hee-haw notes
+        T(330, 0.1, 'sawtooth', 0, 30, 0.4);
+        T(255, 0.1, 'sawtooth', 0.11, -25, 0.4);
+        T(330, 0.1, 'sawtooth', 0.22, 30, 0.4);
+        T(255, 0.14, 'sawtooth', 0.33, -40, 0.4);
+        break;
+      case 'squawk':     // toucan / parrot: croaky double squawk
+        T(880, 0.18, 'square', 0, -480, 0.35); N(0.14, 0, 0.25);
+        T(780, 0.13, 'square', 0.23, -340, 0.3); N(0.1, 0.23, 0.2);
+        break;
+      case 'peacock':    // loud two-note wail: may-AWE
+        T(840, 0.34, 'triangle', 0, 130, 0.85);
+        T(640, 0.48, 'triangle', 0.38, -190, 0.85);
+        break;
+      case 'raptor':     // eagle / falcon / vulture: piercing falling screech
+        T(2050, 0.5, 'sawtooth', 0, -950, 0.3);
+        T(2050, 0.5, 'sine', 0.02, -950, 0.35);
+        N(0.3, 0, 0.12);
+        break;
+      case 'raven':      // deeper gravelly croak-croak
+        T(185, 0.2, 'sawtooth', 0, -45, 0.6); N(0.18, 0, 0.3, true);
+        T(165, 0.22, 'sawtooth', 0.27, -40, 0.6); N(0.2, 0.27, 0.3, true);
+        break;
+      case 'mythical':   // layered shimmer screech
+        T(1650, 0.5, 'sawtooth', 0, -720, 0.25);
+        T(2450, 0.5, 'sine', 0.03, -850, 0.25);
+        for (let i = 0; i < 4; i++) T(1200 + i * 320, 0.22, 'sine', i * 0.06, 160, 0.18);
+        break;
     }
   }
 }

@@ -5,7 +5,7 @@
 // and userData.tick(time, dt) for animated bits.
 
 import * as THREE from 'three';
-import { WORLD, biomeAt, groundAt, height, waterAt, lavaAt } from '/shared/worldgen.js';
+import { WORLD, biomeAt, groundAt, height, waterAt, lavaAt, SKY_ISLANDS, skySurfaceAt, WATERFALL } from '/shared/worldgen.js';
 import { mulberry32 } from '/shared/noise.js';
 import { bark, leafCanopy, softDot } from '../textures.js';
 
@@ -441,6 +441,155 @@ export function buildProps(quality = 'high') {
         g.userData.L.rotation.z = flap;
         g.userData.R.rotation.z = -flap;
       }
+    });
+  }
+
+  // ===================== SKYLANDS: floating islands only fliers reach =====================
+  // Each island is an inverted rock cone hanging under a grassy dome whose
+  // mesh samples skySurfaceAt directly, so feet land exactly on the render
+  // surface (collision lives in the player controller via skySurfaceAt).
+  // No trunks up here — trunk colliders are infinite-height cylinders and
+  // would shove birds walking on the terrain far below.
+  {
+    const rockMat = lambert('#a89e90', { roughness: 1 });
+    rockMat.emissive = new THREE.Color('#3a352c');   // undersides face away from the sun — keep them readable, not black
+    const topMat = lambert('#55a84a', { roughness: 1 });
+    const cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.38, depthWrite: false });
+    const cloudRings = [];
+    for (const isl of SKY_ISLANDS) {
+      // underside: inverted rounded rock cone tapering to a hanging tip
+      const depth = isl.r * 0.85;
+      const under = new THREE.Mesh(new THREE.ConeGeometry(isl.r * 0.99, depth, 11, 3), rockMat);
+      under.rotation.x = Math.PI;
+      under.rotation.y = rng() * 6.28;
+      under.position.set(isl.x, isl.y - depth / 2 + 0.3, isl.z);
+      under.castShadow = true;
+      group.add(under);
+
+      // top: a grass dome sampled straight from skySurfaceAt
+      const topGeo = new THREE.CircleGeometry(isl.r * 0.995, 40);
+      topGeo.rotateX(-Math.PI / 2);
+      const tPos = topGeo.attributes.position;
+      for (let i = 0; i < tPos.count; i++) {
+        tPos.setY(i, skySurfaceAt(isl.x + tPos.getX(i), isl.z + tPos.getZ(i)) - isl.y);
+      }
+      topGeo.computeVertexNormals();
+      const top = new THREE.Mesh(topGeo, topMat);
+      top.position.set(isl.x, isl.y, isl.z);
+      top.receiveShadow = true;
+      group.add(top);
+
+      // a few small oaks + bushes up top (kept inside the dome's gentle part)
+      const spots = [];
+      for (let i = 0, n = Math.max(2, Math.round(isl.r / 12)); i < n; i++) {
+        const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * isl.r * 0.6;
+        const x = isl.x + Math.cos(a) * d, z = isl.z + Math.sin(a) * d;
+        spots.push({ x, z, y: skySurfaceAt(x, z), r: rng(), s: 0.55 + rng() * 0.35 });
+      }
+      group.add(
+        instanced(new THREE.CylinderGeometry(0.4, 0.6, 4, 7), lambert('#7a5638', { map: BARK, roughness: 1 }), spots,
+          (sp, P, E, S) => { P.set(sp.x, sp.y + 1.9 * sp.s, sp.z); E.set(0, sp.r * 6, 0); S.setScalar(sp.s); }),
+        instanced(new THREE.IcosahedronGeometry(2.7, 2), lambert('#4f9a44', { map: LEAF }), spots,
+          (sp, P, E, S) => { P.set(sp.x, sp.y + 5 * sp.s, sp.z); E.set(sp.r, sp.r * 6, 0); S.setScalar(sp.s); }),
+        instanced(new THREE.IcosahedronGeometry(1.0, 0), lambert('#3f8a3a'), spots,
+          (sp, P, E, S) => { P.set(sp.x + 2.4 * sp.s, sp.y + 0.4, sp.z + 1.1 * sp.s); E.set(0, sp.r * 9, 0); S.set(sp.s, sp.s * 0.7, sp.s); })
+      );
+
+      // ring of soft cloud puffs drifting slowly around the island
+      const ring = new THREE.Group();
+      ring.position.set(isl.x, isl.y, isl.z);
+      for (let i = 0, n = Math.max(6, Math.round(isl.r / 7)); i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + rng() * 0.6;
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(2.6 + rng() * 3.2, 7, 5), cloudMat);
+        puff.position.set(Math.cos(a) * (isl.r * 1.12 + rng() * 9), -2 - rng() * 7, Math.sin(a) * (isl.r * 1.12 + rng() * 9));
+        puff.scale.set(1.7, 0.55, 1.2);
+        ring.add(puff);
+      }
+      group.add(ring);
+      cloudRings.push({ ring, y: isl.y, sp: (0.03 + rng() * 0.025) * (rng() < 0.5 ? -1 : 1) });
+    }
+    tickers.push((time) => {
+      for (const c of cloudRings) {
+        c.ring.rotation.y = time * c.sp;
+        c.ring.position.y = c.y + Math.sin(time * 0.25 + c.y) * 0.7;
+      }
+    });
+  }
+
+  // ===================== HERON FALLS: outcrop + waterfall =====================
+  // A rock pillar on Heron Lake's eastern shore. Its flat summit is solid
+  // ground via worldgen's waterfallTopAt (used by the player controller) —
+  // trunk colliders are infinite-height pushes and would shove a landed bird
+  // straight off the top, so the surface helper is the collider here.
+  {
+    const wf = WATERFALL;
+    const lake = WORLD.lakes[0];
+    const baseY = wf.top - wf.h;
+    const dx = lake.x - wf.x, dz = lake.z - wf.z;
+    const dl = Math.hypot(dx, dz) || 1;
+    const ux = dx / dl, uz = dz / dl;          // unit vector toward open water
+    const rockMat = lambert('#877e72', { roughness: 1 });
+
+    // main pillar, flat top exactly at wf.top; skirt boulders around the base
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(wf.topR, wf.topR * 1.5, wf.h + 3, 10), rockMat);
+    pillar.position.set(wf.x, wf.top - (wf.h + 3) / 2, wf.z);
+    pillar.castShadow = true;
+    group.add(pillar);
+    const skirt = [];
+    for (let i = 0; i < 6; i++) {
+      const a = rng() * Math.PI * 2, d = wf.topR * (1.2 + rng() * 0.9);
+      skirt.push({ x: wf.x + Math.cos(a) * d, z: wf.z + Math.sin(a) * d, y: baseY, r: rng(), s: 0.9 + rng() * 0.9 });
+    }
+    skirt.push({ x: wf.x + ux * wf.topR * 0.7, z: wf.z + uz * wf.topR * 0.7, y: wf.top - 0.4, r: 0.3, s: 0.7 }); // spill lip
+    group.add(instanced(new THREE.DodecahedronGeometry(1.6, 0), rockMat, skirt,
+      (sp, P, E, S) => { P.set(sp.x, sp.y + 0.5 * sp.s, sp.z); E.set(sp.r * 3, sp.r * 7, sp.r); S.set(sp.s * 1.2, sp.s * 0.8, sp.s); }));
+
+    // the falling sheet: a vertical plane off the lake-facing lip, wobbled
+    // gently every frame so the water reads as moving (see tick below)
+    const drop = wf.top + 0.4 - lake.surface;
+    const sheetGeo = new THREE.PlaneGeometry(wf.topR * 1.15, drop, 4, 10);
+    const sheetBase = sheetGeo.attributes.position.array.slice();
+    const sheetMat = new THREE.MeshLambertMaterial({ color: '#3fb6d8', transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false });
+    const sheet = new THREE.Mesh(sheetGeo, sheetMat);
+    sheet.rotation.y = Math.atan2(ux, uz);
+    sheet.position.set(wf.x + ux * (wf.topR + 0.5), lake.surface + drop / 2, wf.z + uz * (wf.topR + 0.5));
+    group.add(sheet);
+
+    // foam + mist where the falls hit the lake
+    const foamMat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.75, depthWrite: false });
+    const mistMat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.26, depthWrite: false });
+    const fx = wf.x + ux * (wf.topR + 1.5), fz = wf.z + uz * (wf.topR + 1.5);
+    const foams = [];
+    for (let i = 0; i < 5; i++) {
+      const blob = new THREE.Mesh(new THREE.SphereGeometry(0.9 + rng() * 0.9, 7, 5), foamMat);
+      blob.position.set(fx + (rng() - 0.5) * 5, lake.surface + 0.15, fz + (rng() - 0.5) * 5);
+      blob.scale.y = 0.45;
+      group.add(blob);
+      foams.push({ blob, o: rng() * 6.28, s: blob.scale.x });
+    }
+    const mists = [];
+    for (let i = 0; i < 3; i++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(2 + rng() * 1.6, 7, 5), mistMat);
+      puff.position.set(fx + (rng() - 0.5) * 4, lake.surface + 1.4, fz + (rng() - 0.5) * 4);
+      group.add(puff);
+      mists.push({ puff, o: rng() * 6.28, y: puff.position.y });
+    }
+
+    tickers.push((time) => {
+      // ripple the sheet: small lateral wobble that grows toward the bottom
+      const p = sheetGeo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const y = sheetBase[i * 3 + 1];
+        const fall = 0.5 - y / drop;              // 0 at the lip → 1 at the lake
+        p.setZ(i, sheetBase[i * 3 + 2] + Math.sin(time * 5 + y * 0.9 + sheetBase[i * 3] * 0.7) * 0.34 * fall);
+      }
+      p.needsUpdate = true;
+      for (const f of foams) {
+        const k = 1 + Math.sin(time * 3.2 + f.o) * 0.22;
+        f.blob.scale.set(f.s * k, 0.45 * k, f.s * k);
+      }
+      for (const m of mists) m.puff.position.y = m.y + Math.sin(time * 0.9 + m.o) * 0.5;
+      mistMat.opacity = 0.2 + 0.1 * (Math.sin(time * 1.4) + 1) / 2;
     });
   }
 

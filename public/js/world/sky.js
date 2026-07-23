@@ -55,25 +55,26 @@ export function buildSky(scene, quality = 'high') {
 
   // lights — warm key sun + cool low fill so surfaces have a lit side and a
   // shaded side (the contrast is what makes the world read as a real place).
-  const sunLight = new THREE.DirectionalLight('#fff2cf', 2.6);
+  const sunLight = new THREE.DirectionalLight('#ffedd2', 1.7);   // gentler sun — the world shouldn't glare
   sunLight.position.set(280, 420, -320);
   // crisp shadows over a box that follows the player (moved each frame in main.js)
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
   sunLight.shadow.bias = -0.0004;
   sunLight.shadow.normalBias = 0.6;
+  sunLight.shadow.radius = 7;   // feathered shadow edges, soft like down
   const sc = sunLight.shadow.camera;
   sc.near = 1; sc.far = 600;
   sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110;
   sc.updateProjectionMatrix();
-  const ambient = new THREE.AmbientLight('#9fb8cc', 0.5);   // cool, low — fills the shade without flattening
-  const bounce = new THREE.HemisphereLight('#bfe4f5', '#6f9a5e', 0.75);
+  const ambient = new THREE.AmbientLight('#b9c6d6', 0.85);   // generous fill — shade stays soft, never inky
+  const bounce = new THREE.HemisphereLight('#cfe8f6', '#7fa46a', 1.0);
   group.add(sunLight, sunLight.target, ambient, bounce);
 
   // Atmosphere tuned to the big continent: clear nearby, biomes melting into
   // haze a region away, and the tall peaks reading as silhouettes — so you
   // can never see the whole map, but the world reveals itself as you fly.
-  scene.fog = new THREE.Fog('#cfe6f2', 260, 1500);
+  scene.fog = new THREE.Fog('#d8e9f2', 200, 1300);   // dreamier distance blend
   scene.add(group);
 
   const SP = WORLD.half + 200;

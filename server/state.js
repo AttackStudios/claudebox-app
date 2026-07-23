@@ -10,6 +10,7 @@ export const state = {
   players: new Map(),   // id -> player
   items: new Map(),     // id -> { id, kind, x, y, z, heldBy }
   npcs: new Map(),      // id -> npc
+  offspring: new Map(), // id -> AI baby (see offspring.js)
   saves: loadSaves(),   // { players: {nameLower: {...}}, flocks: {name: {...}} }
 };
 

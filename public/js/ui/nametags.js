@@ -60,7 +60,7 @@ export class Nametag {
 
     // line 4: breed · stage
     const breedLabel = BREEDS[info.breed]?.label || info.breed;
-    const stageLabel = info.stage === 'egg' ? 'Egg' : info.stage === 'baby' ? 'Baby' : '';
+    const stageLabel = info.stage === 'egg' ? 'Egg' : info.stage === 'baby' ? 'Hatchling' : info.stage === 'fledgling' ? 'Fledgling' : '';
     ctx.font = `${14 * PX}px 'Trebuchet MS', sans-serif`;
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.shadowColor = 'rgba(0,0,0,0.7)';

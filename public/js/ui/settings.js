@@ -15,6 +15,7 @@ export const DEFAULTS = {
   invertY: false,
   allowPickup: true,
   controlsMode: 'auto',     // auto | mobile | desktop
+  mouseCapture: false,      // PC: click captures the cursor (off = hold a button to look)
 };
 
 export function loadSettings() {
@@ -83,6 +84,7 @@ export function buildSettingsPanel(panel, game, panels) {
 
   toggle('🔃 Invert camera up/down', 'invertY', (v) => { if (game.orbit) game.orbit.invertY = v; });
   toggle('🤲 Let others pick me up', 'allowPickup', (v) => game.net?.send({ t: 'settings', allowPickup: v }));
+  toggle('🖱️ Capture mouse on click (PC)', 'mouseCapture', (v) => { if (!v) game.controls?.unlock?.(); });
 
   // graphics quality
   {

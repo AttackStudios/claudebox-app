@@ -12,6 +12,7 @@ import { state, genId } from './state.js';
 import { handleMessage, onDisconnect, makeBroadcaster, npcPublic } from './protocol.js';
 import { topUpItems, tickItems } from './items.js';
 import { spawnNpcs, tickNpcs } from './npcs.js';
+import { tickOffspring } from './offspring.js';
 import { hubRouter, FF_MAINTENANCE, BP_MAINTENANCE } from './hub.js';
 import { voiceConnection } from './voice.js';
 import { startSync } from './persist.js';
@@ -158,6 +159,7 @@ setInterval(() => {
 
   tickNpcs(dt);
   tickItems(broadcast);
+  tickOffspring(dt, broadcast);
 
   const players = joinedPlayers().map((p) => [
     p.id,
@@ -168,11 +170,23 @@ setInterval(() => {
   const npcs = [...state.npcs.values()].map((n) => [
     n.id, +n.x.toFixed(2), +n.y.toFixed(2), +n.z.toFixed(2), +n.ry.toFixed(3), n.anim,
   ]);
-  broadcast({ t: 'snapshot', players, npcs });
+  const offspring = [...state.offspring.values()].map((o) => [
+    o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.ry.toFixed(3), o.anim,
+  ]);
+  broadcast({ t: 'snapshot', players, npcs, offspring });
 }, 1000 / 12);
 
 // Keep item supply topped up as things get eaten.
 setInterval(() => topUpItems(broadcast), 15000);
+
+// Feathers drip in just for playing: +5 a minute, capped at 10,000.
+setInterval(() => {
+  for (const p of joinedPlayers()) {
+    if ((p.feathers || 0) >= 10000) continue;
+    p.feathers = Math.min(10000, (p.feathers || 0) + 5);
+    if (p.ws.readyState === 1) p.ws.send(JSON.stringify({ t: 'feathers', total: p.feathers, gain: 5, kind: 'time' }));
+  }
+}, 60000);
 
 // ====================== Backpacking ======================
 const bpJoined = () => [...bpState.players.values()].filter((p) => p.joined);

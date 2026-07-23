@@ -116,7 +116,13 @@ function feather(len, width, hex, slot, em = 0) {
 export function buildBird(breedId, colors, stage = 'adult') {
   const def = BREEDS[breedId] || BREEDS.robin;
   const c = { ...defaultColors(breedId, stage), ...stripNull(colors) };
-  if (stage === 'egg') return buildEgg(c, def);
+  if (stage === 'egg') {
+    // eggs are eggshell with a whisper of the bird's tint — a robin's egg
+    // should never render as a black robin-colored blob
+    const shell = new THREE.Color('#f2ead8').lerp(new THREE.Color(c.body || '#f2ead8'), 0.22);
+    const speck = new THREE.Color('#b8a890').lerp(new THREE.Color(c.accent || '#b8a890'), 0.3);
+    return buildEgg({ ...c, body: '#' + shell.getHexString(), accent: '#' + speck.getHexString() }, def);
+  }
 
   const group = new THREE.Group();
   const parts = {};
@@ -124,14 +130,15 @@ export function buildBird(breedId, colors, stage = 'adult') {
   const bodyTex = def.extras?.includes('membraneWings') ? 'scales' : SPECKLED.has(breedId) ? 'speckled' : 'plain';
 
   const baby = stage === 'baby';
+  const fledge = stage === 'fledgling';   // between chick and adult: 3/4 size, still a bit round
   const quad = def.plan === 'quad';
-  const S = def.size * (baby ? 0.5 : 1);
-  const bodyW = def.body.w * (baby ? 1.15 : 1);
-  const bodyH = def.body.h * (baby ? 1.1 : 1);
-  const bodyL = def.body.len * (baby ? 0.8 : 1);
-  const headSize = def.headSize * (baby ? 1.5 : 1);
-  const legLen = def.legLen * (baby ? 0.62 : 1) * S;
-  const neckLen = def.neckLen * (baby ? 0.45 : 1) * S;
+  const S = def.size * (baby ? 0.5 : fledge ? 0.75 : 1);
+  const bodyW = def.body.w * (baby ? 1.15 : fledge ? 1.06 : 1);
+  const bodyH = def.body.h * (baby ? 1.1 : fledge ? 1.04 : 1);
+  const bodyL = def.body.len * (baby ? 0.8 : fledge ? 0.92 : 1);
+  const headSize = def.headSize * (baby ? 1.5 : fledge ? 1.18 : 1);
+  const legLen = def.legLen * (baby ? 0.62 : fledge ? 0.85 : 1) * S;
+  const neckLen = def.neckLen * (baby ? 0.45 : fledge ? 0.75 : 1) * S;
   const upright = def.upright;
 
   const root = new THREE.Group();

@@ -49,6 +49,9 @@ const game = {
   items: new Map(),
   nests: new Map(),         // ownerName(lower) -> { data, group }
   flocks: new Map(),        // name -> { name, color, leader, members }
+  offspring: new Map(),     // id -> AI baby record (my chicks + everyone else's)
+  unlocked: new Set(),      // breeds bought with feathers (server-confirmed)
+  breedPrices: {},          // breed -> feather price (free breeds absent)
   trunks: [],
   speedScale: 1,
   inWorld: false,
@@ -62,6 +65,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;   // soft, cozy shadow edges
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // gentle highlight rolloff — pastel, not glaring
+renderer.toneMappingExposure = 1.12;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, WORLD.size * 3.6);
 camera.position.set(0, 30, 40);
@@ -168,6 +173,60 @@ function refreshTag(rec) {
 function refreshAllTags() {
   for (const rec of game.players.values()) refreshTag(rec);
   refreshTag(meRec);
+}
+
+// ---------------- AI offspring (nest babies) ----------------
+// Rendered like tiny players: an egg in the nest, then a chick that follows
+// its parent. Colors: the parent's breed palette with the egg's custom tint.
+function offspringColors(o) {
+  const base = defaultColors(o.breed, o.stage === 'egg' ? 'egg' : 'baby');
+  return { ...base, body: o.colors?.body || base.body, accent: o.colors?.accent || base.accent };
+}
+
+function offRecord(o) {
+  const rec = {
+    data: o,
+    group: new THREE.Group(),
+    bird: null,
+    animState: makeAnimState(),
+    interp: new InterpBuffer(),
+    nametag: new Nametag(),
+    isOff: true,
+  };
+  rec.group.rotation.order = 'YXZ';
+  scene.add(rec.group);
+  rebuildOffBird(rec);
+  rec.group.position.set(o.x, o.y, o.z);
+  return rec;
+}
+
+function rebuildOffBird(rec) {
+  if (rec.bird) rec.group.remove(rec.bird.group);
+  const o = rec.data;
+  rec.bird = buildBird(o.breed, offspringColors(o), o.stage === 'egg' ? 'egg' : 'baby');
+  rec.bird.group.scale.setScalar(0.72);            // offspring run smaller than player babies
+  const tagY = tagHeight(rec.bird) * 0.72;
+  rec.group.add(rec.bird.group);
+  rec.group.add(rec.nametag.sprite);
+  rec.nametag.sprite.position.y = tagY + 0.05;
+  refreshOffTag(rec);
+}
+
+function refreshOffTag(rec) {
+  const o = rec.data;
+  const ownerRec = [...game.players.values()].find((r) => r.data.name?.toLowerCase() === o.owner);
+  const ownerName = o.owner === game.me.name.toLowerCase() ? game.me.name : (ownerRec?.data.name || o.owner);
+  rec.nametag.update({
+    name: o.name || (o.stage === 'egg' ? 'Egg' : 'Chick'),
+    description: '',
+    realm: '',
+    nameStyle: { color: '#ffe9b8', style: 'outline' },
+    breed: o.breed,
+    stage: o.stage === 'egg' ? 'egg' : 'baby',
+    flockName: `${ownerName}'s`,
+    flockColor: '#ffd24a',
+    flockRole: '',
+  });
 }
 
 // ---------------- items ----------------
@@ -423,7 +482,29 @@ game.nestSurface = (x, z) => {
 
 // ============================== boot ==============================
 
+// The menu floats over the LIVE world: a slow camera drift around spawn,
+// water shimmering and the day cycle running, until the player joins.
+let menuBackdrop = true;
+{
+  const t0 = performance.now();
+  const cx = WORLD.spawn.x, cz = WORLD.spawn.z;
+  const lookY = Math.max(height(cx, cz), 0) + 3;
+  const spin = () => {
+    if (!menuBackdrop) return;
+    requestAnimationFrame(spin);
+    const t = (performance.now() - t0) / 1000;
+    camera.position.set(cx + Math.sin(t * 0.07) * 30, lookY + 8, cz + Math.cos(t * 0.07) * 30);
+    camera.lookAt(cx, lookY, cz);
+    water.userData.tick(t);
+    sky.group.userData.tick(t, 1 / 60);
+    props.userData.tick?.(t, 1 / 60);
+    renderer.render(scene, camera);
+  };
+  spin();
+}
+
 const profile = await runMenu();
+menuBackdrop = false;
 
 game.me = {
   id: null,
@@ -574,6 +655,7 @@ function playActionAnim(type, secs) {
 game.actions = {
   toggleFly() {
     if (game.me.bird.stage === 'egg') return toast("Eggs can't fly... hatch first!");
+    if (game.me.bird.stage === 'baby') return toast('Too little to fly — grow into a fledgling first! 🐥');
     const flying = player.toggleFly();
     audio.sfx(flying ? 'whoosh' : 'flap');
     if (controlsMode === 'mobile') controls.refreshFlightUI(flying);
@@ -614,7 +696,18 @@ function nearestCarryablePlayer(maxDist) {
   let best = null, bestD = maxDist;
   for (const rec of game.players.values()) {
     const d = rec.data;
-    if (!['egg', 'baby'].includes(d.bird.stage) || d.carriedBy) continue;
+    if (!['egg', 'baby', 'fledgling'].includes(d.bird.stage) || d.carriedBy) continue;
+    const dist = Math.hypot(rec.group.position.x - player.pos.x, rec.group.position.z - player.pos.z);
+    if (dist < bestD) { bestD = dist; best = rec; }
+  }
+  return best;
+}
+
+function nearestOwnOffspring(maxDist) {
+  let best = null, bestD = maxDist;
+  const meLower = game.me.name.toLowerCase();
+  for (const rec of game.offspring.values()) {
+    if (rec.data.owner !== meLower || rec.data.heldBy) continue;
     const dist = Math.hypot(rec.group.position.x - player.pos.x, rec.group.position.z - player.pos.z);
     if (dist < bestD) { bestD = dist; best = rec; }
   }
@@ -630,22 +723,20 @@ function computeActions() {
     return list;
   }
 
+  // life stages march egg → hatchling → fledgling → adult, each grown by hand
+  const growTo = (stage, sfxName, fxKind) => () => {
+    me.bird.stage = stage;
+    game.net.send({ t: 'stage', stage });
+    game.refreshMyBird();
+    fx.burst(fxKind, meRec.group.position, 18);
+    audio.sfx(sfxName);
+  };
   if (me.bird.stage === 'egg') {
-    list.push({ id: 'hatch', label: 'Hatch!', emoji: '🐣', kind: 'primary', hotkey: 'E', fn: () => {
-      me.bird.stage = 'baby';
-      game.net.send({ t: 'stage', stage: 'baby' });
-      game.refreshMyBird();
-      fx.burst('hatch', meRec.group.position, 18);
-      audio.sfx('crack');
-    } });
+    list.push({ id: 'hatch', label: 'Hatch!', emoji: '🐣', kind: 'primary', hotkey: 'E', fn: growTo('baby', 'crack', 'hatch') });
   } else if (me.bird.stage === 'baby') {
-    list.push({ id: 'grow', label: 'Grow up', emoji: '🐦', fn: () => {
-      me.bird.stage = 'adult';
-      game.net.send({ t: 'stage', stage: 'adult' });
-      game.refreshMyBird();
-      fx.burst('grow', meRec.group.position, 20);
-      audio.sfx('sparkle');
-    } });
+    list.push({ id: 'grow', label: 'Grow: Fledgling', emoji: '🐥', fn: growTo('fledgling', 'sparkle', 'grow') });
+  } else if (me.bird.stage === 'fledgling') {
+    list.push({ id: 'grow', label: 'Grow up', emoji: '🐦', fn: growTo('adult', 'sparkle', 'grow') });
   }
 
   if (me.carrying) {
@@ -666,10 +757,22 @@ function computeActions() {
         audio.sfx('pickup');
       } });
     } else if (me.bird.stage === 'adult') {
-      const target = nearestCarryablePlayer(5);
-      if (target) {
+      const baby = nearestOwnOffspring(5);
+      const target = baby ? null : nearestCarryablePlayer(5);
+      if (baby) {
+        const label = baby.data.name || (baby.data.stage === 'egg' ? 'your egg' : 'your chick');
+        list.unshift({ id: 'pickupO', label: `Pick up ${label}`, emoji: '🐣', kind: 'primary', hotkey: 'E', fn: () => {
+          game.net.send({ t: 'pickup', kind: 'off', id: baby.data.id });
+        } });
+        list.push({ id: 'pickupOB', label: `${label} on my back`, emoji: '🎒', fn: () => {
+          game.net.send({ t: 'pickup', kind: 'off', id: baby.data.id, spot: 'back' });
+        } });
+      } else if (target) {
         list.unshift({ id: 'pickupP', label: `Pick up ${target.data.name}`, emoji: '🤗', kind: 'primary', hotkey: 'E', fn: () => {
           game.net.send({ t: 'pickup', kind: 'player', id: target.data.id });
+        } });
+        list.push({ id: 'pickupPB', label: `${target.data.name} on my back`, emoji: '🎒', fn: () => {
+          game.net.send({ t: 'pickup', kind: 'player', id: target.data.id, spot: 'back' });
         } });
       }
     }
@@ -685,9 +788,9 @@ function computeActions() {
   }
 
   if (me.bird.stage !== 'egg') {
-    list.push({ id: 'chirp', label: 'Chirp', emoji: '🎵', fn: () => {
-      audio.sfx((BREEDS[me.bird.breed]?.size || 1) > 1.2 ? 'chirp-big' : 'chirp');
-      game.net.send({ t: 'chat', text: '*' + (['cockatrice', 'peryton', 'griffin', 'phoenix'].includes(me.bird.breed) ? 'screeches' : 'chirps') + '*' });
+    list.push({ id: 'chirp', label: 'Call', emoji: '🎵', fn: () => {
+      audio.call(me.bird.breed, { baby: me.bird.stage === 'baby' });
+      game.net.send({ t: 'chat', text: '*' + (['cockatrice', 'peryton', 'griffin', 'phoenix'].includes(me.bird.breed) ? 'screeches' : 'calls out') + '*' });
     } });
     list.push({ id: 'sit', label: player.sitting ? 'Stand up' : 'Sit', emoji: '🪑', hotkey: 'C', fn: () => game.actions.sit() });
   }
@@ -731,6 +834,12 @@ net.on('welcome', (msg) => {
   for (const item of msg.items) addItem(item);
   for (const n of msg.npcs) addNpc(n);
   for (const nestInfo of msg.nests) setNest(nestInfo.ownerName, nestInfo.nest);
+  for (const o of msg.offspring || []) setOffspring(o);
+  game.unlocked = new Set(msg.unlocked || []);
+  game.breedPrices = msg.breedPrices || {};
+  try {   // the creator menu runs pre-join, so it reads this cache next launch
+    localStorage.setItem('ff.unlockCache', JSON.stringify({ unlocked: [...game.unlocked], prices: game.breedPrices }));
+  } catch {}
   refreshAllTags();
   net.send({ t: 'settings', allowPickup: game.settings.allowPickup });
   net.startMovementStream(() => ({
@@ -789,6 +898,12 @@ net.on('snapshot', (msg) => {
     rec.interp.push(x, y, z, ry);
     rec.serverAnim = anim;
   }
+  for (const [id, x, y, z, ry, anim] of msg.offspring || []) {
+    const rec = game.offspring.get(id);
+    if (!rec || rec.data.heldBy) continue;
+    rec.interp.push(x, y, z, ry);
+    rec.serverAnim = anim;
+  }
 });
 
 net.on('player.update', (msg) => {
@@ -816,7 +931,50 @@ net.on('player.update', (msg) => {
 
 net.on('feathers', (msg) => {
   game.me.feathers = msg.total;
-  updateFeatherCounter(msg.gain);
+  updateFeatherCounter(msg.gain > 0 ? msg.gain : 0);
+});
+
+net.on('breed.unlocked', (msg) => {
+  game.unlocked = new Set(msg.unlocked || []);
+  try {
+    localStorage.setItem('ff.unlockCache', JSON.stringify({ unlocked: [...game.unlocked], prices: game.breedPrices }));
+  } catch {}
+  game.onUnlock?.(msg.breed);
+});
+game.buyBreed = (breed) => net.send({ t: 'breed.buy', breed });
+
+// ---------------- offspring net ----------------
+function setOffspring(o) {
+  let rec = game.offspring.get(o.id);
+  if (!rec) {
+    rec = offRecord(o);
+    game.offspring.set(o.id, rec);
+    return;
+  }
+  const rebuild = rec.data.stage !== o.stage || rec.data.breed !== o.breed
+    || rec.data.colors.body !== o.colors.body || rec.data.colors.accent !== o.colors.accent
+    || rec.data.name !== o.name;
+  rec.data = o;
+  if (rebuild) rebuildOffBird(rec);
+  game.onOffspringChange?.();
+}
+
+net.on('off.set', (msg) => { setOffspring(msg.off); });
+net.on('off.remove', (msg) => {
+  const rec = game.offspring.get(msg.id);
+  if (!rec) return;
+  rec.nametag?.dispose();
+  scene.remove(rec.group);
+  game.offspring.delete(msg.id);
+  game.onOffspringChange?.();
+});
+net.on('off.call', (msg) => {
+  const rec = game.offspring.get(msg.id);
+  if (!rec) return;
+  const d = Math.hypot(rec.group.position.x - player.pos.x, rec.group.position.z - player.pos.z);
+  if (d < 60) audio.sfx('chirp');
+  rec.nametag.setBubble('*cheep cheep!*');
+  refreshOffTag(rec);
 });
 
 net.on('player.flock', (msg) => {
@@ -887,7 +1045,16 @@ net.on('carry', (msg) => {
       );
     }
   }
-  carrier.carrying = msg.kind ? { kind: msg.kind, id: msg.id, itemKind: msg.itemKind } : null;
+  // a set-down baby chick needs its interp restarted where it was dropped
+  if (carrier.carrying?.kind === 'off') {
+    const prevRec = game.offspring.get(carrier.carrying.id);
+    if (prevRec) {
+      prevRec.data.heldBy = null;
+      prevRec.interp.frames.length = 0;
+      prevRec.interp.push(prevRec.group.position.x, prevRec.group.position.y, prevRec.group.position.z, prevRec.group.rotation.y);
+    }
+  }
+  carrier.carrying = msg.kind ? { kind: msg.kind, id: msg.id, itemKind: msg.itemKind, spot: msg.spot || 'beak' } : null;
 
   if (msg.kind === 'item') {
     const it = game.items.get(msg.id);
@@ -895,8 +1062,12 @@ net.on('carry', (msg) => {
     audio.sfx('pickup');
   } else if (msg.kind === 'player') {
     const carried = msg.id === game.me.id ? game.me : game.players.get(msg.id)?.data;
-    if (carried) carried.carriedBy = msg.carrierId;
+    if (carried) { carried.carriedBy = msg.carrierId; carried.carriedSpot = msg.spot || 'beak'; }
     if (msg.id === game.me.id) toast(`${carrier.name} picked you up! 🤗`);
+    audio.sfx('pop');
+  } else if (msg.kind === 'off') {
+    const rec = game.offspring.get(msg.id);
+    if (rec) rec.data.heldBy = msg.carrierId;
     audio.sfx('pop');
   } else {
     audio.sfx('drop');
@@ -927,12 +1098,18 @@ net.on('flock.invited', (msg) => {
 });
 
 net.on('fx', (msg) => {
+  if (msg.offId) {   // effects on an AI baby rather than a player
+    const orec = game.offspring.get(msg.offId);
+    if (orec && msg.kind === 'hatch') { fx.burst('hatch', orec.group.position, 14); audio.sfx('crack'); }
+    return;
+  }
   const rec = msg.id === game.me.id ? meRec : game.players.get(msg.id);
   if (!rec) return;
   const pos = rec.group.position;
   switch (msg.kind) {
     case 'hatch': if (msg.id !== game.me.id) { fx.burst('hatch', pos, 18); audio.sfx('crack'); } break;
     case 'grow': if (msg.id !== game.me.id) { fx.burst('grow', pos, 20); audio.sfx('sparkle'); } break;
+    case 'lay': fx.burst('hatch', pos, 10, 1.6); audio.sfx('pop'); break;
     case 'eat': fx.burst('eat', pos, 10, 2); if (msg.id !== game.me.id) audio.sfx('crunch'); else audio.sfx('crunch'); break;
     case 'drink': if (msg.id !== game.me.id) fx.burst('drink', pos, 8, 1.5); break;
   }
@@ -968,6 +1145,18 @@ function angleDelta(a, b) {
   return d;
 }
 
+// where a carried thing rides on its carrier: beak tip, or nestled on the back
+const _carryVec = new THREE.Vector3();
+function carryPoint(carrierRec, spot) {
+  if (!carrierRec?.bird) return null;
+  if (spot === 'back') {
+    _carryVec.set(0, (carrierRec.bird.standH || 0.5) + carrierRec.bird.size * 0.62, -carrierRec.bird.size * 0.18);
+    return carrierRec.group.localToWorld(_carryVec.clone());
+  }
+  if (!carrierRec.bird.parts.beakTip) return null;
+  return carrierRec.bird.parts.beakTip.getWorldPosition(_carryVec.clone());
+}
+
 // fills st.speed / st.vy / st.turn from how the mesh actually moved this frame
 function feedMotion(rec, nx, ny, nz, nry, dt) {
   const st = rec.animState;
@@ -990,13 +1179,10 @@ function frame() {
   player.update(dt, input, orbit.yaw + Math.PI);
 
   if (game.me.carriedBy) {
-    // slave my position to my carrier's beak
+    // slave my position to my carrier's beak (or their back)
     const carrierRec = game.players.get(game.me.carriedBy);
-    if (carrierRec?.bird?.parts.beakTip) {
-      const wp = new THREE.Vector3();
-      carrierRec.bird.parts.beakTip.getWorldPosition(wp);
-      player.pos.x = wp.x; player.pos.y = wp.y; player.pos.z = wp.z;
-    }
+    const wp = carryPoint(carrierRec, game.me.carriedSpot);
+    if (wp) { player.pos.x = wp.x; player.pos.y = wp.y; player.pos.z = wp.z; }
   }
 
   meRec.group.position.set(player.pos.x, player.pos.y, player.pos.z);
@@ -1016,11 +1202,8 @@ function frame() {
   for (const rec of game.players.values()) {
     if (rec.data.carriedBy) {
       const carrierRec = rec.data.carriedBy === game.me.id ? meRec : game.players.get(rec.data.carriedBy);
-      if (carrierRec?.bird?.parts.beakTip) {
-        const wp = new THREE.Vector3();
-        carrierRec.bird.parts.beakTip.getWorldPosition(wp);
-        rec.group.position.copy(wp);
-      }
+      const wp = carryPoint(carrierRec, rec.data.carriedSpot);
+      if (wp) rec.group.position.copy(wp);
       rec.animState.anim = 'carried';
     } else if (rec.interp.sample(sampled)) {
       feedMotion(rec, sampled.x, sampled.y, sampled.z, sampled.ry, dt);
@@ -1044,6 +1227,28 @@ function frame() {
       rec.animState.anim = rec.serverAnim || 'idle';
     }
     animateBird(rec.bird, rec.animState, dt);
+  }
+
+  // ---- AI offspring ----
+  for (const rec of game.offspring.values()) {
+    if (rec.data.heldBy) {
+      const carrierRec = rec.data.heldBy === game.me.id ? meRec : game.players.get(rec.data.heldBy);
+      const carrying = (rec.data.heldBy === game.me.id ? game.me : carrierRec?.data)?.carrying;
+      const wp = carryPoint(carrierRec, carrying?.spot);
+      if (wp) rec.group.position.copy(wp);
+      rec.animState.anim = 'carried';
+    } else if (rec.interp.sample(sampled)) {
+      feedMotion(rec, sampled.x, sampled.y, sampled.z, sampled.ry, dt);
+      rec.group.position.set(sampled.x, sampled.y, sampled.z);
+      rec.group.rotation.y = sampled.ry;
+      rec.animState.anim = rec.serverAnim || 'idle';
+    }
+    // eggs wobble gently in the nest so they read as alive
+    if (rec.data.stage === 'egg') {
+      rec.bird.group.rotation.z = Math.sin(nowS * 2.2 + rec.group.position.x) * 0.06;
+    }
+    animateBird(rec.bird, rec.animState, dt);
+    if (rec.nametag.tick(nowS)) refreshOffTag(rec);
   }
 
   // ---- items ----

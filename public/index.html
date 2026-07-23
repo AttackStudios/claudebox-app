@@ -22,35 +22,22 @@
 
 <!-- ====================== MAIN MENU ====================== -->
 <div id="menu" class="overlay">
-  <div class="menu-sky"></div>
-  <div class="menu-panel cloud-panel">
-    <h1 class="game-title">Feather Friends</h1>
-
-    <div class="menu-columns">
-      <div class="menu-left">
-        <label class="field-label" for="menu-name">Your name</label>
-        <input id="menu-name" maxlength="20" placeholder="Birb" autocomplete="off">
-
-        <div class="field-label">Start as</div>
-        <div id="menu-stages" class="stage-row">
-          <button class="stage-card" data-stage="egg"><span class="stage-emoji">🥚</span>Egg</button>
-          <button class="stage-card" data-stage="baby"><span class="stage-emoji">🐤</span>Baby</button>
-          <button class="stage-card selected" data-stage="adult"><span class="stage-emoji">🐦</span>Adult</button>
-        </div>
-
-        <div class="field-label">Breed</div>
-        <div id="menu-set-tabs" class="set-tabs"></div>
-        <div id="menu-breeds" class="breed-grid"></div>
-      </div>
-
-      <div class="menu-right">
-        <canvas id="menu-preview" width="340" height="300"></canvas>
-        <div id="menu-colors" class="color-rows"></div>
-        <div class="field-label">Nametag</div>
-        <div id="menu-nametag" class="nametag-row"></div>
-        <button id="menu-play" class="big-btn">Play! 🪶</button>
-      </div>
+  <!-- screen 1: the title over the living world -->
+  <div id="title-screen">
+    <h1 id="game-logo">Feather<span> </span>Friends</h1>
+    <div id="title-under">
+      <input id="menu-name" maxlength="20" placeholder="Your name" autocomplete="off">
+      <button id="menu-play" class="cloud-btn">Play</button>
     </div>
+  </div>
+  <!-- screen 2: the species picker on its paper sheet -->
+  <div id="picker-screen" class="hidden">
+    <div id="picker-tabs" class="picker-tabs"></div>
+    <div class="picker-wrap">
+      <div class="picker-sheet-back"></div>
+      <div class="picker-sheet"><div id="picker-grid" class="picker-grid"></div></div>
+    </div>
+    <div id="picker-hint" class="picker-hint hidden"></div>
   </div>
   <button id="menu-settings-btn" class="round-btn top-right" title="Settings">⚙️</button>
 </div>

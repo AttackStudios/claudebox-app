@@ -10,7 +10,7 @@
 // doubles as the flap while airborne. Collision is the shared heightfield
 // (sky-island aware) plus soft pushes from tree trunks.
 
-import { groundAt as height, waterAt } from '/shared/worldgen.js';
+import { groundAt as height, waterAt, skySurfaceAt, waterfallTopAt } from '/shared/worldgen.js';
 
 const GRAVITY = 28;
 
@@ -36,6 +36,17 @@ const FLY = {
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 // wrap an angle to [-PI, PI]
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+// Ground at (x,z) for a bird currently at height y. Surfaces floating above
+// the terrain (sky islands, the waterfall summit) only count as ground when
+// the bird is on or just below their top — so walking on the terrain under
+// an island is unaffected, and stepping off a rim falls through to the
+// real ground below.
+function solidGroundAt(x, z, y) {
+  const g = height(x, z, y);
+  const s = Math.max(skySurfaceAt(x, z), waterfallTopAt(x, z));
+  return s > g && y > s - 2 ? s : g;
+}
 
 export class PlayerController {
   constructor(game) {
@@ -66,7 +77,7 @@ export class PlayerController {
   // terrain height, raised by solid props like nests (rim is a step you
   // climb onto; the bowl inside is a little lower — cozy, but contained)
   groundY(x, z) {
-    let g = height(x, z, this.pos.y);
+    let g = solidGroundAt(x, z, this.pos.y);
     const n = this.game.nestSurface?.(x, z);
     if (n != null && n > g) g = n;
     return g;
@@ -133,7 +144,7 @@ export class PlayerController {
       this.ry = Math.atan2(dirX, dirZ);
     }
 
-    const ground = height(this.pos.x, this.pos.z, this.pos.y);
+    const ground = solidGroundAt(this.pos.x, this.pos.z, this.pos.y);
     const water = waterAt(this.pos.x, this.pos.z, this.pos.y);
     this.swimming = !!water && !this.flying && (water.surface > ground + 0.45);
 
@@ -184,7 +195,9 @@ export class PlayerController {
   // Space = flap. Semi-sim energy: dives gain speed, climbs bleed it.
   updateFlight(dt, baby) {
     const F = FLY;
-    const scale = (baby ? 0.78 : 1) * this.game.speedScale;
+    // fledglings fly, but not with adult power yet
+    const stageScale = baby ? 0.78 : this.stage === 'fledgling' ? 0.88 : 1;
+    const scale = stageScale * this.game.speedScale;
     this.flapCD = Math.max(0, this.flapCD - dt);
     this.flapPulse = Math.max(0, this.flapPulse - dt * 2.4);
     this.flare = Math.max(0, this.flare - dt);
@@ -320,7 +333,7 @@ export class PlayerController {
 
   updateWalk(dt, dirX, dirZ, mag, baby, ground, water) {
     const run = mag > 0.85;
-    let speed = (run ? 10.5 : 6) * (baby ? 0.8 : 1) * this.game.speedScale;
+    let speed = (run ? 10.5 : 6) * (baby ? 0.8 : this.stage === 'fledgling' ? 0.9 : 1) * this.game.speedScale;
     if (this.swimming) speed *= 0.55;
 
     this.vel.x += (dirX * speed - this.vel.x) * Math.min(1, dt * 10);

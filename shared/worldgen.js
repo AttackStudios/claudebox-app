@@ -218,6 +218,44 @@ export function canDrinkAt(x, z, y = null) {
   return false;
 }
 
+// ---------- signature landmarks ----------
+
+// The Skylands: floating islands high over the eastern highlands, reachable
+// only on the wing. Pure data + pure surface function — terrain (height/
+// groundAt/biomeAt) is untouched; the player controller opts in.
+export const SKY_ISLANDS = [
+  { x: 600, z: -500, y: 120, r: 60 },   // the Great Skyland
+  { x: 690, z: -420, y: 100, r: 34 },
+  { x: 520, z: -590, y: 145, r: 28 },
+];
+
+// Walkable top surface of whichever sky island covers (x,z): gently domed —
+// a few units above the island's base y at the centre, easing down to the
+// rim — or -Infinity when no island is overhead. Deterministic.
+export function skySurfaceAt(x, z) {
+  for (const isl of SKY_ISLANDS) {
+    const d = Math.hypot(x - isl.x, z - isl.z);
+    if (d < isl.r) {
+      const t = 1 - (d / isl.r) ** 2;   // 1 at the centre → 0 at the rim
+      return isl.y + t * (2 + isl.r * 0.04);
+    }
+  }
+  return -Infinity;
+}
+
+// Heron Falls: a rock outcrop on Heron Lake's eastern shore with water
+// spilling off the top. `top` is the flat walkable summit of the pillar.
+export const WATERFALL = (() => {
+  const wf = { x: 552, z: 640, topR: 5.5, h: 14 };
+  wf.top = groundAt(wf.x, wf.z) + wf.h;
+  return wf;
+})();
+
+// Flat summit of the waterfall outcrop, or -Infinity off it.
+export function waterfallTopAt(x, z) {
+  return Math.hypot(x - WATERFALL.x, z - WATERFALL.z) < WATERFALL.topR ? WATERFALL.top : -Infinity;
+}
+
 // ---------- biomes ----------
 
 // Soft region weights at (x,z): { biome: weight } summing ~1. Used by

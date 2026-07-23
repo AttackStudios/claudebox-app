@@ -1,6 +1,7 @@
 // Desktop input. On the ground: WASD/arrows to move, Space jump, F fly,
-// E primary action, Q drop, C sit, Enter chat; the locked mouse orbits the
-// camera. IN FLIGHT the mouse becomes the flight stick: point the nose where
+// E primary action, Q drop, C sit, Enter chat. The cursor stays FREE by
+// default — hold a mouse button (right-click feels natural) and drag to look;
+// Settings has a "Capture mouse" toggle for classic pointer-lock. IN FLIGHT the mouse becomes the flight stick: point the nose where
 // you look (pointer-locked free-look), W = thrust, S = brake, A/D = rudder,
 // Q/E = roll (hold for a barrel roll), Space = flap. Esc frees the cursor;
 // dragging steers as a fallback.
@@ -26,20 +27,22 @@ export class DesktopControls {
     this.canvas = canvas;
 
     canvas.addEventListener('click', () => {
-      // clicking the world closes menus and grabs the cursor
+      // clicking the world closes menus — and only grabs the cursor if the
+      // player opted into classic capture in Settings
       this.game.panels.closeAll();
-      this.requestLock();
+      if (this.game.settings.mouseCapture) this.requestLock();
     }, opts);
 
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
     }, opts);
 
-    // fallback drag-look for when the cursor is free
+    // free-cursor look: hold a mouse button (right feels natural) and drag
     canvas.addEventListener('mousedown', (e) => {
       this.dragging = true;
       this.lastX = e.clientX; this.lastY = e.clientY;
     }, opts);
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault(), opts);
     window.addEventListener('mousemove', (e) => {
       // the mouse always orbits the free-look camera — on the ground and in
       // the air — so flying feels exactly like looking around
