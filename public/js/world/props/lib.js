@@ -4,7 +4,18 @@
 import * as THREE from 'three';
 import { WORLD, groundAt, biomeAt, skySurface } from '/shared/worldgen.js';
 
-export const lambert = (color, opts = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts });
+import { noiseBump, bumpsOn } from '../textures.js';
+// Every prop surface carries a heightmap: patterned materials emboss their
+// own texture (bark ridges, shingle steps, cobble bumps), plain ones get
+// soft fractal noise — nothing reads as a solid flat facet.
+export const lambert = (color, opts = {}) => {
+  const m = new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts });
+  if (bumpsOn() && !('bumpMap' in opts)) {
+    m.bumpMap = opts.map || noiseBump();
+    m.bumpScale = opts.bumpScale ?? (opts.map ? 0.14 : 0.07);
+  }
+  return m;
+};
 
 // Random ground spots across the whole map, filtered by biome/test.
 export function scatter(rng, count, accept) {

@@ -30,6 +30,12 @@ function material(hex, texKind = 'plain', emissiveBoost = 0) {
       opts.side = THREE.DoubleSide;
     }
     const m = new THREE.MeshLambertMaterial(opts);
+    // the painted plumage doubles as a heightmap: scallops, barbs and
+    // speckles rise off the surface instead of reading as flat print
+    if (map && (typeof window === 'undefined' || window.__ffBumps !== false)) {
+      m.bumpMap = map;
+      m.bumpScale = { feather: 0.02, fluff: 0.018, egg: 0.008, smooth: 0.004 }[texKind] ?? 0.012;
+    }
     if (emissiveBoost > 0) m.emissive = new THREE.Color(hex).multiplyScalar(emissiveBoost);
     matCache.set(key, m);
   }

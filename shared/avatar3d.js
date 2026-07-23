@@ -304,18 +304,16 @@ export function makeAvatar(profile = {}) {
       inner.updateWorldMatrix(true, true);
       // the face rides the same attachment pipeline so expression changes
       // (and removal on re-dress) just work
-      const ft = faceTexture(p.face || 'happy');
+      // face decal is for the girl only — the boy's smile is baked into his
+      // mesh, so a drawn face on him doubles up
+      const ft = headMesh ? faceTexture(p.face || 'happy') : null;
       if (ft) {
-        // single-mesh (boy): the bbox head anchor is tuned for hats and sits
-        // high, so drop and enlarge the face a touch to land on his face
-        const single = !headMesh;
-        const fs = head.radius * (single ? 2.0 : 1.55);
+        const fs = head.radius * 1.55;
         const fp = new THREE.Mesh(
           new THREE.PlaneGeometry(fs, fs),
           new THREE.MeshBasicMaterial({ map: ft, transparent: true, depthWrite: false }),
         );
-        fp.position.y = single ? -head.radius * 0.55 : 0;
-        fp.position.z = head.radius * (single ? 1.15 : 1.04) * head.forward;
+        fp.position.z = head.radius * 1.04 * head.forward;
         if (head.forward < 0) fp.rotation.y = Math.PI;
         const holder = new THREE.Group();
         holder.position.copy(inner.worldToLocal(head.center.clone()));

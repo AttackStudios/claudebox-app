@@ -47,6 +47,11 @@ export function buildTerrain(quality = 'high') {
   const detail = terrainDetail();
   detail.repeat.set(CHUNK / 6, CHUNK / 6);   // tiles per chunk (each chunk uses full 0..1 UV)
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: detail });
+  // emboss the same detail pattern so the ground has real tooth, not paint
+  if (typeof window === 'undefined' || window.__ffBumps !== false) {
+    mat.bumpMap = detail;
+    mat.bumpScale = 0.5;
+  }
 
   const segs = quality === 'low' ? 22 : 40;
   const span = WORLD.size + CHUNK;            // a little past the edge

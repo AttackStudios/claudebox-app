@@ -13,6 +13,7 @@ import { OrbitCamera } from './player/camera.js';
 import { DesktopControls } from './controls/desktop.js';
 import { MobileControls } from './controls/mobile.js';
 import { buildTerrain } from './world/terrain.js';
+import { noiseBump } from './world/textures.js';
 import { buildWater } from './world/water.js';
 import { buildProps } from './world/props.js';
 import { buildSky } from './world/sky.js';
@@ -41,6 +42,10 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================== game object ==============================
+// heightmap relief everywhere except on Fast graphics (set before any
+// material factory runs — terrain, props, birds and items all read it)
+window.__ffBumps = loadSettings().quality !== 'low';
+
 const game = {
   settings: loadSettings(),
   me: null,                 // { id, name, bird, nameStyle, flock, carriedBy, carrying }
@@ -232,7 +237,11 @@ function refreshOffTag(rec) {
 // ---------------- items ----------------
 const itemMats = {};
 function im(hex) {
-  if (!itemMats[hex]) itemMats[hex] = new THREE.MeshLambertMaterial({ color: hex, flatShading: true });
+  if (!itemMats[hex]) {
+    const m = new THREE.MeshLambertMaterial({ color: hex, flatShading: true });
+    if (window.__ffBumps !== false) { m.bumpMap = noiseBump(); m.bumpScale = 0.03; }
+    itemMats[hex] = m;
+  }
   return itemMats[hex];
 }
 

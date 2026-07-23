@@ -273,3 +273,50 @@ export function ruinStone() {
     }
   }, { srgb: true });
 }
+
+// Tiling grayscale fractal noise — the fallback heightmap for plain-colored
+// surfaces so nothing renders as a perfectly solid facet. Not sRGB: bump
+// maps want raw luminance.
+let _noiseBump = null;
+export function noiseBump() {
+  if (_noiseBump || typeof document === 'undefined') return _noiseBump;
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x = c.getContext('2d');
+  const img = x.createImageData(S, S);
+  let seed = 987654321;
+  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  // three octaves of value noise, tileable by sampling on a wrapped lattice
+  const lat = [8, 16, 32].map((n) => {
+    const g = new Float32Array(n * n);
+    for (let i = 0; i < g.length; i++) g[i] = rand();
+    return { n, g };
+  });
+  const sm = (t) => t * t * (3 - 2 * t);
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S; px++) {
+      let v = 0, amp = 0.55;
+      for (const { n, g } of lat) {
+        const fx = (px / S) * n, fy = (py / S) * n;
+        const x0 = Math.floor(fx) % n, y0 = Math.floor(fy) % n;
+        const x1 = (x0 + 1) % n, y1 = (y0 + 1) % n;
+        const tx = sm(fx - Math.floor(fx)), ty = sm(fy - Math.floor(fy));
+        const a = g[y0 * n + x0], b = g[y0 * n + x1], cc = g[y1 * n + x0], d = g[y1 * n + x1];
+        v += amp * ((a + (b - a) * tx) * (1 - ty) + (cc + (d - cc) * tx) * ty);
+        amp *= 0.5;
+      }
+      const val = Math.max(0, Math.min(255, Math.round(v * 255)));
+      const i = (py * S + px) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = val;
+      img.data[i + 3] = 255;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  _noiseBump = new THREE.CanvasTexture(c);
+  _noiseBump.wrapS = _noiseBump.wrapT = THREE.RepeatWrapping;
+  return _noiseBump;
+}
+
+// global kill-switch set by main.js from the graphics quality setting
+export const bumpsOn = () => typeof window === 'undefined' || window.__ffBumps !== false;
