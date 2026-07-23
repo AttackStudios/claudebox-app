@@ -8,6 +8,7 @@ import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { BEHAVIORS, PALETTE, SHAPES, newPart, sanitizeLevel, starterLevel } from '/shared/studio/format.js';
+import { parseRbxlx } from './rbxlx.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#view');
@@ -311,7 +312,30 @@ $('#btn-import').onclick = () => $('#file-input').click();
 $('#file-input').onchange = (e) => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
-  r.onload = () => { try { state.level = sanitizeLevel(JSON.parse(r.result)); $('#level-name').value = state.level.name; state.selected = null; rebuildAll(); frameCameraOnLevel(); status('Imported'); } catch { status('Bad file'); } };
+  r.onload = () => {
+    const text = String(r.result);
+    try {
+      if (/\.rbxlx$/i.test(f.name) || text.startsWith('<roblox ') || text.startsWith('<roblox>')) {
+        // a Roblox Studio place saved as XML — convert parts to studio primitives
+        const { level, stats } = parseRbxlx(text);
+        level.name = f.name.replace(/\.rbxlx$/i, '');
+        state.level = sanitizeLevel(level);
+        status(`Imported ${stats.imported} parts`
+          + (stats.skipped ? ` · ${stats.skipped} skipped (meshes/scripts/terrain)` : '')
+          + (stats.flattened ? ` · ${stats.flattened} tilts flattened to yaw` : '')
+          + (stats.truncated ? ` · ${stats.truncated} over the 2000-part cap` : ''));
+      } else if (text.startsWith('<roblox!')) {
+        return status('That\'s the BINARY .rbxl format — in Roblox Studio use File → Save As → .rbxlx');
+      } else {
+        state.level = sanitizeLevel(JSON.parse(text));
+        status('Imported');
+      }
+      $('#level-name').value = state.level.name;
+      state.selected = null;
+      rebuildAll();
+      frameCameraOnLevel();
+    } catch (err) { status('Bad file — ' + (err?.message || 'could not read it')); }
+  };
   r.readAsText(f);
 };
 function frameCameraOnLevel() {

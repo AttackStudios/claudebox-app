@@ -89,6 +89,13 @@ const banBox = `<div class="top"><h3>🔨 Ban a player</h3>
 function wireBanBox() {
   $('#ban-go').onclick = () => { const t = $('#ban-name').value.trim(); if (t) banPlayer(t); };
   $('#ban-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ban-go').click(); });
+  if (!document.getElementById('all-users')) {
+    const dl = document.createElement('datalist'); dl.id = 'all-users'; document.body.appendChild(dl);
+    api('/users?q=').then((r) => r.json()).then(({ users }) => {
+      dl.innerHTML = (users || []).map((u) => `<option value="${esc(u.name)}">`).join('');
+    }).catch(() => {});
+  }
+  $('#ban-name').setAttribute('list', 'all-users');
 }
 function render(reports) {
   if (!reports.length) {

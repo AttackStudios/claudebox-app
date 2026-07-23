@@ -937,6 +937,44 @@ $('add-btn').addEventListener('click', async () => {
 });
 $('add-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('add-btn').click(); });
 
+// ---- player directory: a live-search dropdown of everyone on the platform ----
+{
+  const input = $('add-input');
+  const wrap = input.parentElement;
+  wrap.style.position = 'relative';
+  const drop = document.createElement('div');
+  drop.id = 'user-drop';
+  drop.className = 'hidden';
+  wrap.appendChild(drop);
+  let timer = null;
+  const esc = (x) => String(x).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  const search = async () => {
+    try {
+      const data = await api('/users?q=' + encodeURIComponent(input.value.trim()));
+      const rows = (data.users || []).filter((u) => u.name.toLowerCase() !== stateHub.me.name.toLowerCase());
+      if (!rows.length) { drop.classList.add('hidden'); return; }
+      drop.innerHTML = rows.map((u) => `
+        <button class="ud-row" data-n="${esc(u.name)}">
+          <span class="ud-dot${u.online ? ' on' : ''}"></span>
+          <span class="ud-name">${esc(u.name)}</span>
+          ${u.badge === 'owner' ? '<span class="ud-badge">👑</span>' : u.badge === 'verified' ? '<span class="ud-badge">✔️</span>' : ''}
+          ${u.banned ? '<span class="ud-badge" title="banned">🔨</span>' : ''}
+        </button>`).join('') + `<div class="ud-total">${data.total} player${data.total === 1 ? '' : 's'} on ClaudeBox</div>`;
+      drop.classList.remove('hidden');
+      drop.querySelectorAll('.ud-row').forEach((b) => b.addEventListener('click', () => {
+        input.value = b.dataset.n;
+        drop.classList.add('hidden');
+        openProfile(b.dataset.n);
+      }));
+    } catch {}
+  };
+  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 200); });
+  input.addEventListener('focus', search);
+  document.addEventListener('click', (e) => {
+    if (!drop.contains(e.target) && e.target !== input) drop.classList.add('hidden');
+  });
+}
+
 // ---------------- avatar editor ----------------
 const cloth = (cat) => CLOTHING[cat].map((i) => [i.id, `${i.emoji} ${i.label}`]);
 const OPTIONS = {

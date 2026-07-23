@@ -1017,3 +1017,16 @@ html { scroll-behavior: smooth; }
   #topbar::before { transform: translate3d(calc(var(--mx, 0) * -10px), 0, 0) scale(1.06); }
   .friend-circle, #me-chip { transform: translate3d(calc(var(--mx, 0) * 5px), calc(var(--my, 0) * 4px), 0); }
 }
+
+/* player directory dropdown (Friends tab) */
+#user-drop { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30; max-height: 320px; overflow-y: auto;
+  background: var(--glass-2); border: 1px solid var(--glass-brd-hi); border-radius: 14px; box-shadow: var(--sh-2); backdrop-filter: blur(18px); padding: 6px; }
+#user-drop.hidden { display: none; }
+.ud-row { display: flex; align-items: center; gap: 9px; width: 100%; border: none; background: none; color: var(--ink);
+  font: inherit; font-weight: 700; font-size: 14px; padding: 9px 10px; border-radius: 9px; cursor: pointer; text-align: left; }
+.ud-row:hover { background: rgba(255,255,255,.09); }
+.ud-dot { width: 8px; height: 8px; border-radius: 50%; background: #565d6b; flex: none; }
+.ud-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.ud-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-badge { font-size: 12px; }
+.ud-total { color: var(--faint); font-size: 12px; font-weight: 600; text-align: center; padding: 7px 0 4px; }

@@ -778,6 +778,23 @@ export function hubRouter() {
     res.json({ ok: true });
   });
   // owner ban controls
+  // searchable directory of everyone on the platform (names are public in-game)
+  r.get('/users', (req, res) => {
+    const q = String(req.query.q || '').toLowerCase().trim();
+    const now = Date.now();
+    const users = Object.entries(platform.users)
+      .map(([nl, u]) => ({
+        name: u.name || nl,
+        badge: badgeFor(nl),
+        online: now - (lastHubSeen.get(nl) || 0) < 5 * 60e3,
+        banned: !!(platform.bans && platform.bans[nl]),
+      }))
+      .filter((u) => !q || u.name.toLowerCase().includes(q))
+      .sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name))
+      .slice(0, 60);
+    res.json({ users, total: Object.keys(platform.users).length });
+  });
+
   r.get('/bans', (req, res) => {
     if (badgeFor(clean(req.query.name)) !== 'owner') return res.status(403).json({ error: 'owner only' });
     const bans = Object.entries(platform.bans || {}).map(([nl, b]) => ({
