@@ -5,15 +5,15 @@
 export const MOVE = {
   walk: 6.4,            // slower, grounded default pace (no sprint)
   crouch: 4.2,
-  slideBurst: 19,       // slide = crouch while moving: a fast burst that…
-  slideFriction: 4.2,   // …decays slowly before stopping (lower = longer slide)
-  slideMin: 4.2,        // slide ends when it decays below this
+  slideBurst: 18,       // slide = crouch while moving: a fast burst that…
+  slideFriction: 8.5,   // …decays before stopping (higher = shorter slide)
+  slideMin: 6.5,        // slide ends when it decays below this (higher = shorter)
   dashSpeed: 28,        // Scythe MB2: forward impulse
   dashTime: 0.18,
   dashCooldown: 3.0,
   jumpVel: 8.6,
   gravity: 17,          // floatier falls
-  slideHopKeep: 0.9,    // fraction of slide speed a slide-jump keeps into the air
+  slideHopKeep: 0.62,   // fraction of slide speed a slide-jump keeps (lower = slower hop)
   airFriction: 0.6,     // how slowly air momentum bleeds (lower = keeps speed)
   padPower: 20,         // jump-pad upward launch velocity
   eyeStand: 1.62,
