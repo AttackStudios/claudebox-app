@@ -376,6 +376,7 @@ addEventListener('keydown', (e) => {
   if (c === binds.reload) startReload();
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
   if (c === binds.sprint || c === binds.crouch) tryCrouch(true);   // Shift OR Ctrl = slide/crouch
+  if (c === binds.jump) tryAirJump();                              // Daggers: mid-air double jump
 });
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
@@ -479,6 +480,19 @@ function updateMobileHud() {
     $(id).style.display = lobby ? 'none' : 'flex';
 }
 
+// Daggers double-jump: a fresh jump PRESS while airborne (holding daggers) gives
+// one extra mid-air jump. Reset when you touch the ground.
+function tryAirJump() {
+  if (me.grounded || me.dead) return;
+  if (!WEAPONS[me.weapon]?.doubleJump) return;
+  if ((me.airJumps || 0) >= 1) return;
+  const frozen = game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium';
+  if (frozen) return;
+  me.airJumps = (me.airJumps || 0) + 1;
+  me.vel.y = MOVE.jumpVel * 0.92;
+  me.sliding = false;
+  sfx.dash?.();
+}
 function tryCrouch(on) {
   if (on) {
     me.slidePressAt = clockNow();   // fresh press — buffers a slide onto landing
@@ -658,6 +672,7 @@ function stepMe(dt) {
   const fallSpeed = -me.vel.y;
   if (me.pos.y <= g) {
     me.pos.y = g; me.vel.y = 0; me.grounded = true;
+    me.airJumps = 0;   // touching ground refreshes the daggers double-jump
     if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
     // CHAIN slide-hops: only if you PRESSED slide within the last moment (a
     // fresh tap buffered onto the landing) — NOT merely holding it. Holding
@@ -839,6 +854,74 @@ function buildViewmodels() {
       [0.58, -0.26, -0.04], [0.7, -0.45, -0.2], [-0.6, -0.25, -0.1], [0.7, 0.45, 0.2]);
     viewmodels.fists = g;
   }
+  // ---- katana: long single-edged blade, two-handed grip ----
+  {
+    const g = new THREE.Group();
+    rigWeapon(g, [
+      box(0.052, 0.09, 0.24, '#15161b', 0.36, -0.16, 0.06),    // wrapped handle
+      box(0.05, 0.05, 0.05, '#0e0f13', 0.36, -0.16, 0.19),     // pommel
+      box(0.12, 0.03, 0.12, GOLD, 0.36, -0.16, -0.08),         // tsuba (guard)
+      box(0.028, 0.075, 0.82, '#dbe2ec', 0.36, -0.145, -0.54), // long blade
+      box(0.02, 0.05, 0.14, '#f2f5fa', 0.36, -0.125, -1.0),    // angled tip
+    ], [0.36, -0.24, 0.1], [0.5, -0.3, 0.14], [-0.26, -0.28, -0.12], [0.55, 0.5, -0.05]);
+    viewmodels.katana = g;
+  }
+  // ---- bat: chunky baseball bat, both hands on the grip ----
+  {
+    const g = new THREE.Group();
+    rigWeapon(g, [
+      box(0.05, 0.05, 0.22, '#6b4423', 0.3, -0.16, 0.08),      // handle
+      box(0.065, 0.065, 0.05, '#4a2f18', 0.3, -0.16, 0.2),     // knob
+      box(0.08, 0.08, 0.3, '#a9772f', 0.3, -0.16, -0.18),      // taper
+      box(0.118, 0.118, 0.42, '#c08a3a', 0.3, -0.16, -0.56),   // barrel
+      box(0.12, 0.12, 0.06, '#c08a3a', 0.3, -0.16, -0.8),      // end cap
+    ], [0.3, -0.24, 0.1], [0.5, -0.3, 0.1], [-0.32, -0.28, -0.02], [0.55, 0.4, 0.0]);
+    viewmodels.bat = g;
+  }
+  // ---- butterfly knife (balisong): split handle flanking a small blade ----
+  {
+    const g = new THREE.Group();
+    rigWeapon(g, [
+      box(0.028, 0.045, 0.3, '#23252c', 0.4, -0.135, 0.03),    // handle half A (raised)
+      box(0.028, 0.045, 0.3, '#33363f', 0.4, -0.195, 0.03),    // handle half B (lowered)
+      box(0.055, 0.055, 0.05, STEEL, 0.4, -0.165, -0.15),      // pivot
+      box(0.03, 0.06, 0.34, '#e2e8f2', 0.4, -0.165, -0.36),    // blade
+      box(0.016, 0.028, 0.09, '#f4f7fc', 0.4, -0.16, -0.56),   // point
+    ], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
+    viewmodels.butterfly = g;
+  }
+  // ---- daggers: a small knife in EACH hand ----
+  {
+    const g = new THREE.Group();
+    const dagger = (x) => [
+      box(0.04, 0.05, 0.13, DARK, x, -0.16, 0.0),              // handle
+      box(0.06, 0.06, 0.03, STEEL, x, -0.16, -0.1),            // guard
+      box(0.026, 0.052, 0.24, '#cfd6e0', x, -0.155, -0.26),    // blade
+      box(0.014, 0.03, 0.07, '#eef2f8', x, -0.15, -0.41),      // point
+    ];
+    rigWeapon(g, [...dagger(0.4), ...dagger(-0.4)],
+      [0.4, -0.26, 0.06], [0.55, -0.32, 0.12], [-0.4, -0.26, 0.06], [0.55, 0.32, -0.12]);
+    viewmodels.daggers = g;
+  }
+  // ---- jump pad: a small pad held flat, one hand gripping each side ----
+  {
+    const g = new THREE.Group();
+    const glow = (w, h, d, c, x, y, z) => { const m = new THREE.Mesh(roundedBoxGeo(w, h, d, Math.min(w, h, d) * 0.3), new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); return m; };
+    const CY = -0.14;
+    rigWeapon(g, [
+      box(0.66, 0.09, 0.52, '#aebccd', 0, CY, -0.16),          // plate
+      box(0.12, 0.12, 0.12, '#c6d3e2', 0.26, CY + 0.03, -0.02),// corner nubs
+      box(0.12, 0.12, 0.12, '#c6d3e2', -0.26, CY + 0.03, -0.02),
+      box(0.12, 0.12, 0.12, '#c6d3e2', 0.26, CY + 0.03, -0.3),
+      box(0.12, 0.12, 0.12, '#c6d3e2', -0.26, CY + 0.03, -0.3),
+      glow(0.28, 0.11, 0.26, '#6fd8ff', 0, CY + 0.05, -0.16),  // glowing core
+      glow(0.05, 0.1, 0.32, '#37e0ff', 0.17, CY + 0.04, -0.16),// glow bars
+      glow(0.05, 0.1, 0.32, '#37e0ff', -0.17, CY + 0.04, -0.16),
+      glow(0.32, 0.1, 0.05, '#37e0ff', 0, CY + 0.04, -0.02),
+      glow(0.32, 0.1, 0.05, '#37e0ff', 0, CY + 0.04, -0.3),
+    ], [0.54, -0.23, 0.06], [0.28, -0.55, 0.6], [-0.54, -0.23, 0.06], [0.28, 0.55, -0.6]);
+    viewmodels.jumppad = g;
+  }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
@@ -883,14 +966,12 @@ viewmodels.burst = vmVariant('ar', 0.92, '#c0c8d4');
 viewmodels.revolver = vmVariant('handgun', 1.08, '#caa46a');
 viewmodels.uzi = vmVariant('handgun', 0.9, '#2ec5e0');
 viewmodels.shorty = vmVariant('handgun', 1.0, '#8a6a44');
-viewmodels.katana = vmVariant('scythe', 1.15, '#dfe6ef');
-viewmodels.bat = vmVariant('scythe', 1.0, '#b8804a');
-// roster expansion
+// katana / bat / butterfly / daggers / jumppad now have their own real models (built above)
+// roster expansion — guns reuse base gun models
 viewmodels.carbine = vmVariant('ar', 0.86, '#8ea0b8');
 viewmodels.battle = vmVariant('ar', 1.05, '#3f4653');
 viewmodels.autosniper = vmVariant('sniper', 0.95, '#4a5568');
 viewmodels.deagle = vmVariant('handgun', 1.12, '#c9a24a');
-viewmodels.butterfly = vmVariant('scythe', 0.85, '#c0e0ff');
 viewmodels.satchel = vmVariant('grenade', 1.0, '#d64545');
 
 // ---- weapon skins: re-material a gun group with an equipped skin ----
@@ -1081,6 +1162,11 @@ const VM_HIPS = {
   scythe: { x: 0.06, y: -0.22, z: -0.48 },
   grenade: { x: 0.06, y: -0.22, z: -0.48 },
   fists: { x: 0.03, y: -0.22, z: -0.46 },
+  katana: { x: 0.06, y: -0.2, z: -0.5 },
+  bat: { x: 0.07, y: -0.2, z: -0.5 },
+  butterfly: { x: 0.06, y: -0.22, z: -0.48 },
+  daggers: { x: 0.03, y: -0.22, z: -0.46 },
+  jumppad: { x: 0.03, y: -0.24, z: -0.58 },
 };
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
@@ -1145,11 +1231,13 @@ function tryFire() {
     vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // arcs / alternating jabs
     playOne(me.weapon === 'scythe' ? 'knife' : 'fists', 0.8);
     if (game.phase === 'live') net.send({ t: 'melee', weapon: me.weapon });
+    else rangeMelee();   // lobby: swing hits practice dummies
     return;
   }
   if (me.weapon === 'grenade') {
-    if (me.grenades <= 0 || now - me.lastFire < WEAPONS.grenade.rate) return;
-    me.lastFire = now; me.grenades--;
+    if (now - me.lastFire < WEAPONS.grenade.rate) return;
+    if (game.phase === 'live' && me.grenades <= 0) return;
+    me.lastFire = now; if (game.phase === 'live') me.grenades--;   // infinite in the range
     vmAnim.throwT = 0;                            // wind-up + overhand whip
     const d = aimDir(0);
     if (game.phase === 'live') net.send({ t: 'nade', dx: d.x, dy: d.y + 0.18, dz: d.z });
@@ -1167,11 +1255,12 @@ function tryFire() {
   }
   if (me.weapon === 'jumppad') {
     const W = WEAPONS.jumppad;
-    if ((me.pads ?? 0) <= 0 || now - me.lastFire < W.rate) return;
+    if (now - me.lastFire < W.rate) return;
+    if (game.phase === 'live' && (me.pads ?? 0) <= 0) return;
     // aim a ray at the surface you're looking at; place the pad flat on it
     const hit = raycastMap(camera.position, aimDir(0), W.range);
     if (!hit) { sfx.reload?.(); return; }         // nothing in range to stick to
-    me.lastFire = now; me.pads = Math.max(0, (me.pads ?? 0) - 1);
+    me.lastFire = now; if (game.phase === 'live') me.pads = Math.max(0, (me.pads ?? 0) - 1);
     vmAnim.throwT = 0;
     if (game.phase === 'live' || game.phase === 'lobby') {
       net.send({ t: 'pad', x: hit.point.x, y: hit.point.y, z: hit.point.z, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z });
@@ -1184,7 +1273,7 @@ function tryFire() {
   if (a.mag <= 0) { startReload(); return; }
   if (now - me.lastFire < w.rate) return;
   me.lastFire = now;
-  a.mag--;
+  if (game.phase === 'live') a.mag--;   // infinite ammo in the lobby shooting range
   const spread = me.ads > 0.5 ? w.adsSpread : w.spread;
   const d = aimDir(spread);
   recoil += me.weapon === 'sniper' ? 0.018 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
@@ -1207,7 +1296,7 @@ function tryFire() {
         if (me.dead || me.weapon !== wid || me.reloading) return;
         const aa = me.ammo[wid];
         if (!aa || aa.mag <= 0) return;
-        aa.mag--;
+        if (game.phase === 'live') aa.mag--;   // infinite in the range
         const dd = aimDir(me.ads > 0.5 ? w.adsSpread : w.spread);
         recoil += 0.012; vmKick = 1; muzzleFlash(); localTracer(dd);
         if (game.phase === 'live') net.send({ t: 'fire', dx: dd.x, dy: dd.y, dz: dd.z, weapon: wid });
@@ -1280,17 +1369,56 @@ function rayAabb(o, d, b, maxDist) {
 // lobby shooting range
 function rangeShot(dir) {
   const origin = camera.position.clone();
+  const wallDist = rayBoxesDist(origin, dir, 80);
   for (const t of rangeTargets) {
     if (!t.alive) continue;
     const box = { x: t.grp.position.x, y: t.grp.position.y + 0.3, z: t.grp.position.z, sx: 0.8, sy: 1.6, sz: 0.5 };
     const hit = rayAabb(origin, dir, box, 60);
-    const wallDist = rayBoxesDist(origin, dir, 60);
     if (hit !== null && hit < wallDist) {
       t.alive = false; t.respawnAt = clockNow() + 2.5;
       t.grp.rotation.x = -1.2;
       sfx.hit(); showHitmarker(false);
     }
   }
+  // humanoid practice dummies: real damage numbers + a health plate that
+  // drops, ragdoll-tips at 0, and respawns — so you can test any gun on them.
+  for (const [id, o] of others) {
+    if (!id.startsWith('rdummy_') || o.dummyDown) continue;
+    const p = o.ctrl.group.position;
+    const headBox = { x: p.x, y: p.y + 1.62, z: p.z, sx: 0.46, sy: 0.46, sz: 0.42 };
+    const bodyBox = { x: p.x, y: p.y + 0.95, z: p.z, sx: 0.72, sy: 1.25, sz: 0.46 };
+    const hh = rayAabb(origin, dir, headBox, 80);
+    const bh = rayAabb(origin, dir, bodyBox, 80);
+    const best = hh !== null && (bh === null || hh < bh) ? { d: hh, head: true } : (bh !== null ? { d: bh, head: false } : null);
+    if (best && best.d < wallDist) hitDummy(o, best.head);
+  }
+}
+// apply a hit to a practice dummy with the CURRENT weapon's damage
+function hitDummy(o, head) {
+  const w = WEAPONS[me.weapon] || WEAPONS.ar;
+  const dmg = w.melee ? w.dmg : Math.round((w.dmg || 10) * (head ? (w.headMult || 1.5) : 1) * (w.pellets > 1 ? w.pellets : 1));
+  o.plate.hp = Math.max(0, (o.plate.hp ?? 100) - dmg);
+  drawPlate(o.plate);
+  const p = o.ctrl.group.position;
+  dmgNumber(dmg, head, p.x, p.y + 1.5, p.z);
+  (head ? sfx.headshot : sfx.hit)(); showHitmarker(head);
+  if (o.plate.hp <= 0) { o.dummyDown = true; o.dummyRespawnAt = clockNow() + 2; o.data.dead = true; }   // displayAnim() shows the death pose
+}
+// lobby melee: swing hits any dummy within reach (so daggers/katana test too)
+function rangeMelee() {
+  const w = WEAPONS[me.weapon]; if (!w?.melee) return;
+  for (const [id, o] of others) {
+    if (!id.startsWith('rdummy_') || o.dummyDown) continue;
+    const p = o.ctrl.group.position;
+    const d = Math.hypot(p.x - me.pos.x, p.z - me.pos.z);
+    if (d <= (w.range || 3)) hitDummy(o, false);
+  }
+}
+function spawnRangeDummies() {
+  const spots = [{ x: 8.4, z: 1, ry: 2.2 }, { x: 9.3, z: 4.6, ry: 2.4 }, { x: 7.6, z: 8, ry: 2.7 }];
+  spots.forEach((s, i) => {
+    addOther({ id: 'rdummy_' + i, name: 'Dummy', avatar: { body: i % 2 ? 'girl' : 'boy' }, team: 'B', pos: { x: s.x, y: 0, z: s.z }, ry: s.ry, anim: 'idle', weapon: 'fists', hp: 100 });
+  });
 }
 
 // ============================ remote fighters ============================
@@ -1322,7 +1450,7 @@ function drawPlate(p) {
   p.tex.needsUpdate = true;
 }
 // mini third-person weapons so you can SEE what everyone is holding
-const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper', burst: 'ar', revolver: 'handgun', uzi: 'handgun', shorty: 'handgun', katana: 'scythe', bat: 'scythe', carbine: 'ar', battle: 'ar', autosniper: 'sniper', deagle: 'handgun', butterfly: 'scythe', satchel: 'grenade' };
+const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper', burst: 'ar', revolver: 'handgun', uzi: 'handgun', shorty: 'handgun', katana: 'scythe', bat: 'scythe', carbine: 'ar', battle: 'ar', autosniper: 'sniper', deagle: 'handgun', butterfly: 'scythe', satchel: 'grenade', daggers: 'scythe' };
 function makeHeldWeapon(id) {
   id = HELD_ALIAS[id] || id;
   const g = new THREE.Group();
@@ -1481,7 +1609,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨', daggers: '⚔️' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   myLoadout().forEach((id, i) => {
@@ -2198,6 +2326,7 @@ function enterLobby(fromMatch) {
   $('#lobby-tip').classList.remove('hidden');
   $('#kb-open')?.classList.remove('hidden');
   $('#podium').classList.add('hidden');
+  spawnRangeDummies();   // practice dummies for the shooting range
   updateAmmoHud(); updateLoadoutHud();
 }
 
@@ -2354,6 +2483,11 @@ function frame() {
   // range targets respawn
   for (const t of rangeTargets) {
     if (!t.alive && cn >= t.respawnAt) { t.alive = true; t.grp.rotation.x = 0; }
+  }
+  // practice dummies respawn (heal + stand back up)
+  for (const [id, o] of others) {
+    if (!id.startsWith('rdummy_') || !o.dummyDown) continue;
+    if (cn >= o.dummyRespawnAt) { o.dummyDown = false; o.data.dead = false; o.plate.hp = 100; drawPlate(o.plate); }
   }
   // ================= viewmodel: the swingy stuff =================
   for (const [k, g] of Object.entries(viewmodels)) g.visible = k === me.weapon;

@@ -121,10 +121,12 @@ export const LOBBY = {
     B(0, 0.06, -8, 6.4, 0.12, 6.4, NEON, { glow: true }),
     B(11.5, 4.3, 4, 0.15, 0.15, 13, '#ff7eb6', { glow: true }),
   ],
-  // shooting-range dummies (client-side breakables)
+  // shooting-range dummies (client-side breakables) at varied ranges + heights
   targets: [
     { x: 10.9, y: 1.1, z: 0 }, { x: 10.9, y: 2.2, z: 3 },
     { x: 10.9, y: 1.4, z: 6 }, { x: 10.9, y: 2.6, z: 8.5 },
+    { x: 10.9, y: 1.1, z: -3 }, { x: 10.9, y: 3.1, z: -1 },
+    { x: 8, y: 1.1, z: 9.5 }, { x: 6.5, y: 1.1, z: 7 },   // closer pop-ups
   ],
   spawnsA: [{ x: -6, z: 8, ry: -0.36 }],   // facing the duel pad
   spawnsB: [{ x: -6, z: 8, ry: -0.36 }],

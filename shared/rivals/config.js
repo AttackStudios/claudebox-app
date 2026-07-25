@@ -155,7 +155,13 @@ export const WEAPONS = {
   },
   butterfly: {
     slot: 3, name: 'Butterfly', class: 'melee', auto: false, melee: true,
-    dmg: 40, rate: 0.34, range: 3.4, backstabOneshot: true, vm: 'scythe',
+    dmg: 40, rate: 0.34, range: 3.4, backstabOneshot: true, vm: 'butterfly',
+  },
+  daggers: {
+    slot: 2, name: 'Daggers', class: 'secondary', auto: false, melee: true,
+    dmg: 30, rate: 0.26, range: 3.0, backstabOneshot: true,
+    doubleJump: true,     // dual knives: gives you an extra mid-air jump while held
+    vm: 'daggers',
   },
   // ---- Satchel: infinite thrown explosives that blow up on player contact,
   // plus a right-click "red button" that slide-jumps you anywhere (even mid-air) ----
