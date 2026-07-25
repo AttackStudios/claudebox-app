@@ -348,11 +348,11 @@ addEventListener('keydown', (e) => {
   if (c === binds.queue && game.phase === 'lobby') toggleModes();
   if (c === binds.reload) startReload();
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
-  if (c === binds.sprint && sprintToggle) sprintOn = !sprintOn;
-  if (c === binds.crouch) tryCrouch(true);
+  if (c === binds.sprint || c === binds.crouch) tryCrouch(true);   // Shift OR Ctrl = slide/crouch
 });
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
+  if (e.code === binds.sprint) tryCrouch(false);
   if (e.code === binds.crouch) tryCrouch(false);
 });
 
@@ -464,7 +464,7 @@ function tryCrouch(on) {
       window.ClaudeBox?.completeChallenge('rivals-slide');
     }
     me.crouch = true;
-  } else { me.crouch = false; me.sliding = false; }
+  } else { me.crouch = false; if (me.sliding) me.slideEndAt = clockNow(); me.sliding = false; }
 }
 
 function onRightDown() {
@@ -571,7 +571,7 @@ function stepMe(dt) {
   } else if (me.sliding) {                       // slide decays slowly
     const l = Math.hypot(me.slideVel.x, me.slideVel.z);
     const nl = Math.max(0, l - MOVE.slideFriction * dt);
-    if (nl <= MOVE.slideMin) { me.sliding = false; }
+    if (nl <= MOVE.slideMin) { me.sliding = false; me.slideEndAt = now; }
     else { me.slideVel.x *= nl / (l || 1); me.slideVel.z *= nl / (l || 1); }
     me.vel.x = me.slideVel.x; me.vel.z = me.slideVel.z;
   } else if (me.grounded) {
@@ -587,8 +587,10 @@ function stepMe(dt) {
   }
   if (keys.has(binds.jump) && me.grounded && !frozen) {
     me.vel.y = MOVE.jumpVel; me.grounded = false;
-    if (me.sliding) {
-      // SLIDE-HOP: jump straight out of a slide and carry the slide's momentum
+    // SLIDE-HOP: jump out of a slide (or within a moment of one) and carry its
+    // momentum — this is what makes slide→jump fling you far
+    const canHop = me.slideVel && (me.sliding || (now - (me.slideEndAt || -9) < 0.2));
+    if (canHop) {
       me.vel.x = me.slideVel.x * MOVE.slideHopKeep;
       me.vel.z = me.slideVel.z * MOVE.slideHopKeep;
     }
