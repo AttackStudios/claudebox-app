@@ -128,7 +128,19 @@ function spawnFighters(m) {
     const s = list[idx[f.team] % list.length]; idx[f.team]++;
     f.pos = { x: s.x + (Math.random() - 0.5), y: 0, z: s.z + (Math.random() - 0.5) };
     f.ry = s.ry; f.pitch = 0; f.hp = ROUND.maxHp; f.dead = false; f.anim = 'idle';
-    f.weapon = 'ar'; f.grenades = WEAPONS.grenade.count; f.pads = WEAPONS.jumppad.count; f.lastDamagedBy = null; f.assistBy = null;
+    // apply the player's chosen loadout (bots keep the default kit)
+    const owner = state.players.get(f.id);
+    const lo = owner && Array.isArray(owner.loadout) ? owner.loadout : null;
+    if (lo) {
+      f.loadout = lo;
+      f.weapon = lo.find((id) => WEAPONS[id]?.class === 'primary') || 'ar';
+      const util = lo.find((id) => WEAPONS[id]?.class === 'utility');
+      f.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
+      f.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
+    } else {
+      f.weapon = 'ar'; f.grenades = WEAPONS.grenade.count; f.pads = WEAPONS.jumppad.count;
+    }
+    f.lastDamagedBy = null; f.assistBy = null;
     f.botMem = {};
   }
   m.grenades = [];
@@ -369,7 +381,8 @@ export function fireHitscan(m, shooter, dirX, dirY, dirZ, weaponId) {
   const w = WEAPONS[weaponId];
   if (!w || w.melee || w.utility) return;
   const now = clock();
-  if (now - shooter.fireAt < w.rate * 0.85) return; // rate limit (lenient for latency)
+  const gap = w.burst ? (w.burstGap || 0.05) : w.rate;   // burst rounds fire fast
+  if (now - shooter.fireAt < gap * 0.85) return; // rate limit (lenient for latency)
   shooter.fireAt = now;
   const boxes = boxesOf(m.map);
   const ox = shooter.pos.x, oy = eyeY(shooter), oz = shooter.pos.z;

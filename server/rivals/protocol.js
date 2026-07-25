@@ -142,6 +142,10 @@ export function handleMessage(p, msg, ctx) {
       placePad(m, f, +msg.x || 0, +msg.y || 0, +msg.z || 0, +msg.nx || 0, +msg.ny || 1, +msg.nz || 0);
       return;
     }
+    case 'loadout': {
+      if (Array.isArray(msg.ids)) p.loadout = msg.ids.filter((id) => typeof id === 'string').slice(0, 6);
+      return;
+    }
 
     case 'chat': {
       const text = String(msg.text ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 140);

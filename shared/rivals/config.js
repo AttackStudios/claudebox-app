@@ -38,31 +38,31 @@ export const ROUND = {
 // slots: 1 primary, 2 secondary, 3 melee, 4 utility
 export const WEAPONS = {
   ar: {
-    slot: 1, name: 'Assault Rifle', auto: true,
+    slot: 1, name: 'Assault Rifle', class: 'primary', auto: true,
     dmg: 15, headMult: 1.5, rate: 0.1, mag: 20, reserve: 100,
     reload: 1.8, range: 120, spread: 0.011, adsSpread: 0.004, adsZoom: 1.35,
     pellets: 1,
   },
   handgun: {
-    slot: 2, name: 'Handgun', auto: false,
+    slot: 2, name: 'Handgun', class: 'secondary', auto: false,
     dmg: 25, headMult: 1.6, rate: 0.18, mag: 15, reserve: 90,
     reload: 1.3, range: 90, spread: 0.008, adsSpread: 0.003, adsZoom: 1.25,
     pellets: 1,
   },
   scythe: {
-    slot: 3, name: 'Knife', auto: false, melee: true,
+    slot: 3, name: 'Knife', class: 'melee', auto: false, melee: true,
     dmg: 45, rate: 0.5, range: 3.4, backstabOneshot: true,
   },
   fists: {
-    slot: 6, name: 'Fists', auto: true, melee: true,
+    slot: 6, name: 'Fists', class: 'melee', auto: true, melee: true,
     dmg: 18, rate: 0.26, range: 2.6, backstabMult: 2,
   },
   grenade: {
-    slot: 4, name: 'Grenade', auto: false, utility: true,
+    slot: 4, name: 'Grenade', class: 'utility', auto: false, utility: true,
     count: 3, throwVel: 17, fuse: 1.4, radius: 6.5, maxDmg: 85, rate: 0.8,
   },
   jumppad: {
-    slot: 4, name: 'Jump Pad', auto: false, utility: true, placeable: true,
+    slot: 4, name: 'Jump Pad', class: 'utility', auto: false, utility: true, placeable: true,
     count: 4,        // up to 4 pads placed at once
     life: 90,        // each pad vanishes after 90s (refunds its charge)
     launch: 24,      // launch speed along the surface it's stuck to
@@ -71,35 +71,65 @@ export const WEAPONS = {
     padRadius: 1.4,  // touch radius that triggers a launch
   },
   sniper: {
-    slot: 5, name: 'Sniper', auto: false,
+    slot: 5, name: 'Sniper', class: 'primary', auto: false,
     dmg: 70, headMult: 2, rate: 1.15, mag: 5, reserve: 25,
     reload: 2.3, range: 260, spread: 0.05, adsSpread: 0.0006, adsZoom: 4.6,
     pellets: 1, scoped: true,
   },
   // ---- wave-mode arsenal (dropped by bots; picked up off the ground) ----
   smg: {
-    slot: 1, name: 'SMG', auto: true,
+    slot: 1, name: 'SMG', class: 'primary', auto: true,
     dmg: 9, headMult: 1.5, rate: 0.06, mag: 30, reserve: 180,
     reload: 1.5, range: 80, spread: 0.02, adsSpread: 0.009, adsZoom: 1.2,
     pellets: 1,
   },
   shotgun: {
-    slot: 1, name: 'Shotgun', auto: false,
+    slot: 1, name: 'Shotgun', class: 'primary', auto: false,
     dmg: 9, headMult: 1.4, rate: 0.85, mag: 6, reserve: 36,
     reload: 2.2, range: 34, spread: 0.055, adsSpread: 0.045, adsZoom: 1.15,
     pellets: 7,
   },
   dmr: {
-    slot: 1, name: 'Marksman Rifle', auto: false,
+    slot: 1, name: 'Marksman Rifle', class: 'primary', auto: false,
     dmg: 42, headMult: 1.8, rate: 0.5, mag: 8, reserve: 48,
     reload: 2.0, range: 200, spread: 0.012, adsSpread: 0.0018, adsZoom: 2.6,
     pellets: 1,
   },
   minigun: {
-    slot: 1, name: 'Minigun', auto: true,
+    slot: 1, name: 'Minigun', class: 'primary', auto: true,
     dmg: 8, headMult: 1.3, rate: 0.045, mag: 90, reserve: 180,
     reload: 3.2, range: 100, spread: 0.032, adsSpread: 0.02, adsZoom: 1.1,
     pellets: 1,
+  },
+
+  // ---- extra selectable weapons (behaviour-focused; reuse base viewmodels) ----
+  burst: {
+    slot: 1, name: 'Burst Rifle', class: 'primary', auto: false, burst: 3, burstGap: 0.06,
+    dmg: 21, headMult: 1.5, rate: 0.34, mag: 21, reserve: 105,
+    reload: 1.9, range: 130, spread: 0.009, adsSpread: 0.0025, adsZoom: 1.5, pellets: 1, vm: 'ar',
+  },
+  revolver: {
+    slot: 2, name: 'Revolver', class: 'secondary', auto: false,
+    dmg: 35, headMult: 1.7, rate: 0.42, mag: 6, reserve: 36,
+    reload: 1.9, range: 110, spread: 0.006, adsSpread: 0.002, adsZoom: 1.3, pellets: 1, vm: 'handgun',
+  },
+  uzi: {
+    slot: 2, name: 'Uzi', class: 'secondary', auto: true,
+    dmg: 9, headMult: 1.4, rate: 0.055, mag: 25, reserve: 150,
+    reload: 1.4, range: 60, spread: 0.024, adsSpread: 0.014, adsZoom: 1.15, pellets: 1, vm: 'handgun',
+  },
+  shorty: {
+    slot: 2, name: 'Shorty', class: 'secondary', auto: false,
+    dmg: 6, headMult: 1.4, rate: 0.55, mag: 2, reserve: 24,
+    reload: 1.9, range: 26, spread: 0.06, adsSpread: 0.05, adsZoom: 1.1, pellets: 10, vm: 'handgun',
+  },
+  katana: {
+    slot: 3, name: 'Katana', class: 'melee', auto: false, melee: true,
+    dmg: 55, rate: 0.45, range: 4.2, backstabOneshot: true, vm: 'scythe',
+  },
+  bat: {
+    slot: 3, name: 'Bat', class: 'melee', auto: false, melee: true,
+    dmg: 40, rate: 0.55, range: 3.6, knockback: 14, vm: 'scythe',
   },
 };
 

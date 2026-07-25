@@ -47,7 +47,15 @@ const game = {
   loadout: null,           // wave mode: the guns you actually own (null = standard LOADOUT)
   waveMode: false, wave: 0, waveTotal: 10, botsLeft: 0,
 };
-const myLoadout = () => game.loadout || LOADOUT;
+// the player's chosen loadout: [primary, secondary, melee, utility] on keys 1-4
+let myPickedLoadout = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('rivals.loadout') || 'null');
+    if (Array.isArray(saved) && saved.every((id) => WEAPONS[id])) return saved;
+  } catch {}
+  return ['ar', 'handgun', 'scythe', 'grenade'];
+})();
+const myLoadout = () => game.loadout || myPickedLoadout;
 
 // what device is this player on? (shown next to names in duels)
 function platformKind() {
@@ -835,6 +843,13 @@ viewmodels.smg = vmVariant('ar', 0.8, '#57e0ff');
 viewmodels.shotgun = vmVariant('ar', 0.95, '#ff9a3c');
 viewmodels.dmr = vmVariant('sniper', 0.9, '#59d185');
 viewmodels.minigun = vmVariant('ar', 1.3, '#39404e');
+// extra selectable weapons — reuse base viewmodels, behaviour-only for now
+viewmodels.burst = vmVariant('ar', 0.92, '#c0c8d4');
+viewmodels.revolver = vmVariant('handgun', 1.08, '#caa46a');
+viewmodels.uzi = vmVariant('handgun', 0.9, '#2ec5e0');
+viewmodels.shorty = vmVariant('handgun', 1.0, '#8a6a44');
+viewmodels.katana = vmVariant('scythe', 1.15, '#dfe6ef');
+viewmodels.bat = vmVariant('scythe', 1.0, '#b8804a');
 
 // ---- weapon skins: re-material a gun group with an equipped skin ----
 let mySkins = { owned: [], equipped: {} };
@@ -849,6 +864,83 @@ async function loadMySkins() {
     const d = await fetch('/api/rivals/skins?name=' + encodeURIComponent(identity.name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json());
     if (d) { mySkins.owned = d.owned || []; mySkins.equipped = d.equipped || {}; mySkins.cubes = d.cubes || 0; }
   } catch {}
+}
+
+// ---- loadout picker: choose one weapon per class (all unlocked) ----
+const CLASS_ORDER = ['primary', 'secondary', 'melee', 'utility'];
+const CLASS_LABEL = { primary: 'Primary', secondary: 'Secondary', melee: 'Melee', utility: 'Utility' };
+function weaponsOfClass(cls) {
+  return Object.entries(WEAPONS).filter(([, w]) => w.class === cls).map(([id, w]) => ({ id, w }));
+}
+function sendLoadout() {
+  try { localStorage.setItem('rivals.loadout', JSON.stringify(myPickedLoadout)); } catch {}
+  net.send({ t: 'loadout', ids: myPickedLoadout });
+}
+function buildLoadoutUI() {
+  if (document.getElementById('ld-open')) return;
+  const st = document.createElement('style'); st.textContent = `
+  #ld-open{position:fixed;right:120px;top:10px;z-index:40;background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.14);color:#fff;font-weight:800;font-size:14px;padding:11px 16px;border-radius:12px;cursor:pointer;backdrop-filter:blur(8px);}
+  #ld-open:hover{background:rgba(40,48,66,.9);}
+  #ld-panel{position:fixed;inset:0;z-index:60;display:none;place-items:center;background:rgba(6,8,14,.66);backdrop-filter:blur(6px);}
+  #ld-panel.open{display:grid;}
+  #ld-card{width:min(880px,94vw);max-height:88vh;overflow:auto;background:#12151d;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:20px 22px;color:#fff;font-family:inherit;}
+  #ld-card h2{font-size:22px;font-weight:900;margin-bottom:4px;}
+  #ld-card .sub{color:#8b93a6;font-size:13px;margin-bottom:16px;}
+  .ld-col{margin-bottom:18px;}
+  .ld-col h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#9fb0c8;margin-bottom:8px;}
+  .ld-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
+  .ld-w{background:#1b1f2a;border:2px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer;text-align:center;transition:transform .1s,border-color .1s;}
+  .ld-w:hover{transform:translateY(-2px);}
+  .ld-w.sel{border-color:#2fa4ff;background:#1f2a3c;box-shadow:0 0 0 2px rgba(47,164,255,.3);}
+  .ld-w .em{font-size:26px;}
+  .ld-w .nm{font-weight:800;font-size:13px;margin-top:4px;}
+  .ld-w .st{color:#8b93a6;font-size:11px;margin-top:2px;}
+  #ld-done{margin-top:6px;width:100%;background:linear-gradient(90deg,#2fa4ff,#4f7dff);border:none;color:#fff;font-weight:900;font-size:16px;padding:13px;border-radius:12px;cursor:pointer;}`;
+  document.head.appendChild(st);
+
+  const btn = document.createElement('button'); btn.id = 'ld-open'; btn.textContent = '🎯 Loadout';
+  document.body.appendChild(btn);
+  const panel = document.createElement('div'); panel.id = 'ld-panel';
+  panel.innerHTML = `<div id="ld-card"><h2>Loadout</h2><div class="sub">Pick one weapon per slot — you'll spawn with exactly these. Everything's unlocked.</div><div id="ld-cols"></div><button id="ld-done">Save loadout</button></div>`;
+  document.body.appendChild(panel);
+
+  const render = () => {
+    const cols = panel.querySelector('#ld-cols'); cols.innerHTML = '';
+    for (const cls of CLASS_ORDER) {
+      const col = document.createElement('div'); col.className = 'ld-col';
+      col.innerHTML = `<h3>${CLASS_LABEL[cls]}</h3>`;
+      const grid = document.createElement('div'); grid.className = 'ld-grid';
+      for (const { id, w } of weaponsOfClass(cls)) {
+        const card = document.createElement('div');
+        const chosen = myPickedLoadout.includes(id);
+        card.className = 'ld-w' + (chosen ? ' sel' : '');
+        const stat = w.melee ? `${w.dmg} dmg` : w.utility ? (w.placeable ? `${w.count} pads` : `x${w.count}`) : `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''} dmg`;
+        card.innerHTML = `<div class="em">${WEAPON_ICONS[id] || '🔫'}</div><div class="nm">${w.name}</div><div class="st">${stat}</div>`;
+        card.addEventListener('click', () => {
+          const slot = CLASS_ORDER.indexOf(cls);   // 0..3
+          myPickedLoadout[slot] = id;
+          render();
+        });
+        grid.appendChild(card);
+      }
+      col.appendChild(grid); cols.appendChild(col);
+    }
+  };
+  btn.addEventListener('click', () => { render(); panel.classList.add('open'); });
+  panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('open'); });
+  panel.querySelector('#ld-done').addEventListener('click', () => {
+    // normalise order to [primary, secondary, melee, utility]
+    const byClass = {};
+    for (const id of myPickedLoadout) if (WEAPONS[id]) byClass[WEAPONS[id].class] = id;
+    myPickedLoadout = CLASS_ORDER.map((c) => byClass[c] || weaponsOfClass(c)[0].id);
+    sendLoadout();
+    if (game.phase === 'lobby') { me.weapon = myPickedLoadout[0]; me.ammo = freshAmmo(); updateLoadoutHud(); updateAmmoHud(); }
+    panel.classList.remove('open');
+    toast?.('Loadout saved');
+  });
+  // only show the button in the lobby
+  const syncBtn = () => { btn.style.display = game.phase === 'lobby' ? 'block' : 'none'; };
+  setInterval(syncBtn, 500); syncBtn();
 }
 
 // ---- skins shop UI (open cases, equip skins) ----
@@ -1042,6 +1134,25 @@ function tryFire() {
   else rangeShot(d); // lobby: shooting range
   updateAmmoHud();
   if (a.mag <= 0) startReload();
+
+  // burst weapons fire the rest of their burst automatically after this shot
+  if (w.burst && w.burst > 1) {
+    const wid = me.weapon;
+    for (let k = 1; k < w.burst; k++) {
+      setTimeout(() => {
+        if (me.dead || me.weapon !== wid || me.reloading) return;
+        const aa = me.ammo[wid];
+        if (!aa || aa.mag <= 0) return;
+        aa.mag--;
+        const dd = aimDir(me.ads > 0.5 ? w.adsSpread : w.spread);
+        recoil += 0.012; vmKick = 1; muzzleFlash(); localTracer(dd);
+        if (game.phase === 'live') net.send({ t: 'fire', dx: dd.x, dy: dd.y, dz: dd.z, weapon: wid });
+        else rangeShot(dd);
+        updateAmmoHud();
+        if (aa.mag <= 0) startReload();
+      }, k * (w.burstGap || 0.06) * 1000);
+    }
+  }
 }
 
 function aimDir(spread) {
@@ -1147,7 +1258,7 @@ function drawPlate(p) {
   p.tex.needsUpdate = true;
 }
 // mini third-person weapons so you can SEE what everyone is holding
-const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper' };
+const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper', burst: 'ar', revolver: 'handgun', uzi: 'handgun', shorty: 'handgun', katana: 'scythe', bat: 'scythe' };
 function makeHeldWeapon(id) {
   id = HELD_ALIAS[id] || id;
   const g = new THREE.Group();
@@ -1306,7 +1417,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   myLoadout().forEach((id, i) => {
@@ -1421,6 +1532,7 @@ net.on('welcome', (msg) => {
   clearOthers();
   for (const p of msg.players) addOther({ ...p, team: 'A' });
   enterLobby(false);
+  net.send({ t: 'loadout', ids: myPickedLoadout });   // tell the server our chosen kit
 });
 net.on('player.join', (msg) => { if (game.phase === 'lobby') addOther({ ...msg.player, team: 'A' }); });
 net.on('player.leave', (msg) => removeOther(msg.id));
@@ -2368,7 +2480,7 @@ status('Connecting…');
 buildMap(LOBBY);
 setupMobile(); updateMobileHud();
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
-await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI();
+await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI(); buildLoadoutUI();
 net.connect();
 net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '', skins: mySkins.equipped, platform: platformKind() });
 net.startMovementStream(() => ({
