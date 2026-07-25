@@ -447,29 +447,31 @@ export function meleeSwing(m, attacker, weaponId = 'scythe') {
   }
 }
 
-export function throwGrenade(m, thrower, dirX, dirY, dirZ) {
-  const w = WEAPONS.grenade;
+export function throwGrenade(m, thrower, dirX, dirY, dirZ, wid = 'grenade') {
+  const w = WEAPONS[wid] || WEAPONS.grenade;
   const now = clock();
-  if (thrower.grenades <= 0 || now - (thrower.nadeAt || 0) < w.rate) return;
-  thrower.nadeAt = now; thrower.grenades--;
+  if (now - (thrower.nadeAt || 0) < w.rate) return;
+  if (!w.infinite && thrower.grenades <= 0) return;
+  thrower.nadeAt = now;
+  if (!w.infinite) thrower.grenades--;
   const len = Math.hypot(dirX, dirY, dirZ) || 1;
   const g = {
-    id: genId('g'), owner: thrower.id, team: thrower.team,
+    id: genId('g'), owner: thrower.id, team: thrower.team, wid,
     x: thrower.pos.x, y: eyeY(thrower), z: thrower.pos.z,
     vx: (dirX / len) * w.throwVel, vy: (dirY / len) * w.throwVel + 2.5, vz: (dirZ / len) * w.throwVel,
     explodeAt: now + w.fuse,
     armAt: now + 0.14,   // brief arm so it can't detonate in your own face at throw
   };
   m.grenades.push(g);
-  matchSend(m, { t: 'nade.spawn', g: { id: g.id, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz } });
+  matchSend(m, { t: 'nade.spawn', g: { id: g.id, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz, wid } });
 }
 
 function tickGrenades(m, dt) {
   const boxes = boxesOf(m.map);
   const now = clock();
-  const w = WEAPONS.grenade;
   for (let i = m.grenades.length - 1; i >= 0; i--) {
     const g = m.grenades[i];
+    const w = WEAPONS[g.wid] || WEAPONS.grenade;   // grenade or satchel stats
     g.vy -= MOVE.gravity * 0.8 * dt;
     // integrate; grenades explode on ANY solid impact (or on touching a
     // fighter once armed) — no bouncing. This is what enables grenade-jumps.
@@ -503,7 +505,7 @@ function tickGrenades(m, dt) {
           continue;
         }
         const dmg = w.maxDmg * (1 - d / w.radius);
-        if (dmg >= 1) applyDamage(m, f, Math.round(dmg), owner, 'grenade', false);
+        if (dmg >= 1) applyDamage(m, f, Math.round(dmg), owner, g.wid || 'grenade', false);
       }
     }
   }

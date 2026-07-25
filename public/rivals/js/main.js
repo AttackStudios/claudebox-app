@@ -443,7 +443,7 @@ function setupMobile() {
   }, { passive: true });
   lookZone.addEventListener('touchmove', (e) => {
     for (const t of e.changedTouches) if (t.identifier === lookId) {
-      const sens = 0.006 * (me.ads > 0.5 ? (me.weapon === 'sniper' ? 0.5 : 0.72) : 1);
+      const sens = 0.006 * (me.ads > 0.5 ? (WEAPONS[me.weapon]?.scoped ? 0.5 : 0.72) : 1);
       me.ry -= (t.clientX - lx) * sens;
       me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - (t.clientY - ly) * sens));
       lx = t.clientX; ly = t.clientY;
@@ -507,6 +507,23 @@ function onRightDown() {
     me.dashAt = now; me.dashUntil = now + MOVE.dashTime;
     me.dashVec = { x: -Math.sin(me.ry) * MOVE.dashSpeed, z: -Math.cos(me.ry) * MOVE.dashSpeed };
     sfx.dash(); net.send({ t: 'dash' });
+    return;
+  }
+  if (me.weapon === 'satchel') {
+    // RED BUTTON — a slide-jump you can trigger anywhere, even mid-air, on a
+    // short cooldown. Flings you along where you're looking (horizontally) plus
+    // an upward pop; spam it every 0.3s to fly across the map.
+    const now = clockNow();
+    const W = WEAPONS.satchel;
+    if (now - (me.satchelBtnAt || -9) < W.btnCd || me.dead || game.phase === 'freeze' || game.phase === 'podium') return;
+    me.satchelBtnAt = now;
+    const dirX = -Math.sin(me.ry), dirZ = -Math.cos(me.ry);
+    me.vel.x = dirX * W.btnBoost; me.vel.z = dirZ * W.btnBoost;
+    me.vel.y = Math.max(me.vel.y, W.btnUp);
+    me.grounded = false; me.sliding = false;
+    me.slideVel = { x: me.vel.x, z: me.vel.z }; me.slideEndAt = now;   // keep momentum into a real jump
+    sfx.dash(); net.send({ t: 'dash' });
+    return;
   }
   // guns: ADS handled continuously via rightDown
 }
@@ -580,8 +597,9 @@ function groundAt(x, z, fromY) {
 function stepMe(dt) {
   const frozen = game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || me.dead;
   const now = clockNow();
-  // ADS amount
-  const wantAds = rightDown && (me.weapon === 'ar' || me.weapon === 'handgun' || me.weapon === 'sniper') && !me.reloading && !frozen;
+  // ADS amount — any gun (non-melee, non-utility) can aim down sights
+  const adsW = WEAPONS[me.weapon];
+  const wantAds = rightDown && adsW && !adsW.melee && !adsW.utility && adsW.adsZoom && !me.reloading && !frozen;
   me.ads += ((wantAds ? 1 : 0) - me.ads) * Math.min(1, dt * 12);
   camera.fov = BASE_FOV / (1 + me.ads * ((WEAPONS[me.weapon]?.adsZoom || 1.3) - 1));
   camera.updateProjectionMatrix();
@@ -867,6 +885,13 @@ viewmodels.uzi = vmVariant('handgun', 0.9, '#2ec5e0');
 viewmodels.shorty = vmVariant('handgun', 1.0, '#8a6a44');
 viewmodels.katana = vmVariant('scythe', 1.15, '#dfe6ef');
 viewmodels.bat = vmVariant('scythe', 1.0, '#b8804a');
+// roster expansion
+viewmodels.carbine = vmVariant('ar', 0.86, '#8ea0b8');
+viewmodels.battle = vmVariant('ar', 1.05, '#3f4653');
+viewmodels.autosniper = vmVariant('sniper', 0.95, '#4a5568');
+viewmodels.deagle = vmVariant('handgun', 1.12, '#c9a24a');
+viewmodels.butterfly = vmVariant('scythe', 0.85, '#c0e0ff');
+viewmodels.satchel = vmVariant('grenade', 1.0, '#d64545');
 
 // ---- weapon skins: re-material a gun group with an equipped skin ----
 let mySkins = { owned: [], equipped: {} };
@@ -931,7 +956,7 @@ function buildLoadoutUI() {
         const card = document.createElement('div');
         const chosen = myPickedLoadout.includes(id);
         card.className = 'ld-w' + (chosen ? ' sel' : '');
-        const stat = w.melee ? `${w.dmg} dmg` : w.utility ? (w.placeable ? `${w.count} pads` : `x${w.count}`) : `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''} dmg`;
+        const stat = w.melee ? `${w.dmg} dmg` : w.utility ? (w.placeable ? `${w.count} pads` : w.infinite ? '∞ throws' : `x${w.count}`) : `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''} dmg`;
         card.innerHTML = `<div class="em">${WEAPON_ICONS[id] || '🔫'}</div><div class="nm">${w.name}</div><div class="st">${stat}</div>`;
         card.addEventListener('click', () => {
           const slot = CLASS_ORDER.indexOf(cls);   // 0..3
@@ -1131,6 +1156,15 @@ function tryFire() {
     updateLoadoutHud();
     return;
   }
+  if (me.weapon === 'satchel') {
+    const W = WEAPONS.satchel;                     // infinite throws — no ammo
+    if (now - me.lastFire < W.rate) return;
+    me.lastFire = now;
+    vmAnim.throwT = 0;
+    const d = aimDir(0);
+    if (game.phase === 'live') net.send({ t: 'nade', wid: 'satchel', dx: d.x, dy: d.y + 0.14, dz: d.z });
+    return;
+  }
   if (me.weapon === 'jumppad') {
     const W = WEAPONS.jumppad;
     if ((me.pads ?? 0) <= 0 || now - me.lastFire < W.rate) return;
@@ -1288,7 +1322,7 @@ function drawPlate(p) {
   p.tex.needsUpdate = true;
 }
 // mini third-person weapons so you can SEE what everyone is holding
-const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper', burst: 'ar', revolver: 'handgun', uzi: 'handgun', shorty: 'handgun', katana: 'scythe', bat: 'scythe' };
+const HELD_ALIAS = { smg: 'ar', shotgun: 'ar', minigun: 'ar', dmr: 'sniper', burst: 'ar', revolver: 'handgun', uzi: 'handgun', shorty: 'handgun', katana: 'scythe', bat: 'scythe', carbine: 'ar', battle: 'ar', autosniper: 'sniper', deagle: 'handgun', butterfly: 'scythe', satchel: 'grenade' };
 function makeHeldWeapon(id) {
   id = HELD_ALIAS[id] || id;
   const g = new THREE.Group();
@@ -1447,7 +1481,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   myLoadout().forEach((id, i) => {
@@ -1455,7 +1489,8 @@ function updateLoadoutHud() {
     s.className = 'slot' + (me.weapon === id ? ' active' : '');
     s.innerHTML = `<small>${i + 1}</small>${WEAPON_ICONS[id]}`
       + (id === 'grenade' ? `<span class="cnt">${me.grenades}</span>` : '')
-      + (id === 'jumppad' ? `<span class="cnt">${me.pads ?? 0}</span>` : '');
+      + (id === 'jumppad' ? `<span class="cnt">${me.pads ?? 0}</span>` : '')
+      + (id === 'satchel' ? `<span class="cnt">∞</span>` : '');
     s.addEventListener('pointerdown', (e) => { e.preventDefault(); switchWeapon(id); }); // tap to equip (mobile + desktop)
     hud.loadout.appendChild(s);
   });
@@ -1466,6 +1501,7 @@ function updateAmmoHud() {
     const a = me.ammo[me.weapon];
     hud.mag.textContent = a.mag; hud.res.textContent = a.res;
   } else if (me.weapon === 'grenade') { hud.mag.textContent = me.grenades; hud.res.textContent = ''; }
+  else if (me.weapon === 'satchel') { hud.mag.textContent = '∞'; hud.res.textContent = ''; }
   else { hud.mag.textContent = '—'; hud.res.textContent = ''; }
   hud.wname.textContent = w.name;
   updateLoadoutHud();
@@ -2100,7 +2136,7 @@ net.on('dash', (msg) => { if (msg.id !== net.id) sfx.dash(); });
 const nades = new Map();
 net.on('nade.spawn', (msg) => {
   const g = msg.g;
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), new THREE.MeshLambertMaterial({ color: '#3f7d3f' }));
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), new THREE.MeshLambertMaterial({ color: g.wid === 'satchel' ? '#d64545' : '#3f7d3f' }));
   mesh.position.set(g.x, g.y, g.z);
   scene.add(mesh);
   nades.set(g.id, { mesh, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz });
@@ -2347,7 +2383,7 @@ function frame() {
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
-  const scoped = me.weapon === 'sniper' && me.ads > 0.78;
+  const scoped = WEAPONS[me.weapon]?.scoped && me.ads > 0.78;
   $('#scope').classList.toggle('hidden', !scoped);
   $('#crosshair').classList.toggle('hidden', scoped);
 

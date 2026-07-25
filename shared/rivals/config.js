@@ -131,6 +131,43 @@ export const WEAPONS = {
     slot: 3, name: 'Bat', class: 'melee', auto: false, melee: true,
     dmg: 40, rate: 0.55, range: 3.6, knockback: 14, vm: 'scythe',
   },
+
+  // ---- roster expansion (behaviour-distinct; reuse base viewmodels) ----
+  carbine: {
+    slot: 1, name: 'Carbine', class: 'primary', auto: false, dmg: 24, headMult: 1.6,
+    rate: 0.14, mag: 16, reserve: 96, reload: 1.7, range: 150,
+    spread: 0.008, adsSpread: 0.0022, adsZoom: 1.7, pellets: 1, vm: 'ar',
+  },
+  battle: {
+    slot: 1, name: 'Battle Rifle', class: 'primary', auto: false, burst: 2, burstGap: 0.07,
+    dmg: 28, headMult: 1.6, rate: 0.42, mag: 20, reserve: 100, reload: 2.0, range: 170,
+    spread: 0.008, adsSpread: 0.002, adsZoom: 1.8, pellets: 1, vm: 'ar',
+  },
+  autosniper: {
+    slot: 1, name: 'Auto Sniper', class: 'primary', auto: false, dmg: 48, headMult: 1.9,
+    rate: 0.55, mag: 8, reserve: 40, reload: 2.6, range: 240,
+    spread: 0.02, adsSpread: 0.0012, adsZoom: 3.6, pellets: 1, scoped: true, vm: 'sniper',
+  },
+  deagle: {
+    slot: 2, name: 'Hand Cannon', class: 'secondary', auto: false, dmg: 42, headMult: 1.8,
+    rate: 0.5, mag: 7, reserve: 42, reload: 1.7, range: 120,
+    spread: 0.007, adsSpread: 0.0022, adsZoom: 1.4, pellets: 1, vm: 'handgun',
+  },
+  butterfly: {
+    slot: 3, name: 'Butterfly', class: 'melee', auto: false, melee: true,
+    dmg: 40, rate: 0.34, range: 3.4, backstabOneshot: true, vm: 'scythe',
+  },
+  // ---- Satchel: infinite thrown explosives that blow up on player contact,
+  // plus a right-click "red button" that slide-jumps you anywhere (even mid-air) ----
+  satchel: {
+    slot: 4, name: 'Satchel', class: 'utility', auto: false, utility: true,
+    infinite: true,       // no ammo — throw explosives forever
+    throwVel: 21, fuse: 2.4, radius: 6.0, maxDmg: 76, rate: 0.5,
+    btnBoost: 16,         // red-button horizontal slide-jump burst
+    btnUp: 8.2,           // red-button upward pop
+    btnCd: 0.3,           // 0.3s cooldown on the red button
+    vm: 'grenade',
+  },
 };
 
 export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade', 'jumppad', 'sniper'];

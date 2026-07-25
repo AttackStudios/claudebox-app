@@ -141,7 +141,9 @@ export function handleMessage(p, msg, ctx) {
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
       if (!f || f.dead || m.state !== 'live') return;
-      throwGrenade(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0);
+      const wid = msg.wid === 'satchel' ? 'satchel' : 'grenade';
+      if (!allowedWeapons(m, f).includes(wid)) return;   // must actually carry it
+      throwGrenade(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0, wid);
       return;
     }
     case 'pad': {
