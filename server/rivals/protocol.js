@@ -3,11 +3,18 @@
 
 import { state, clock, publicPlayer, publicFighter } from './state.js';
 import { ROUND, MODES, WEAPONS, LOADOUT, WAVE } from '../../shared/rivals/config.js';
-import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade, placePad } from './match.js';
+import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade, placePad, applyLoadout } from './match.js';
 import { tickBots } from './bots.js';
 import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
+
+// which weapon ids a fighter is allowed to hold/fire: their wave arsenal, their
+// chosen loadout, or the default selectable set as a fallback.
+function allowedWeapons(m, f) {
+  if (m?.mode === 'wave') return f.arsenal || WAVE.startArsenal;
+  return Array.isArray(f.loadout) && f.loadout.length ? f.loadout : LOADOUT;
+}
 
 export function makeBroadcaster(getClients) {
   return (msg, exceptId = null) => {
@@ -99,10 +106,9 @@ export function handleMessage(p, msg, ctx) {
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
       if (f && !f.dead) {
-        if (m.mode === 'wave' && f.arsenal && !f.arsenal.includes(msg.id)) return;
-        if (m.mode !== 'wave' && !LOADOUT.includes(msg.id)) return;
+        if (!allowedWeapons(m, f).includes(msg.id)) return;
         f.weapon = msg.id;
-      } else if (!m && LOADOUT.includes(msg.id)) p.weapon = msg.id;   // lobby: show what they're holding too
+      } else if (!m) p.weapon = msg.id;   // lobby: show what they're holding too
       return;
     }
 
@@ -111,8 +117,8 @@ export function handleMessage(p, msg, ctx) {
       const f = m?.fighters.get(p.id);
       if (!f || f.dead || m.state !== 'live') return;
       let wid = WEAPONS[msg.weapon] ? msg.weapon : 'ar';
-      if (m.mode === 'wave' && f.arsenal && !f.arsenal.includes(wid)) wid = 'handgun';
-      else if (m.mode !== 'wave' && !LOADOUT.includes(wid)) wid = 'ar';
+      const allowed = allowedWeapons(m, f);
+      if (!allowed.includes(wid)) wid = allowed.find((id) => WEAPONS[id]?.class === 'primary') || allowed[0] || 'ar';
       fireHitscan(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0, wid);
       return;
     }
@@ -120,7 +126,10 @@ export function handleMessage(p, msg, ctx) {
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
       if (!f || f.dead || m.state !== 'live') return;
-      meleeSwing(m, f, WEAPONS[msg.weapon]?.melee ? msg.weapon : 'scythe');
+      const allowed = allowedWeapons(m, f);
+      const mw = WEAPONS[msg.weapon]?.melee && allowed.includes(msg.weapon)
+        ? msg.weapon : (allowed.find((id) => WEAPONS[id]?.melee) || 'scythe');
+      meleeSwing(m, f, mw);
       return;
     }
     case 'dash': { // cosmetic relay; movement is client-side
@@ -143,7 +152,15 @@ export function handleMessage(p, msg, ctx) {
       return;
     }
     case 'loadout': {
-      if (Array.isArray(msg.ids)) p.loadout = msg.ids.filter((id) => typeof id === 'string').slice(0, 6);
+      if (!Array.isArray(msg.ids)) return;
+      p.loadout = msg.ids.filter((id) => typeof id === 'string' && WEAPONS[id]).slice(0, 6);
+      // if we're still in the round-start freeze, re-arm the fighter now so the
+      // new kit takes effect this round (Rivals lets you pick before the round)
+      const m = p.matchId && state.matches.get(p.matchId);
+      const f = m?.fighters.get(p.id);
+      if (m && f && !f.dead && m.state === 'freeze' && m.mode !== 'wave') {
+        applyLoadout(f, p.loadout);
+      }
       return;
     }
 

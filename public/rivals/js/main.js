@@ -481,6 +481,7 @@ function updateMobileHud() {
 
 function tryCrouch(on) {
   if (on) {
+    me.slidePressAt = clockNow();   // fresh press — buffers a slide onto landing
     // SLIDE — crouch while moving on the ground bursts you forward, then decays
     const speed = Math.hypot(me.vel.x, me.vel.z);
     if (me.grounded && !me.sliding && speed > MOVE.walk * 0.5) {
@@ -640,10 +641,10 @@ function stepMe(dt) {
   if (me.pos.y <= g) {
     me.pos.y = g; me.vel.y = 0; me.grounded = true;
     if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
-    // CHAIN slide-hops: if you're holding slide as you land (even if you
-    // pressed it a hair early, mid-air), start a fresh slide instead of just
-    // crouching — this is what lets slide→jump→slide flow.
-    if (wasAirborne && !me.sliding && !frozen && (keys.has(binds.sprint) || keys.has(binds.crouch))) {
+    // CHAIN slide-hops: only if you PRESSED slide within the last moment (a
+    // fresh tap buffered onto the landing) — NOT merely holding it. Holding
+    // slide through a plain jump must not auto-slide every time you land.
+    if (wasAirborne && !me.sliding && !frozen && (now - (me.slidePressAt || -9) < 0.25)) {
       const sp = Math.hypot(me.vel.x, me.vel.z);
       if (sp > MOVE.walk * 0.5) {
         me.sliding = true;
@@ -834,6 +835,22 @@ function vmVariant(srcKey, scale, tint) {
       if (tint && n.material.color) n.material.color.lerp(new THREE.Color(tint), 0.45);
     }
   });
+  // clone(true) preserves child order but mangles userData — the cloned group's
+  // gun/rArm/lArm refs still point at the source's parts (or a broken JSON copy).
+  // Re-map them to THIS clone's own children so the per-frame part animation
+  // (frame() ~line 2399) doesn't crash every tick on a variant weapon.
+  const su = src.userData;
+  if (su?.gun) {
+    const gi = src.children.indexOf(su.gun);
+    const ri = src.children.indexOf(su.rArm);
+    const li = src.children.indexOf(su.lArm);
+    g.userData = {
+      gun: gi >= 0 ? g.children[gi] : g.children[0],
+      rArm: ri >= 0 ? g.children[ri] : undefined,
+      lArm: li >= 0 ? g.children[li] : undefined,
+      base: su.base,   // identical local rig transforms; used read-only as copy() source
+    };
+  }
   g.scale.setScalar(0.68 * scale);
   g.visible = false;
   viewRoot.add(g);
@@ -934,13 +951,26 @@ function buildLoadoutUI() {
     for (const id of myPickedLoadout) if (WEAPONS[id]) byClass[WEAPONS[id].class] = id;
     myPickedLoadout = CLASS_ORDER.map((c) => byClass[c] || weaponsOfClass(c)[0].id);
     sendLoadout();
-    if (game.phase === 'lobby') { me.weapon = myPickedLoadout[0]; me.ammo = freshAmmo(); updateLoadoutHud(); updateAmmoHud(); }
+    // apply the new kit right away in any non-combat phase (lobby, or the
+    // round-start freeze) so it's live this round, mirroring Rivals' pre-round pick
+    if (!game.waveMode && game.phase !== 'live' && game.phase !== 'podium') {
+      const util = myPickedLoadout.find((id) => WEAPONS[id]?.class === 'utility');
+      me.weapon = myPickedLoadout[0]; me.ammo = freshAmmo();
+      me.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
+      me.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
+      updateLoadoutHud(); updateAmmoHud();
+    }
     panel.classList.remove('open');
     toast?.('Loadout saved');
   });
-  // only show the button in the lobby
-  const syncBtn = () => { btn.style.display = game.phase === 'lobby' ? 'block' : 'none'; };
-  setInterval(syncBtn, 500); syncBtn();
+  // show the button every round — in the lobby and between/at the start of rounds,
+  // but not mid-fight or during the podium (and never in wave mode)
+  const syncBtn = () => {
+    const show = !game.waveMode && !['live', 'podium'].includes(game.phase);
+    btn.style.display = show ? 'block' : 'none';
+    if (!show && panel.classList.contains('open')) panel.classList.remove('open');   // never trapped in the menu mid-fight
+  };
+  setInterval(syncBtn, 200); syncBtn();
 }
 
 // ---- skins shop UI (open cases, equip skins) ----
@@ -1597,9 +1627,12 @@ net.on('round.freeze', (msg) => {
       me.pos = { ...f.pos }; me.ry = f.ry; me.pitch = 0;
       me.vel = { x: 0, y: 0, z: 0 };
       me.hp = 100; me.dead = false;
-      me.weapon = 'ar';
+      const lo = myLoadout();
+      me.weapon = lo.find((id) => WEAPONS[id]?.class === 'primary') || lo[0] || 'ar';
       me.ammo = freshAmmo();
-      me.grenades = WEAPONS.grenade.count; me.pads = WEAPONS.jumppad.count;
+      const util = lo.find((id) => WEAPONS[id]?.class === 'utility');
+      me.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
+      me.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
       me.reloading = 0;
     } else addOther(f);
   }

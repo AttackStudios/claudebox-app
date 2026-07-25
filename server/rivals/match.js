@@ -120,6 +120,21 @@ export function matchSend(m, msg) {
   }
 }
 
+// Give a fighter the weapons for a chosen loadout (or the default kit when
+// `lo` is null). Exported so a mid-freeze re-pick can re-arm the fighter.
+export function applyLoadout(f, lo) {
+  if (Array.isArray(lo) && lo.length) {
+    f.loadout = lo.filter((id) => WEAPONS[id]);
+    f.weapon = f.loadout.find((id) => WEAPONS[id]?.class === 'primary') || 'ar';
+    const util = f.loadout.find((id) => WEAPONS[id]?.class === 'utility');
+    f.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
+    f.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
+  } else {
+    f.loadout = null;
+    f.weapon = 'ar'; f.grenades = WEAPONS.grenade.count; f.pads = WEAPONS.jumppad.count;
+  }
+}
+
 function spawnFighters(m) {
   const map = MAPS[m.map] || MAPS.arena;
   const idx = { A: 0, B: 0 };
@@ -130,16 +145,7 @@ function spawnFighters(m) {
     f.ry = s.ry; f.pitch = 0; f.hp = ROUND.maxHp; f.dead = false; f.anim = 'idle';
     // apply the player's chosen loadout (bots keep the default kit)
     const owner = state.players.get(f.id);
-    const lo = owner && Array.isArray(owner.loadout) ? owner.loadout : null;
-    if (lo) {
-      f.loadout = lo;
-      f.weapon = lo.find((id) => WEAPONS[id]?.class === 'primary') || 'ar';
-      const util = lo.find((id) => WEAPONS[id]?.class === 'utility');
-      f.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
-      f.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
-    } else {
-      f.weapon = 'ar'; f.grenades = WEAPONS.grenade.count; f.pads = WEAPONS.jumppad.count;
-    }
+    applyLoadout(f, owner && Array.isArray(owner.loadout) ? owner.loadout : null);
     f.lastDamagedBy = null; f.assistBy = null;
     f.botMem = {};
   }
