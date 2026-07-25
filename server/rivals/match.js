@@ -82,7 +82,7 @@ export function createMatch(mode, playerIds, botsNeeded, botSkill) {
   const m = {
     id: genId('m'), mode, state: 'vote', stateUntil: clock() + ROUND.voteSecs,
     map: 'arena', votes: {}, score: { A: 0, B: 0 }, round: 0,
-    fighters: new Map(), grenades: [], pendingSnap: 0,
+    fighters: new Map(), grenades: [], pads: [], pendingSnap: 0,
   };
   // humans alternate teams; bots fill the rest
   playerIds.forEach((pid, i) => {
@@ -128,10 +128,12 @@ function spawnFighters(m) {
     const s = list[idx[f.team] % list.length]; idx[f.team]++;
     f.pos = { x: s.x + (Math.random() - 0.5), y: 0, z: s.z + (Math.random() - 0.5) };
     f.ry = s.ry; f.pitch = 0; f.hp = ROUND.maxHp; f.dead = false; f.anim = 'idle';
-    f.weapon = 'ar'; f.grenades = WEAPONS.grenade.count; f.lastDamagedBy = null; f.assistBy = null;
+    f.weapon = 'ar'; f.grenades = WEAPONS.grenade.count; f.pads = WEAPONS.jumppad.count; f.lastDamagedBy = null; f.assistBy = null;
     f.botMem = {};
   }
   m.grenades = [];
+  m.pads = [];
+  matchSend(m, { t: 'pad.clearall' });   // wipe any deployed pads at round start
 }
 
 function startRound(m) {
@@ -156,7 +158,7 @@ export function createWaveMatch(playerIds) {
     id: genId('m'), mode: 'wave', state: 'loading', stateUntil: clock() + 2.5,
     map: WAVE_MAPS[Math.floor(Math.random() * WAVE_MAPS.length)],
     votes: {}, score: { A: 0, B: 0 }, round: 0,
-    fighters: new Map(), grenades: [], drops: [], wave: 0, botsLeft: 0,
+    fighters: new Map(), grenades: [], pads: [], drops: [], wave: 0, botsLeft: 0,
   };
   for (const pid of playerIds) addWavePlayer(m, pid, false);
   state.matches.set(m.id, m);
@@ -187,7 +189,7 @@ function spawnWavePlayer(m, f) {
   f.pos = { x: s.x + (Math.random() - 0.5), y: 0, z: s.z + (Math.random() - 0.5) };
   f.ry = s.ry || 0; f.pitch = 0; f.hp = ROUND.maxHp; f.dead = false; f.anim = 'idle';
   f.weapon = f.arsenal?.includes(f.weapon) ? f.weapon : 'handgun';
-  f.grenades = 1;
+  f.grenades = 1; f.pads = WEAPONS.jumppad.count;
   f.botMem = {};
 }
 
@@ -284,6 +286,7 @@ function tickWaveMatch(m, dt, tickBots, endMatchCb) {
     case 'live': {
       tickBots(m, dt);
       tickGrenades(m, dt);
+      tickPads(m);
       tickDrops(m);
       if (now >= m.stateUntil) {   // failsafe: never let a wave stall forever
         for (const f of m.fighters.values()) if (f.bot && !f.dead) { f.dead = true; }
@@ -436,6 +439,7 @@ export function throwGrenade(m, thrower, dirX, dirY, dirZ) {
     x: thrower.pos.x, y: eyeY(thrower), z: thrower.pos.z,
     vx: (dirX / len) * w.throwVel, vy: (dirY / len) * w.throwVel + 2.5, vz: (dirZ / len) * w.throwVel,
     explodeAt: now + w.fuse,
+    armAt: now + 0.14,   // brief arm so it can't detonate in your own face at throw
   };
   m.grenades.push(g);
   matchSend(m, { t: 'nade.spawn', g: { id: g.id, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz } });
@@ -448,15 +452,19 @@ function tickGrenades(m, dt) {
   for (let i = m.grenades.length - 1; i >= 0; i--) {
     const g = m.grenades[i];
     g.vy -= MOVE.gravity * 0.8 * dt;
-    // integrate with 1-axis bounce checks
+    // integrate; grenades explode on ANY solid impact (or on touching a
+    // fighter once armed) — no bouncing. This is what enables grenade-jumps.
     const nx = g.x + g.vx * dt, ny = g.y + g.vy * dt, nz = g.z + g.vz * dt;
-    if (pointInBoxes(boxes, nx, g.y, g.z)) g.vx *= -0.42; else g.x = nx;
-    if (ny < 0.12 || pointInBoxes(boxes, g.x, ny, g.z)) { g.vy *= -0.42; g.vx *= 0.8; g.vz *= 0.8; if (Math.abs(g.vy) < 1) g.vy = 0; }
-    else g.y = ny;
-    if (pointInBoxes(boxes, g.x, g.y, nz)) g.vz *= -0.42; else g.z = nz;
-    if (g.y < 0.12) g.y = 0.12;
+    let impact = (ny < 0.12) || pointInBoxes(boxes, nx, ny, nz);
+    g.x = nx; g.y = Math.max(0.12, ny); g.z = nz;
+    if (!impact && now >= (g.armAt || 0)) {
+      for (const f of m.fighters.values()) {
+        if (f.dead) continue;
+        if (Math.hypot(f.pos.x - g.x, eyeY(f) - g.y, f.pos.z - g.z) < 1.6) { impact = true; break; }
+      }
+    }
 
-    if (now >= g.explodeAt) {
+    if (impact || now >= g.explodeAt) {
       m.grenades.splice(i, 1);
       matchSend(m, { t: 'nade.boom', id: g.id, x: g.x, y: g.y, z: g.z });
       const owner = m.fighters.get(g.owner);
@@ -478,6 +486,38 @@ function tickGrenades(m, dt) {
         const dmg = w.maxDmg * (1 - d / w.radius);
         if (dmg >= 1) applyDamage(m, f, Math.round(dmg), owner, 'grenade', false);
       }
+    }
+  }
+}
+
+// ---------------- deployable jump pads ----------------
+function sendPadCount(m, f) {
+  const p = state.players.get(f.id);
+  if (p?.ws?.readyState === 1) p.ws.send(JSON.stringify({ t: 'padcount', n: f.pads ?? 0 }));
+}
+
+export function placePad(m, f, x, y, z, nx, ny, nz) {
+  const w = WEAPONS.jumppad;
+  const now = clock();
+  if (!f || f.dead || (f.pads ?? 0) <= 0 || now - (f.padAt || 0) < w.rate) return;
+  if (Math.hypot(x - f.pos.x, y - eyeY(f), z - f.pos.z) > w.range + 3) return;   // must be within reach
+  f.padAt = now; f.pads--;
+  const nl = Math.hypot(nx, ny, nz) || 1;
+  const pad = { id: genId('pad'), owner: f.id, team: f.team, x, y, z, nx: nx / nl, ny: ny / nl, nz: nz / nl, expireAt: now + w.life };
+  m.pads.push(pad);
+  matchSend(m, { t: 'pad.spawn', id: pad.id, x: pad.x, y: pad.y, z: pad.z, nx: pad.nx, ny: pad.ny, nz: pad.nz });
+  sendPadCount(m, f);
+}
+
+function tickPads(m) {
+  const now = clock();
+  for (let i = m.pads.length - 1; i >= 0; i--) {
+    const pad = m.pads[i];
+    if (now >= pad.expireAt) {
+      m.pads.splice(i, 1);
+      matchSend(m, { t: 'pad.remove', id: pad.id });
+      const owner = m.fighters.get(pad.owner);
+      if (owner) { owner.pads = Math.min(WEAPONS.jumppad.count, (owner.pads ?? 0) + 1); sendPadCount(m, owner); }  // refund the charge
     }
   }
 }
@@ -515,6 +555,7 @@ export function tickMatch(m, dt, tickBots, endMatchCb) {
     case 'live': {
       tickBots(m, dt);
       tickGrenades(m, dt);
+      tickPads(m);
       if (now >= m.stateUntil) {
         // timeout: side with more remaining HP takes the round (tie = no point)
         let hpA = 0, hpB = 0;

@@ -21,7 +21,7 @@ export const MOVE = {
   radius: 0.42,         // collision capsule-ish AABB half-width
   heightStand: 1.85,
   heightCrouch: 1.25,
-  airControl: 0.28,
+  airControl: 0.62,     // strong mid-air steering — redirect your momentum like Rivals
 };
 
 export const ROUND = {
@@ -61,6 +61,15 @@ export const WEAPONS = {
     slot: 4, name: 'Grenade', auto: false, utility: true,
     count: 3, throwVel: 17, fuse: 1.4, radius: 6.5, maxDmg: 85, rate: 0.8,
   },
+  jumppad: {
+    slot: 4, name: 'Jump Pad', auto: false, utility: true, placeable: true,
+    count: 4,        // up to 4 pads placed at once
+    life: 90,        // each pad vanishes after 90s (refunds its charge)
+    launch: 24,      // launch speed along the surface it's stuck to
+    range: 7,        // how far you can place it
+    rate: 0.5,
+    padRadius: 1.4,  // touch radius that triggers a launch
+  },
   sniper: {
     slot: 5, name: 'Sniper', auto: false,
     dmg: 70, headMult: 2, rate: 1.15, mag: 5, reserve: 25,
@@ -94,7 +103,7 @@ export const WEAPONS = {
   },
 };
 
-export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade', 'sniper', 'fists'];
+export const LOADOUT = ['ar', 'handgun', 'scythe', 'grenade', 'jumppad', 'sniper'];
 
 // ---- WAVE SURVIVAL (co-op horde) ----
 export const WAVE = {

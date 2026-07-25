@@ -3,7 +3,7 @@
 
 import { state, clock, publicPlayer, publicFighter } from './state.js';
 import { ROUND, MODES, WEAPONS, LOADOUT, WAVE } from '../../shared/rivals/config.js';
-import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade } from './match.js';
+import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade, placePad } from './match.js';
 import { tickBots } from './bots.js';
 import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
@@ -133,6 +133,13 @@ export function handleMessage(p, msg, ctx) {
       const f = m?.fighters.get(p.id);
       if (!f || f.dead || m.state !== 'live') return;
       throwGrenade(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0);
+      return;
+    }
+    case 'pad': {
+      const m = p.matchId && state.matches.get(p.matchId);
+      const f = m?.fighters.get(p.id);
+      if (!f || f.dead || m.state !== 'live') return;
+      placePad(m, f, +msg.x || 0, +msg.y || 0, +msg.z || 0, +msg.nx || 0, +msg.ny || 1, +msg.nz || 0);
       return;
     }
 

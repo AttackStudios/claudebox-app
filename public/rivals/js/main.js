@@ -178,22 +178,38 @@ function panelTex(w, h) {
 
 let mapGroup = null;
 let mapBoxes = [];
-let mapPads = [];        // jump pads on the current map
+let placedPads = [];     // deployed jump pads: { id, x,y,z, nx,ny,nz, group, core, cd }
 let rangeTargets = [];   // lobby shooting-range dummies
 
-// A Rivals-style jump pad: chamfered light-blue plate with a glowing cyan core
-// and four neon chevrons pointing inward. Returns { group, core } (core pulses).
-function buildPad(px, py, pz) {
+// Ray against the current map's meshes → { point, normal } of the first hit,
+// or null. Used to stick a jump pad to whatever surface you aim at.
+const _padRC = new THREE.Raycaster();
+function raycastMap(origin, dir, maxDist) {
+  if (!mapGroup) return null;
+  _padRC.set(origin, new THREE.Vector3(dir.x, dir.y, dir.z).normalize());
+  _padRC.far = maxDist;
+  const hits = _padRC.intersectObject(mapGroup, true);
+  for (const h of hits) {
+    if (!h.face) continue;
+    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).normalize();
+    return { point: h.point, normal: n };
+  }
+  return null;
+}
+
+// A Rivals-style jump pad, oriented so its face points along `normal` (so it
+// sticks flat on floors, walls or ceilings and launches you outward).
+function buildPad(px, py, pz, normal) {
   const group = new THREE.Group();
   const plate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.3, 2.4), new THREE.MeshLambertMaterial({ color: '#aebccd' }));
   plate.position.y = 0.15; group.add(plate);
-  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {   // corner tabs
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
     const c = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.42, 0.6), new THREE.MeshLambertMaterial({ color: '#c6d3e2' }));
     c.position.set(sx * 0.9, 0.21, sz * 0.9); group.add(c);
   }
   const core = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.34, 0.95), new THREE.MeshBasicMaterial({ color: '#6fd8ff' }));
   core.position.y = 0.18; group.add(core);
-  for (let i = 0; i < 4; i++) {                                     // neon chevrons
+  for (let i = 0; i < 4; i++) {
     const a = i * Math.PI / 2;
     const bar = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.32, 1.15), new THREE.MeshBasicMaterial({ color: '#37e0ff' }));
     bar.position.set(Math.cos(a) * 0.78, 0.19, Math.sin(a) * 0.78);
@@ -201,6 +217,8 @@ function buildPad(px, py, pz) {
     group.add(bar);
   }
   group.position.set(px, py, pz);
+  // aim the pad's local +Y along the surface normal
+  if (normal) group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(normal.x, normal.y, normal.z).normalize());
   return { group, core };
 }
 
@@ -233,6 +251,7 @@ function buildMap(def) {
   }
   // boxes — match maps get the tiled-panel treatment; glow boxes are emissive
   for (const b of def.boxes) {
+    if (b.invisible) continue;   // out-of-bounds barrier: solid but not drawn
     const mat = b.glow
       ? new THREE.MeshBasicMaterial({ color: b.color })
       : new THREE.MeshLambertMaterial({ color: b.color, map: panels && !b.plain ? panelTex(Math.max(b.sx, b.sz), Math.max(b.sy, 1)) : null });
@@ -266,13 +285,9 @@ function buildMap(def) {
     const l3 = new THREE.PointLight('#ffffff', 16, 22); l3.position.set(-8, 5.6, 6);
     mapGroup.add(l1, l2, l3);
   }
-  // jump pads — blue glowing launch pads
-  mapPads = [];
-  for (const p of (def.pads || [])) {
-    const pad = buildPad(p.x, p.y || 0, p.z);
-    mapGroup.add(pad.group);
-    mapPads.push({ x: p.x, y: p.y || 0, z: p.z, power: p.power || MOVE.padPower, core: pad.core });
-  }
+  // deployed jump pads reset on map change (they're placed live via the net)
+  for (const p of placedPads) mapGroup.remove?.(p.group);
+  placedPads = [];
   scene.add(mapGroup);
   mapBoxes = def.boxes.filter((b) => !b.glow);
   // shooting range dummies (lobby only)
@@ -310,7 +325,11 @@ canvas.addEventListener('click', () => { if (!locked && !isTouch) canvas.request
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
   if (!locked) return;
-  const sens = 0.0021 * (me.ads > 0.5 ? (me.weapon === 'sniper' ? 0.48 : 0.7) : 1);
+  // scoped/ADS look speed is nerfed in proportion to the zoom — the more
+  // zoomed in you are, the slower the camera turns (sniper slows the most)
+  const w = WEAPONS[me.weapon];
+  const zoom = (me.ads > 0.02 && w && w.adsZoom) ? w.adsZoom : 1;
+  const sens = 0.0021 * (1 - me.ads * (1 - 1 / zoom));
   me.ry -= e.movementX * sens;
   me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - e.movementY * sens));
 });
@@ -613,19 +632,36 @@ function stepMe(dt) {
   if (me.pos.y <= g) {
     me.pos.y = g; me.vel.y = 0; me.grounded = true;
     if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
-    // JUMP PAD — standing on one launches you straight up (keeps your h-speed)
-    for (const p of mapPads) {
-      if (Math.abs(g - p.y) < 0.6 && Math.abs(me.pos.x - p.x) < 1.1 && Math.abs(me.pos.z - p.z) < 1.1) {
-        me.vel.y = p.power; me.grounded = false; me.sliding = false;
-        me.padAt = now; sfx.dash?.();
-        break;
+    // CHAIN slide-hops: if you're holding slide as you land (even if you
+    // pressed it a hair early, mid-air), start a fresh slide instead of just
+    // crouching — this is what lets slide→jump→slide flow.
+    if (wasAirborne && !me.sliding && !frozen && (keys.has(binds.sprint) || keys.has(binds.crouch))) {
+      const sp = Math.hypot(me.vel.x, me.vel.z);
+      if (sp > MOVE.walk * 0.5) {
+        me.sliding = true;
+        me.slideVel = { x: (me.vel.x / sp) * MOVE.slideBurst, z: (me.vel.z / sp) * MOVE.slideBurst };
+        sfx.slide?.();
       }
     }
   }
   else me.grounded = false;
 
-  // gentle pulse on the jump-pad cores
-  for (const p of mapPads) { if (p.core) { const s = 1 + Math.sin(now * 4 + p.x) * 0.12; p.core.scale.set(s, 1, s); } }
+  // jump pads: pulse the core, and launch you along the pad's face if you
+  // touch one (works on floors, walls and ceilings)
+  const W_PAD = WEAPONS.jumppad;
+  for (const p of placedPads) {
+    if (p.core) { const s = 1 + Math.sin(now * 4 + p.x) * 0.12; p.core.scale.set(s, 1, s); }
+    if (me.dead) continue;
+    if (p.cd && now - p.cd < 0.35) continue;
+    const dx = me.pos.x - p.x, dy = (me.pos.y + 0.9) - p.y, dz = me.pos.z - p.z;
+    if (Math.hypot(dx, dy, dz) < (W_PAD.padRadius || 1.4) + 0.5) {
+      me.vel.x = p.nx * W_PAD.launch;
+      me.vel.y = p.ny * W_PAD.launch + (p.ny > 0.4 ? 0 : 3);   // a little lift off wall pads
+      me.vel.z = p.nz * W_PAD.launch;
+      me.grounded = false; me.sliding = false; p.cd = now;
+      sfx.dash?.();
+    }
+  }
 
   // camera — eye height eases down smoothly while sliding/crouching
   const eyeTarget = me.crouch || me.sliding ? MOVE.eyeCrouch : MOVE.eyeStand;
@@ -973,6 +1009,20 @@ function tryFire() {
     updateLoadoutHud();
     return;
   }
+  if (me.weapon === 'jumppad') {
+    const W = WEAPONS.jumppad;
+    if ((me.pads ?? 0) <= 0 || now - me.lastFire < W.rate) return;
+    // aim a ray at the surface you're looking at; place the pad flat on it
+    const hit = raycastMap(camera.position, aimDir(0), W.range);
+    if (!hit) { sfx.reload?.(); return; }         // nothing in range to stick to
+    me.lastFire = now; me.pads = Math.max(0, (me.pads ?? 0) - 1);
+    vmAnim.throwT = 0;
+    if (game.phase === 'live' || game.phase === 'lobby') {
+      net.send({ t: 'pad', x: hit.point.x, y: hit.point.y, z: hit.point.z, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z });
+    }
+    updateLoadoutHud();
+    return;
+  }
   if (me.reloading) return;
   const a = me.ammo[me.weapon];
   if (a.mag <= 0) { startReload(); return; }
@@ -1256,13 +1306,15 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   myLoadout().forEach((id, i) => {
     const s = document.createElement('div');
     s.className = 'slot' + (me.weapon === id ? ' active' : '');
-    s.innerHTML = `<small>${i + 1}</small>${WEAPON_ICONS[id]}` + (id === 'grenade' ? `<span class="cnt">${me.grenades}</span>` : '');
+    s.innerHTML = `<small>${i + 1}</small>${WEAPON_ICONS[id]}`
+      + (id === 'grenade' ? `<span class="cnt">${me.grenades}</span>` : '')
+      + (id === 'jumppad' ? `<span class="cnt">${me.pads ?? 0}</span>` : '');
     s.addEventListener('pointerdown', (e) => { e.preventDefault(); switchWeapon(id); }); // tap to equip (mobile + desktop)
     hud.loadout.appendChild(s);
   });
@@ -1435,7 +1487,7 @@ net.on('round.freeze', (msg) => {
       me.hp = 100; me.dead = false;
       me.weapon = 'ar';
       me.ammo = freshAmmo();
-      me.grenades = WEAPONS.grenade.count;
+      me.grenades = WEAPONS.grenade.count; me.pads = WEAPONS.jumppad.count;
       me.reloading = 0;
     } else addOther(f);
   }
@@ -1712,7 +1764,7 @@ function startWaveMatch(msg) {
   me.hp = 100; me.dead = false;
   me.weapon = 'handgun';
   me.ammo = freshAmmo();
-  me.grenades = 1; me.reloading = 0;
+  me.grenades = 1; me.pads = WEAPONS.jumppad.count; me.reloading = 0;
   $('#match-top').classList.add('hidden');
   $('#health-wrap').classList.remove('hidden');
   $('#ammo-wrap').classList.remove('hidden');
@@ -1913,6 +1965,19 @@ net.on('nade.boom', (msg) => {
   if (n) { scene.remove(n.mesh); nades.delete(msg.id); }
   boomFx(msg.x, msg.y, msg.z);
 });
+
+// ---- deployed jump pads (placeable utility) ----
+net.on('pad.spawn', (msg) => {
+  const pad = buildPad(msg.x, msg.y, msg.z, { x: msg.nx, y: msg.ny, z: msg.nz });
+  scene.add(pad.group);
+  placedPads.push({ id: msg.id, x: msg.x, y: msg.y, z: msg.z, nx: msg.nx, ny: msg.ny, nz: msg.nz, group: pad.group, core: pad.core, cd: 0 });
+});
+net.on('pad.remove', (msg) => {
+  const i = placedPads.findIndex((p) => p.id === msg.id);
+  if (i >= 0) { scene.remove(placedPads[i].group); placedPads.splice(i, 1); }
+});
+net.on('padcount', (msg) => { me.pads = msg.n | 0; updateLoadoutHud(); });
+
 function boomFx(x, y, z) {
   sfx.boom();
   const s = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 14), new THREE.MeshBasicMaterial({ color: '#ffcf5c', transparent: true, opacity: 0.95 }));
