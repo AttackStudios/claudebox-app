@@ -56,6 +56,8 @@ export const ARENA = {
     B(0, 4.76, 0, 8.1, 0.16, 2.6, '#eaf4ff', { glow: true }),
   ],
   // ry chosen so spawns FACE the arena centre (forward = (-sin ry, -cos ry))
+  // jump pads: launch you up when you step on them (y = ground top)
+  pads: [{ x: -19, y: 0, z: 0 }, { x: 19, y: 0, z: 0 }, { x: 0, y: 0, z: 16 }, { x: 0, y: 0, z: -16 }],
   spawnsA: [{ x: -31, z: -17, ry: -2.07 }, { x: -31, z: 17, ry: -1.07 }],
   spawnsB: [{ x: 31, z: 17, ry: 1.07 }, { x: 31, z: -17, ry: 2.07 }],
 };
@@ -99,6 +101,7 @@ export const BATTLEGROUND = {
     // glowing caps on the mid pipe-rack posts
     B(-10.5, 2.72, -19.5, 0.9, 0.22, 0.9, BG_NEON2, { glow: true }), B(10.5, 2.72, -19.5, 0.9, 0.22, 0.9, BG_NEON2, { glow: true }),
   ],
+  pads: [{ x: -22, y: 0, z: 0 }, { x: 22, y: 0, z: 0 }, { x: 0, y: 0, z: 20 }, { x: 0, y: 0, z: -20 }],
   spawnsA: [{ x: -39, z: 21, ry: -1.08 }, { x: -39, z: -21, ry: -2.06 }],
   spawnsB: [{ x: 39, z: -21, ry: 2.06 }, { x: 39, z: 21, ry: 1.08 }],
 };

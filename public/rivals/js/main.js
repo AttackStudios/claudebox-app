@@ -178,7 +178,31 @@ function panelTex(w, h) {
 
 let mapGroup = null;
 let mapBoxes = [];
+let mapPads = [];        // jump pads on the current map
 let rangeTargets = [];   // lobby shooting-range dummies
+
+// A Rivals-style jump pad: chamfered light-blue plate with a glowing cyan core
+// and four neon chevrons pointing inward. Returns { group, core } (core pulses).
+function buildPad(px, py, pz) {
+  const group = new THREE.Group();
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.3, 2.4), new THREE.MeshLambertMaterial({ color: '#aebccd' }));
+  plate.position.y = 0.15; group.add(plate);
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {   // corner tabs
+    const c = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.42, 0.6), new THREE.MeshLambertMaterial({ color: '#c6d3e2' }));
+    c.position.set(sx * 0.9, 0.21, sz * 0.9); group.add(c);
+  }
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.34, 0.95), new THREE.MeshBasicMaterial({ color: '#6fd8ff' }));
+  core.position.y = 0.18; group.add(core);
+  for (let i = 0; i < 4; i++) {                                     // neon chevrons
+    const a = i * Math.PI / 2;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.32, 1.15), new THREE.MeshBasicMaterial({ color: '#37e0ff' }));
+    bar.position.set(Math.cos(a) * 0.78, 0.19, Math.sin(a) * 0.78);
+    bar.rotation.y = a + Math.PI / 4;
+    group.add(bar);
+  }
+  group.position.set(px, py, pz);
+  return { group, core };
+}
 
 function buildMap(def) {
   if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); }
@@ -241,6 +265,13 @@ function buildMap(def) {
     const l2 = new THREE.PointLight('#ff7eb6', 22, 24); l2.position.set(11, 5, 4);
     const l3 = new THREE.PointLight('#ffffff', 16, 22); l3.position.set(-8, 5.6, 6);
     mapGroup.add(l1, l2, l3);
+  }
+  // jump pads — blue glowing launch pads
+  mapPads = [];
+  for (const p of (def.pads || [])) {
+    const pad = buildPad(p.x, p.y || 0, p.z);
+    mapGroup.add(pad.group);
+    mapPads.push({ x: p.x, y: p.y || 0, z: p.z, power: p.power || MOVE.padPower, core: pad.core });
   }
   scene.add(mapGroup);
   mapBoxes = def.boxes.filter((b) => !b.glow);
@@ -423,10 +454,9 @@ function updateMobileHud() {
 
 function tryCrouch(on) {
   if (on) {
+    // SLIDE — crouch while moving on the ground bursts you forward, then decays
     const speed = Math.hypot(me.vel.x, me.vel.z);
-    const sprinting = isSprinting() && speed > MOVE.walk * 0.9;
-    if (sprinting && me.grounded && !me.sliding) {
-      // SLIDE — signature move
+    if (me.grounded && !me.sliding && speed > MOVE.walk * 0.5) {
       me.sliding = true;
       const l = speed || 1;
       me.slideVel = { x: (me.vel.x / l) * MOVE.slideBurst, z: (me.vel.z / l) * MOVE.slideBurst };
@@ -534,25 +564,36 @@ function stepMe(dt) {
   const rx = Math.cos(me.ry), rz = -Math.sin(me.ry);
   let wishX = fx * mz + rx * mx, wishZ = fz * mz + rz * mx;
   const wl = Math.hypot(wishX, wishZ) || 1; wishX /= wl; wishZ /= wl;
-  const sprinting = isSprinting() && mz > 0 && !me.crouch;
-  const speed = me.crouch && !me.sliding ? MOVE.crouch : sprinting ? MOVE.sprint : MOVE.walk;
+  const speed = me.crouch && !me.sliding ? MOVE.crouch : MOVE.walk;   // no sprint
 
   if (now < me.dashUntil) {                     // dash overrides
     me.vel.x = me.dashVec.x; me.vel.z = me.dashVec.z;
-  } else if (me.sliding) {                       // slide decays
+  } else if (me.sliding) {                       // slide decays slowly
     const l = Math.hypot(me.slideVel.x, me.slideVel.z);
     const nl = Math.max(0, l - MOVE.slideFriction * dt);
-    if (nl <= MOVE.crouch) { me.sliding = false; }
+    if (nl <= MOVE.slideMin) { me.sliding = false; }
     else { me.slideVel.x *= nl / (l || 1); me.slideVel.z *= nl / (l || 1); }
     me.vel.x = me.slideVel.x; me.vel.z = me.slideVel.z;
   } else if (me.grounded) {
     me.vel.x = (mx || mz) ? wishX * speed : 0;
     me.vel.z = (mx || mz) ? wishZ * speed : 0;
-  } else if (mx || mz) {                         // air control
+  } else if (mx || mz) {                         // air: steer toward input but
+    // only ACCELERATE toward wish (don't scrub away slide-jump momentum)
+    const cur = Math.hypot(me.vel.x, me.vel.z);
     me.vel.x += (wishX * speed - me.vel.x) * MOVE.airControl * dt * 8;
     me.vel.z += (wishZ * speed - me.vel.z) * MOVE.airControl * dt * 8;
+    const nn = Math.hypot(me.vel.x, me.vel.z);
+    if (nn < cur) { me.vel.x *= cur / (nn || 1); me.vel.z *= cur / (nn || 1); }   // keep top speed
   }
-  if (keys.has(binds.jump) && me.grounded && !frozen) { me.vel.y = MOVE.jumpVel; me.grounded = false; me.sliding = false; }
+  if (keys.has(binds.jump) && me.grounded && !frozen) {
+    me.vel.y = MOVE.jumpVel; me.grounded = false;
+    if (me.sliding) {
+      // SLIDE-HOP: jump straight out of a slide and carry the slide's momentum
+      me.vel.x = me.slideVel.x * MOVE.slideHopKeep;
+      me.vel.z = me.slideVel.z * MOVE.slideHopKeep;
+    }
+    me.sliding = false;
+  }
 
   me.vel.y -= MOVE.gravity * dt;
   let nx = me.pos.x + me.vel.x * dt;
@@ -566,12 +607,25 @@ function stepMe(dt) {
   if (me.pos.y <= g) {
     me.pos.y = g; me.vel.y = 0; me.grounded = true;
     if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
+    // JUMP PAD — standing on one launches you straight up (keeps your h-speed)
+    for (const p of mapPads) {
+      if (Math.abs(g - p.y) < 0.6 && Math.abs(me.pos.x - p.x) < 1.1 && Math.abs(me.pos.z - p.z) < 1.1) {
+        me.vel.y = p.power; me.grounded = false; me.sliding = false;
+        me.padAt = now; sfx.dash?.();
+        break;
+      }
+    }
   }
   else me.grounded = false;
 
-  // camera
-  const eye = me.crouch || me.sliding ? MOVE.eyeCrouch : MOVE.eyeStand;
-  camera.position.set(me.pos.x, me.pos.y + eye, me.pos.z);
+  // gentle pulse on the jump-pad cores
+  for (const p of mapPads) { if (p.core) { const s = 1 + Math.sin(now * 4 + p.x) * 0.12; p.core.scale.set(s, 1, s); } }
+
+  // camera — eye height eases down smoothly while sliding/crouching
+  const eyeTarget = me.crouch || me.sliding ? MOVE.eyeCrouch : MOVE.eyeStand;
+  if (me.eye == null) me.eye = eyeTarget;
+  me.eye += (eyeTarget - me.eye) * Math.min(1, dt * 14);
+  camera.position.set(me.pos.x, me.pos.y + me.eye, me.pos.z);
   camera.rotation.set(0, 0, 0);
   camera.rotateY(me.ry);
   camera.rotateX(me.pitch);
@@ -2065,7 +2119,7 @@ function frame() {
     const k = 1 - Math.exp(-11 * dt);
     vmAnim.swayYaw += (clamp(dRy * 2.4, -0.14, 0.14) - vmAnim.swayYaw) * k;
     vmAnim.swayPitch += (clamp(dPitch * 2.2, -0.12, 0.12) - vmAnim.swayPitch) * k;
-    const rightVel = (me.vel.x * Math.cos(me.ry) - me.vel.z * Math.sin(me.ry)) / MOVE.sprint;
+    const rightVel = (me.vel.x * Math.cos(me.ry) - me.vel.z * Math.sin(me.ry)) / (MOVE.slideBurst || 19);
     vmAnim.roll += (clamp(-rightVel * 0.1, -0.09, 0.09) - vmAnim.roll) * k;
     vmAnim.sprintK += ((sprinting2 && me.ads < 0.3 ? 1 : 0) - vmAnim.sprintK) * (1 - Math.exp(-8 * dt));
     vmAnim.slideK += ((me.sliding ? 1 : 0) - vmAnim.slideK) * (1 - Math.exp(-10 * dt));

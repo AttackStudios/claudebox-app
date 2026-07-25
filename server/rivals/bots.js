@@ -89,7 +89,7 @@ export function tickBots(m, dt) {
     else if (knifer) { moveX = fwdX; moveZ = fwdZ; }          // knife-rushers just charge
     else if (dist < 6 && f.weapon !== 'scythe') { moveX = -fwdX * 0.5 + strafeX; moveZ = -fwdZ * 0.5 + strafeZ; }
     else { moveX = strafeX; moveZ = strafeZ; }
-    const sp = MOVE.sprint * skill.speed;
+    const sp = MOVE.walk * 1.25 * skill.speed;   // no sprint; bots move a touch quicker than walk
     const ml = Math.hypot(moveX, moveZ) || 1;
     let nx = f.pos.x + (moveX / ml) * sp * dt;
     let nz = f.pos.z + (moveZ / ml) * sp * dt;

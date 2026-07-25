@@ -3,22 +3,25 @@
 
 // ---- movement (the RIVALS-y part) ----
 export const MOVE = {
-  walk: 9.6,
-  sprint: 14.4,
-  crouch: 5.2,
-  slideBurst: 21,       // slide = crouch while sprinting: burst that decays…
-  slideFriction: 7.5,   // …at this rate; slide ends when speed < crouch speed
+  walk: 6.4,            // slower, grounded default pace (no sprint)
+  crouch: 4.2,
+  slideBurst: 19,       // slide = crouch while moving: a fast burst that…
+  slideFriction: 4.2,   // …decays slowly before stopping (lower = longer slide)
+  slideMin: 4.2,        // slide ends when it decays below this
   dashSpeed: 28,        // Scythe MB2: forward impulse
-  dashTime: 0.18,       // seconds of dash force
+  dashTime: 0.18,
   dashCooldown: 3.0,
   jumpVel: 8.6,
   gravity: 17,          // floatier falls
+  slideHopKeep: 0.9,    // fraction of slide speed a slide-jump keeps into the air
+  airFriction: 0.6,     // how slowly air momentum bleeds (lower = keeps speed)
+  padPower: 20,         // jump-pad upward launch velocity
   eyeStand: 1.62,
-  eyeCrouch: 1.05,
+  eyeCrouch: 0.95,      // camera drops this low while sliding/crouching
   radius: 0.42,         // collision capsule-ish AABB half-width
   heightStand: 1.85,
   heightCrouch: 1.25,
-  airControl: 0.35,
+  airControl: 0.28,
 };
 
 export const ROUND = {
