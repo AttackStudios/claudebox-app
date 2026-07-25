@@ -464,7 +464,11 @@ function tryCrouch(on) {
       window.ClaudeBox?.completeChallenge('rivals-slide');
     }
     me.crouch = true;
-  } else { me.crouch = false; if (me.sliding) me.slideEndAt = clockNow(); me.sliding = false; }
+  } else {
+    // releasing does NOT cancel a slide — once you slide it plays out fully
+    // (a tap = a full slide); only a jump ends it early. Just drop the crouch.
+    me.crouch = false;
+  }
 }
 
 function onRightDown() {
