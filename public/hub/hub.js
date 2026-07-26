@@ -217,6 +217,7 @@ const GAME_THEME = {
   'obby':            { emoji: '🧗', from: '#7c5cff', to: '#241566', accent: '#a58bff' },
   'wibit':           { emoji: '🌊', from: '#2ec5e0', to: '#144a70', accent: '#5be0ff' },
   'rivals':          { emoji: '🎯', from: '#e04b3c', to: '#3c1024', accent: '#ff6b5c' },
+  'nds':             { emoji: '🌪️', from: '#5a6a7a', to: '#1a2230', accent: '#8fd0ff' },
   'brook':           { emoji: '🏘️', from: '#4fae6a', to: '#173a24', accent: '#7fe0a0' },
   'tycoon':          { emoji: '🔥', from: '#ff7a3a', to: '#2a1866', accent: '#ffb14a' },
   'webrush':         { emoji: '🕸️', from: '#e0303c', to: '#1a2140', accent: '#ff5a6c' },

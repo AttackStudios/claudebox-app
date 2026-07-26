@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a6a7a"/><stop offset="1" stop-color="#1a2230"/>
+    </linearGradient>
+    <linearGradient id="tor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cfe0f0"/><stop offset="1" stop-color="#8fa4ba"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="34" fill="url(#sky)"/>
+  <!-- water -->
+  <rect y="140" width="200" height="60" fill="#1f6fb0" opacity="0.55"/>
+  <!-- island -->
+  <ellipse cx="100" cy="152" rx="66" ry="20" fill="#3fae5a"/>
+  <ellipse cx="100" cy="149" rx="66" ry="18" fill="#54c46e"/>
+  <!-- tornado funnel -->
+  <path d="M60 40 Q150 46 132 60 Q78 66 118 82 Q84 88 108 104 Q92 110 102 126 Q96 134 100 146 Q104 134 100 126 Q120 110 104 104 Q140 88 116 82 Q160 66 130 60 Q168 46 60 40 Z" fill="url(#tor)" opacity="0.92"/>
+  <ellipse cx="100" cy="146" rx="16" ry="5" fill="#6a5a3a" opacity="0.6"/>
+  <!-- meteor -->
+  <circle cx="158" cy="52" r="7" fill="#ff6a2a"/>
+  <path d="M158 52 L182 30" stroke="#ffb060" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+</svg>

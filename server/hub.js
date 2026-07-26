@@ -93,6 +93,16 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'nds',
+    title: 'Natural Disaster Survival',
+    tagline: 'Outlast tornadoes, floods, meteors & more on a tiny island.',
+    art: '/icons/game-nds.svg',
+    url: '/games/nds',
+    creators: ['ClaudeBox Studios'],
+    tags: ['Survival', 'Disasters', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'rivals',
     title: 'Rivals',
     tagline: 'Lock in. First to five wins the duel.',
@@ -329,6 +339,22 @@ function setUserPassword(u, pw) { const salt = randomBytes(16).toString('hex'); 
 function verifyPw(u, pw) {
   if (!u || !u.pwHash || !u.pwSalt) return false;
   try { return timingSafeEqual(Buffer.from(hashPw(pw, u.pwSalt), 'hex'), Buffer.from(u.pwHash, 'hex')); } catch { return false; }
+}
+
+// ---- reward / currency helpers used by game servers ----
+export function grantReward(name, stars = 0, cubes = 0) {
+  const u = ensureUser(name); ensureWallet(u);
+  u.stars += Math.max(0, stars | 0);
+  u.cubes += Math.max(0, cubes | 0);
+  save();
+  return { stars: u.stars, cubes: u.cubes };
+}
+export function spendCubes(name, amount) {
+  const u = ensureUser(name); ensureWallet(u);
+  amount = Math.max(0, amount | 0);
+  if (u.cubes < amount) return { ok: false, cubes: u.cubes };
+  u.cubes -= amount; save();
+  return { ok: true, cubes: u.cubes };
 }
 
 // ---- Cat Paw: a unique earned skin. LilBugTrainer owns it; up to 3 others can

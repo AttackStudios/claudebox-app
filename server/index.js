@@ -31,6 +31,8 @@ import { state as wbState, genId as wbGenId, publicPlayer as wbPublicPlayer, clo
 import { handleMessage as wbHandle, onDisconnect as wbDisconnect, makeBroadcaster as wbBroadcaster, tickRound as wbTickRound, getRoundInfo as wbRoundInfo } from './wibit/protocol.js';
 import { state as rvState, genId as rvGenId } from './rivals/state.js';
 import { handleMessage as rvHandle, onDisconnect as rvDisconnect, tickRivals, snapshotRivals } from './rivals/protocol.js';
+import { state as ndsState, genId as ndsGenId } from './nds/state.js';
+import { handleMessage as ndsHandle, onDisconnect as ndsDisconnect, tickNds, snapshotNds } from './nds/game.js';
 import { state as bkState, genId as bkGenId, publicPlayer as bkPublicPlayer, clock as bkClock } from './brook/state.js';
 import { handleMessage as bkHandle, onDisconnect as bkDisconnect, makeBroadcaster as bkBroadcaster } from './brook/protocol.js';
 import { state as tyState, makePlayer as tyMakePlayer } from './tycoon/state.js';
@@ -76,6 +78,7 @@ app.get('/games/restaurant-sim-2', (req, res) => res.sendFile(path.join(ROOT, 'p
 app.get('/games/obby', (req, res) => res.sendFile(path.join(ROOT, 'public', 'obby', 'index.html')));
 app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wibit', 'index.html')));
 app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));
+app.get('/games/nds', (req, res) => res.sendFile(path.join(ROOT, 'public', 'nds', 'index.html')));
 app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
 app.get('/games/tycoon', (req, res) => res.sendFile(path.join(ROOT, 'public', 'tycoon', 'index.html')));
 app.get('/games/webrush', (req, res) => res.sendFile(path.join(ROOT, 'public', 'webrush', 'index.html')));
@@ -100,6 +103,7 @@ const bkWss = new WebSocketServer({ noServer: true });
 const tyWss = new WebSocketServer({ noServer: true });
 const wrWss = new WebSocketServer({ noServer: true });
 const pzWss = new WebSocketServer({ noServer: true });
+const ndsWss = new WebSocketServer({ noServer: true });
 const vcWss = new WebSocketServer({ noServer: true });
 vcWss.on('connection', (ws) => voiceConnection(ws));
 server.on('upgrade', (req, socket, head) => {
@@ -116,6 +120,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/tycoon-ws') tyWss.handleUpgrade(req, socket, head, (ws) => tyWss.emit('connection', ws, req));
   else if (pathname === '/webrush-ws') wrWss.handleUpgrade(req, socket, head, (ws) => wrWss.emit('connection', ws, req));
   else if (pathname === '/pizza-ws') pzWss.handleUpgrade(req, socket, head, (ws) => pzWss.emit('connection', ws, req));
+  else if (pathname === '/nds-ws') ndsWss.handleUpgrade(req, socket, head, (ws) => ndsWss.emit('connection', ws, req));
   else if (pathname === '/voice-ws') vcWss.handleUpgrade(req, socket, head, (ws) => vcWss.emit('connection', ws, req));
   else socket.destroy();
 });
@@ -389,6 +394,22 @@ rvWss.on('connection', (ws) => {
 });
 setInterval(tickRivals, 1000 / 20);       // match state machine + bots + grenades
 setInterval(snapshotRivals, 1000 / 15);   // position snapshots
+
+// ====================== Natural Disaster Survival ======================
+ndsWss.on('connection', (ws) => {
+  const p = { id: ndsGenId('s'), ws, joined: false, name: '', nameLower: '', avatar: null, pos: { x: 0, y: 0, z: 0 }, ry: 0, anim: 'idle', alive: true, onIsland: false };
+  ndsState.players.set(p.id, p);
+  const ctx = { send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
+  ws.on('message', (raw) => {
+    if (raw.length > 4096) return;
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    try { ndsHandle(p, msg, ctx); } catch (err) { console.error('[nds]', msg?.t, err); }
+  });
+  ws.on('close', () => ndsDisconnect(p, ctx));
+  ws.on('error', () => {});
+});
+setInterval(tickNds, 250);                 // round state machine
+setInterval(snapshotNds, 1000 / 12);       // position snapshots
 
 // ====================== Brooktown RP (town roleplay) ======================
 const bkJoined = () => [...bkState.players.values()].filter((p) => p.joined);

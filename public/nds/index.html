@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Natural Disaster Survival — ClaudeBox</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<link rel="icon" href="/icons/game-nds.svg">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #0b0f16; font-family: -apple-system, system-ui, sans-serif; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #eef3fa; }
+  #top { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #phase { font-size: 15px; font-weight: 800; letter-spacing: .3px; text-shadow: 0 2px 8px #000; }
+  #timer { font-size: 40px; font-weight: 900; line-height: 1; text-shadow: 0 3px 10px #000; }
+  #disasters { margin-top: 4px; font-size: 18px; font-weight: 800; text-shadow: 0 2px 8px #000; min-height: 22px; }
+  #banner { position: fixed; top: 34%; left: 50%; transform: translateX(-50%) scale(.6); opacity: 0; text-align: center; font-size: 40px; font-weight: 900; text-shadow: 0 4px 16px #000; transition: transform .4s cubic-bezier(.2,1.5,.4,1), opacity .35s; white-space: nowrap; }
+  #banner.show { transform: translateX(-50%) scale(1); opacity: 1; }
+  #wallet { position: fixed; top: 12px; right: 12px; background: rgba(14,18,28,.8); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 8px 12px; font-weight: 800; font-size: 15px; backdrop-filter: blur(6px); }
+  #status { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 700; text-shadow: 0 2px 8px #000; text-align: center; }
+  #prompt { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); background: rgba(230,190,40,.16); border: 1px solid #e6c445; border-radius: 12px; padding: 10px 16px; font-weight: 800; font-size: 15px; display: none; }
+  #dead-overlay { position: fixed; inset: 0; background: rgba(120,10,10,.28); display: none; pointer-events: none; }
+  #dead-overlay.show { display: block; }
+  #dead-tag { position: fixed; top: 44%; left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 900; color: #ff6b6b; text-shadow: 0 4px 16px #000; display: none; }
+  #hint { position: fixed; bottom: 16px; left: 16px; font-size: 12px; color: #9fb0c6; text-shadow: 0 1px 4px #000; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0f16; z-index: 10; color: #cfe0f0; font-weight: 800; font-size: 18px; }
+  .kbd { background: rgba(255,255,255,.14); border-radius: 5px; padding: 1px 6px; font-weight: 800; }
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+<div id="hud">
+  <div id="top"><div id="phase">Connecting…</div><div id="timer"></div><div id="disasters"></div></div>
+  <div id="wallet">🔷 <b id="cubes">0</b></div>
+  <div id="banner"></div>
+  <div id="status"></div>
+  <div id="prompt"></div>
+  <div id="dead-tag">💀 You didn't make it</div>
+  <div id="hint"><span class="kbd">WASD</span> move · <span class="kbd">Space</span> jump · <span class="kbd">E</span> interact · click to look</div>
+</div>
+<div id="dead-overlay"></div>
+<div id="loading">Loading the island…</div>
+<script type="module" src="/nds/js/main.js"></script>
+</body>
+</html>
