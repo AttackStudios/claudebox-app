@@ -4,7 +4,7 @@
 // (0 = indestructible; lower = weaker). Disasters damage pieces in range and
 // weak ones break off & fall — the map falls apart around you.
 
-export const WORLD = { waterY: -1.4 };
+export const WORLD = { waterY: -1.4, islandY: 0, islandRadius: 30 };
 
 export const ROUND = {
   intermission: 14, warning: 30, disaster: 27, aftermath: 6,
@@ -62,22 +62,23 @@ function officeMap() {
     if (f < FL) {
       for (const cx of [-W / 2 + 1.5, -W / 6, W / 6, W / 2 - 1.5]) for (const cz of [-D / 2 + 1.5, 0, D / 2 - 1.5]) add(P, cx, y + FH / 2, cz, 0.7, FH, 0.7, steel, INDEST, { t: 'col' });
       const nx = 11, nz = 8, ph = FH - 1.2;
-      for (let i = 0; i < nx; i++) { const px = -W / 2 + (i + 0.5) * (W / nx); add(P, px, y + FH / 2, -D / 2, W / nx - 0.18, ph, 0.18, glass, GLASS, { t: 'glass' }); add(P, px, y + FH / 2, D / 2, W / nx - 0.18, ph, 0.18, glass, GLASS, { t: 'glass' }); }
+      // curtain wall — center pane on each long side is an OPEN entrance on the ground floor
+      for (let i = 0; i < nx; i++) { const px = -W / 2 + (i + 0.5) * (W / nx); const doorway = f === 0 && i === 5; if (!doorway) add(P, px, y + FH / 2, -D / 2, W / nx - 0.18, ph, 0.18, glass, GLASS, { t: 'glass' }); if (!doorway) add(P, px, y + FH / 2, D / 2, W / nx - 0.18, ph, 0.18, glass, GLASS, { t: 'glass' }); if (doorway) for (const dz of [-D / 2, D / 2]) { add(P, px - 1.6, y + FH / 2, dz, 0.3, ph, 0.3, steel, STRONG, { t: 'jamb' }); add(P, px + 1.6, y + FH / 2, dz, 0.3, ph, 0.3, steel, STRONG, { t: 'jamb' }); } }
       for (let i = 0; i < nz; i++) { const pz = -D / 2 + (i + 0.5) * (D / nz); add(P, -W / 2, y + FH / 2, pz, 0.18, ph, D / nz - 0.18, glass, GLASS, { t: 'glass' }); add(P, W / 2, y + FH / 2, pz, 0.18, ph, D / nz - 0.18, glass, GLASS, { t: 'glass' }); }
       add(P, HX, y + FH / 2, HZ - HD / 2 - 0.3, HW + 1, FH, 0.4, core, STRONG, { t: 'wall' });   // stairwell wall
       add(P, HX + HW / 2 + 0.3, y + FH / 2, HZ, 0.4, FH, HD + 1, core, STRONG, { t: 'wall' });
       add(P, -6, y + FH / 2, 4, 0.25, FH - 1.2, 11, slab, MED, { t: 'wall' });
       add(P, -12, y + FH / 2, -3, 9, FH - 1.2, 0.25, slab, MED, { t: 'wall' });
       for (const [dx, dz] of [[-14, -7], [-14, -2], [-2, 8], [5, 9], [-9, -9]]) add(P, dx, y + 1.1, dz, 2.2, 1, 1.1, desk, FURN, { t: 'furn' });
-      add(P, 0, y + 1, D / 2 - 0.35, W - 3, 1, 0.16, rail, WEAK, { t: 'rail' });
-      add(P, 0, y + 1, -D / 2 + 0.35, W - 3, 1, 0.16, rail, WEAK, { t: 'rail' });
+      // interior railings — split with a center gap so they never block the entrances
+      for (const rz of [D / 2 - 0.35, -D / 2 + 0.35]) { add(P, -8.65, y + 1, rz, 13.7, 1, 0.16, rail, WEAK, { t: 'rail' }); add(P, 8.65, y + 1, rz, 13.7, 1, 0.16, rail, WEAK, { t: 'rail' }); }
       stairs(P, HX, HZ, y, y + FH, HW - 0.8, HD, steel);
     }
   }
   const ry = FL * FH;
   add(P, -8, ry + 1.6, -6, 5, 3, 4, steel, STRONG, { t: 'ac' });
   add(P, 7, ry + 1.1, 8, 4, 2, 4, steel, STRONG, { t: 'ac' });
-  add(P, 0, ry + 1.7, 0, 12, 0.3, 12, accent, INDEST, { t: 'helipad', ns: 1 });
+  add(P, 0, ry + 0.45, 0, 12, 0.3, 12, accent, INDEST, { t: 'helipad', ns: 1 });
   return P;
 }
 
@@ -98,22 +99,27 @@ function schoolMap() {
       const segN = 12, segW = W / segN;
       for (let i = 0; i < segN; i++) {
         const px = -W / 2 + (i + 0.5) * segW;
-        add(P, px, y + FH * 0.28, -D / 2, segW - 0.1, FH * 0.56, 0.5, brick, STRONG, { t: 'wall' });     // sill
+        const doorB = f === 0 && i === 5, doorF = f === 0 && i === 6;   // open entrances (ground floor)
+        if (!doorB) add(P, px, y + FH * 0.28, -D / 2, segW - 0.1, FH * 0.56, 0.5, brick, STRONG, { t: 'wall' });     // sill
         add(P, px, y + FH * 0.85, -D / 2, segW - 0.1, FH * 0.3, 0.5, brick, STRONG, { t: 'wall' });      // lintel
-        if (i % 2 === 0) add(P, px, y + FH * 0.56, -D / 2, segW - 1, FH * 0.32, 0.2, win, GLASS, { t: 'glass' });
-        add(P, px, y + FH * 0.28, D / 2, segW - 0.1, FH * 0.56, 0.5, brick, STRONG, { t: 'wall' });
+        if (i % 2 === 0 && !doorB) add(P, px, y + FH * 0.56, -D / 2, segW - 1, FH * 0.32, 0.2, win, GLASS, { t: 'glass' });
+        if (!doorF) add(P, px, y + FH * 0.28, D / 2, segW - 0.1, FH * 0.56, 0.5, brick, STRONG, { t: 'wall' });
         add(P, px, y + FH * 0.85, D / 2, segW - 0.1, FH * 0.3, 0.5, brick, STRONG, { t: 'wall' });
-        if (i % 2 === 1) add(P, px, y + FH * 0.56, D / 2, segW - 1, FH * 0.32, 0.2, win, GLASS, { t: 'glass' });
+        if (i % 2 === 1 && !doorF) add(P, px, y + FH * 0.56, D / 2, segW - 1, FH * 0.32, 0.2, win, GLASS, { t: 'glass' });
       }
       const segD = 8; for (let i = 0; i < segD; i++) { const pz = -D / 2 + (i + 0.5) * (D / segD); add(P, -W / 2, y + FH / 2, pz, 0.5, FH, D / segD - 0.1, brick2, STRONG, { t: 'wall' }); add(P, W / 2, y + FH / 2, pz, 0.5, FH, D / segD - 0.1, brick2, STRONG, { t: 'wall' }); }
       // interior: classrooms via partition walls (medium) + a big gym on the right (open)
-      add(P, -4, y + FH / 2, 0, 0.3, FH - 0.6, D - 2, slab, MED, { t: 'wall' });   // main hallway wall
-      for (const wx of [-14, -9]) add(P, wx, y + FH / 2, -6, 0.3, FH - 0.6, 12, slab, MED, { t: 'wall' });
+      // main hallway wall — door gaps at z≈±7 so both wings connect
+      add(P, -4, y + FH / 2, -10, 0.3, FH - 0.6, 4, slab, MED, { t: 'wall' });
+      add(P, -4, y + FH / 2, 0, 0.3, FH - 0.6, 12, slab, MED, { t: 'wall' });
+      add(P, -4, y + FH / 2, 10, 0.3, FH - 0.6, 4, slab, MED, { t: 'wall' });
+      // classroom dividers — each with a doorway gap so no room is sealed
+      for (const wx of [-14, -9]) { add(P, wx, y + FH / 2, -10, 0.3, FH - 0.6, 4, slab, MED, { t: 'wall' }); add(P, wx, y + FH / 2, -3.1, 0.3, FH - 0.6, 6.2, slab, MED, { t: 'wall' }); }
       for (const wz of [-6, 2]) add(P, -9, y + FH / 2, wz, 10, FH - 0.6, 0.3, slab, MED, { t: 'wall' });
       // lockers along the hallway
       for (let i = 0; i < 8; i++) add(P, -2, y + 1.4, -10 + i * 2.4, 0.6, 2.6, 1.1, locker, WEAK, { t: 'furn' });
       // desks in classrooms
-      for (const [dx, dz] of [[-13, -8], [-13, -3], [-8, -8], [-8, -3]]) add(P, dx, y + 1, dz, 1.6, 0.9, 1, door, FURN, { t: 'furn' });
+      for (const [dx, dz] of [[-13, -9.8], [-13, -3], [-8, -9.8], [-8, -3]]) add(P, dx, y + 1, dz, 1.6, 0.9, 1, door, FURN, { t: 'furn' });   // desks kept clear of doorways
       // gym floor accent on ground
       if (f === 0) add(P, 14, 0.35, 0, 14, 0.06, 18, gym, INDEST, { t: 'deco', ns: 1 });
       stairs(P, HX, HZ, y, y + FH, HW - 0.8, HD, slab);
@@ -150,7 +156,11 @@ function stationMap() {
   add(P, bx + bw / 2, bh / 2, bz, 0.4, bh, bd, wall, STRONG, { t: 'wall' });
   add(P, bx - bw / 2 + 0.7, bh / 2, fz, 1.4, bh, 0.4, pier, STRONG, { t: 'wall' });   // front piers
   add(P, bx + bw / 2 - 0.7, bh / 2, fz, 1.4, bh, 0.4, pier, STRONG, { t: 'wall' });
-  add(P, bx + bw / 2 - 4, bh / 2, fz, 2, bh, 0.35, door, WEAK, { t: 'door' });    // glass door
+  // OPEN doorway (walk in) — header above + jambs, no solid door blocking it
+  const doorX = bx + bw / 2 - 4;
+  add(P, doorX, bh - 0.6, fz, 2.4, 1.2, 0.35, door, STRONG, { t: 'header' });
+  add(P, doorX - 1.35, 2.1, fz, 0.3, 4.2, 0.35, pier, STRONG, { t: 'jamb' });
+  add(P, doorX + 1.35, 2.1, fz, 0.3, 4.2, 0.35, pier, STRONG, { t: 'jamb' });
   // storefront glazing (breakable) between piers
   for (let i = 0; i < 5; i++) { const gx = bx - 5 + i * 2.4; if (Math.abs(gx - (bx + bw / 2 - 4)) < 1.4) continue; add(P, gx, 2.3, fz, 2.1, 3.4, 0.16, glass, GLASS, { t: 'glass' }); }
   add(P, bx, bh + 0.25, bz, bw + 1.4, 0.5, bd + 1.4, storeRoof, MED, { t: 'roof' });   // flat overhang roof
@@ -195,23 +205,31 @@ function stationMap() {
   for (const px of [cx - 6, cx + 6]) for (const [ox, oz] of [[-2.4, 0], [2.4, 0], [0, -1.4], [0, 1.4]]) add(P, px + ox, 0.9, cz + oz, 0.45, 1.4, 0.45, pumpTop, WEAK, { t: 'bollard' });
   // canopy underside light strips
   for (const lz of [cz - 4, cz, cz + 4]) add(P, cx, cy + 0.55, lz, cw - 1.5, 0.12, 0.5, '#fff6cf', MED, { t: 'deco', ns: 1 });
-  // storefront kickplate + window mullions
-  add(P, bx, 0.7, fz, bw - 3, 1, 0.3, pier, STRONG, { t: 'wall' });
-  for (let i = 0; i < 4; i++) add(P, bx - 3.6 + i * 2.4, 2.3, fz, 0.16, 3.4, 0.3, wall, WEAK, { t: 'mullion' });
+  // storefront kickplate (split around the doorway) + window mullions
+  add(P, bx - 1.85, 0.7, fz, 10.3, 1, 0.3, pier, STRONG, { t: 'wall' });
+  add(P, bx + 6.35, 0.7, fz, 1.3, 1, 0.3, pier, STRONG, { t: 'wall' });
+  for (let i = 0; i < 3; i++) add(P, bx - 3.6 + i * 2.4, 2.3, fz, 0.16, 3.4, 0.3, wall, WEAK, { t: 'mullion' });
+  // store interior — counter + shelf aisles
+  add(P, bx - 4, 1, bz + 1.5, 5, 1.1, 1.2, '#8a6a44', FURN, { t: 'counter' });
+  add(P, bx + 2, 1.1, bz + 0.5, 1, 2.2, 3.5, '#7a4f8a', WEAK, { t: 'shelf' });
+  add(P, bx + 5, 1.1, bz + 0.5, 1, 2.2, 3.5, '#3a8a6a', WEAK, { t: 'shelf' });
   // vending machines + ice box against the store front
   add(P, bx - 6.5, 1.3, fz - 0.7, 1.3, 2.4, 0.9, '#c23a3a', WEAK, { t: 'furn' });
   add(P, bx - 5, 1.3, fz - 0.7, 1.3, 2.4, 0.9, '#3a6ea5', WEAK, { t: 'furn' });
   add(P, bx + 6.5, 0.9, fz - 0.7, 1.6, 1.6, 1, '#e8ecf0', WEAK, { t: 'furn' });   // ice box
   // planters + shrubs on the grass
   for (const [gx, gz] of [[-26, 20], [26, 20], [0, 24], [-26, -2]]) { add(P, gx, 0.5, gz, 3, 0.7, 3, curb, STRONG, { t: 'planter' }); add(P, gx, 1.5, gz, 2.4, 1.4, 2.4, '#4f8a45', WEAK, { t: 'shrub' }); }
-  // propane cage by the store
-  add(P, bx + bw / 2 + 2, 0.9, bz - 2, 1.8, 1.6, 1.8, '#8a8f98', WEAK, { t: 'furn' });
+  // ---- climb route: cage → crates → store roof → rooftop AC → canopy (flood escape) ----
+  add(P, bx + bw / 2 + 2, 0.75, bz - 2, 1.8, 1.5, 1.8, '#8a8f98', WEAK, { t: 'furn' });   // propane cage (step 1)
+  add(P, bx + bw / 2 + 2, 1.35, bz + 1, 1.6, 2.7, 1.6, '#8a6a44', WOOD, { t: 'crate' });  // crate stack (step 2)
+  add(P, bx + bw / 2 + 0.5, 1.95, bz + 3.5, 1.6, 3.9, 1.6, '#7a5a38', WOOD, { t: 'crate' }); // taller stack (step 3 → roof)
+  add(P, bx - 6, bh + 0.85, fz + 1.4, 2.2, 1.2, 2, post, WEAK, { t: 'furn' });            // front AC (springboard to canopy)
   return P;
 }
 
 export const MAPS = {
-  glass:   { id: 'glass',   name: 'Glass Office',    spawnR: 12, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#bcd6ee', ground: 60, pieces: officeMap() },
-  school:  { id: 'school',  name: 'Heights School',  spawnR: 16, sky: ['#8fc0e8', '#e0eef8'], water: '#3a86c0', fog: '#c8dcc0', ground: 68, pieces: schoolMap() },
-  station: { id: 'station', name: 'Furious Station', spawnR: 16, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#c6ddc4', ground: 60, pieces: stationMap() },
+  glass:   { id: 'glass',   name: 'Glass Office',    spawnR: 12, radius: 26, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#bcd6ee', ground: 60, pieces: officeMap() },
+  school:  { id: 'school',  name: 'Heights School',  spawnR: 16, radius: 30, sky: ['#8fc0e8', '#e0eef8'], water: '#3a86c0', fog: '#c8dcc0', ground: 68, pieces: schoolMap() },
+  station: { id: 'station', name: 'Furious Station', spawnR: 16, radius: 26, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#c6ddc4', ground: 60, pieces: stationMap() },
 };
 export const MAP_IDS = Object.keys(MAPS);

@@ -38,7 +38,7 @@ function playOof() { oofSfx.currentTime = 0; oofSfx.play().catch(() => {}); }
 // ============================ WORLD ============================
 let R_ISLAND = 30;             // rough bounding radius (disasters)
 const WATER_Y = WORLD.waterY;
-const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 4.6, radius: 9, hole: 4.2 };
+const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 4.6, radius: 9, hole: 4.6 };
 const lobbySolids = [];        // lobby collision (discs/boxes)
 const walls = [];              // lobby keep-in cylinders
 
@@ -133,7 +133,7 @@ function buildLobby() {
   const roof = new THREE.Mesh(new THREE.ConeGeometry(LOBBY.radius + 1.2, 4, 40), LM('#8a5a3a'));
   roof.position.y = LOBBY.upperY + 6.5; g.add(roof);
   // ---- spiral staircase ----
-  const steps = 22, rStair = 6.4, turns = 1.25;
+  const steps = 22, rStair = 3.2, turns = 1.25;   // winds around the center column, up THROUGH the hole
   for (let i = 0; i < steps; i++) {
     const t = i / steps, ang = t * turns * Math.PI * 2, y = t * LOBBY.upperY;
     const sx = Math.cos(ang) * rStair, sz = Math.sin(ang) * rStair;
@@ -351,7 +351,15 @@ function spawnDisasters(specs) {
     }
     else if (spec.id === 'acid') { d.state = { pools: spec.pools.map((p) => ({ ...p, cur: 0.1 })) }; d.mesh = new THREE.Group(); scene.add(d.mesh); }
     else if (spec.id === 'thunderstorm') { d.state = { fired: new Array((spec.strikes || []).length).fill(false) }; scene.fog = new THREE.FogExp2('#8a94a8', 0.02); }
-    else if (spec.id === 'sandstorm') { scene.fog = new THREE.FogExp2('#d9b46a', 0.05); d.state = {}; }
+    else if (spec.id === 'sandstorm') {
+      scene.fog = new THREE.FogExp2('#d9b46a', 0.05); d.state = {};
+      // blowing sand particles that stream past the player
+      const N = 1200, pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 90; pos[i * 3 + 1] = Math.random() * 14; pos[i * 3 + 2] = (Math.random() - 0.5) * 90; }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const sand = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#e8c67a', size: 0.4, transparent: true, opacity: 0.8, depthWrite: false }));
+      sand.frustumCulled = false; scene.add(sand); d.extra = sand; d.state.sand = sand;
+    }
     activeDisasters.push(d);
   }
   // update HUD disaster label
@@ -427,6 +435,8 @@ function updateDisasters(dt, elapsed) {
     } else if (s.id === 'sandstorm') {
       me.pos.x += s.windX * dt * 4; me.pos.z += s.windZ * dt * 4;
       if (Math.random() < dt * 4) { const wk = pieces.filter((q) => !q.broken && q.t === 'glass'); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 26); }
+      const sand = d.state.sand;
+      if (sand) { const arr = sand.geometry.attributes.position.array; for (let i = 0; i < arr.length; i += 3) { arr[i] += s.windX * dt * 26; arr[i + 2] += s.windZ * dt * 26; if (Math.abs(arr[i]) > 45 || Math.abs(arr[i + 2]) > 45) { arr[i] = -s.windX * 44 + (Math.random() - 0.5) * 30; arr[i + 2] = -s.windZ * 44 + (Math.random() - 0.5) * 30; arr[i + 1] = Math.random() * 14; } } sand.geometry.attributes.position.needsUpdate = true; sand.position.set(me.pos.x, 0, me.pos.z); }
     }
   }
 }
