@@ -3,7 +3,8 @@
 // where server-chosen disasters strike. Movement is client-authoritative; we
 // detect our own death (water / disaster) and report it.
 import * as THREE from 'three';
-import { WORLD, DISASTERS } from '/shared/nds/config.js';
+import { WORLD, DISASTERS, MAPS } from '/shared/nds/config.js';
+import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game-canvas');
@@ -31,64 +32,68 @@ const LM = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
 const rndBetween = (a, b) => a + Math.random() * (b - a);
 
 // ============================ WORLD ============================
-import { MAPS } from '/shared/nds/config.js';
-let R_ISLAND = 34;             // active map radius (set by buildMap)
+let R_ISLAND = 30;             // rough bounding radius (disasters)
 const WATER_Y = WORLD.waterY;
-const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 14, radius: 9 };   // sits just off the island so you can watch rounds
-const lobbySolids = [];        // fixed collision (lobby + stairs)
-let mapSolids = [];            // per-map collision (rebuilt each map)
-const walls = [];              // { x, z, r, yMin, yMax }  cylinder keep-in
+const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 14, radius: 9 };
+const lobbySolids = [];        // lobby collision (discs/boxes)
+const walls = [];              // lobby keep-in cylinders
 
-// water (huge plane)
+// water
 const water = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshLambertMaterial({ color: '#2f7fd0', transparent: true, opacity: 0.86 }));
 water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; scene.add(water);
 
-// ---- MAP: the island for the round; rebuilt whenever the map changes ----
-let islandGroup = null, currentMap = null;
+// ---- destructible MAP PIECES with real AABB collision ----
+let pieces = [];
+let currentMap = null;
+function clearMap() { for (const p of pieces) { scene.remove(p.mesh); p.mesh.geometry && p.mesh.geometry.dispose(); p.mesh.material && p.mesh.material.dispose(); } pieces = []; }
 function buildMap(mapId) {
   const M = MAPS[mapId]; if (!M || currentMap === mapId) return;
-  currentMap = mapId; R_ISLAND = M.radius;
-  if (islandGroup) { scene.remove(islandGroup); islandGroup.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
-  islandGroup = new THREE.Group(); mapSolids = [];
+  currentMap = mapId; R_ISLAND = M.ground / 2;
+  clearMap();
   scene.background = skyTex(M.sky[0], M.sky[1]); scene.fog = new THREE.FogExp2(M.fog, 0.0016); water.material.color.set(M.water);
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(R_ISLAND, R_ISLAND + 2, 3, 52), LM(M.ground)); disc.position.y = -1.5; islandGroup.add(disc);
-  const beach = new THREE.Mesh(new THREE.CylinderGeometry(R_ISLAND + 2.4, R_ISLAND + 3, 0.6, 52), LM(M.beach)); beach.position.y = -0.3; islandGroup.add(beach);
-  mapSolids.push({ type: 'disc', x: 0, z: 0, r: R_ISLAND, top: 0 });
-  for (const f of M.features) buildFeature(f, M);
-  scene.add(islandGroup);
+  for (const d of M.pieces) {
+    const mat = d.t === 'glass'
+      ? new THREE.MeshLambertMaterial({ color: d.c, transparent: true, opacity: 0.5 })
+      : new THREE.MeshLambertMaterial({ color: d.c });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(d.w, d.h, d.d), mat);
+    mesh.position.set(d.x, d.y, d.z); scene.add(mesh);
+    pieces.push({ mesh, x: d.x, y: d.y, z: d.z, w: d.w, h: d.h, d: d.d, hp: d.s || 0, maxHp: d.s || 0, solid: !d.ns, t: d.t, broken: false });
+  }
 }
-function buildFeature(f, M) {
-  const G = islandGroup, add = (x, z, r, top) => mapSolids.push({ type: 'disc', x, z, r, top });
-  if (f.t === 'rock') {
-    const rock = new THREE.Mesh(new THREE.CylinderGeometry(f.r * 0.7, f.r, f.h, 8), LM(M.rock)); rock.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(rock);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(f.r * 0.72, f.r * 0.72, 0.5, 8), LM(M.capCol)); cap.position.set(f.x, f.h - 0.5, f.z); G.add(cap);
-    add(f.x, f.z, f.r * 0.72, f.h - 0.25);
-  } else if (f.t === 'mesa') {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r * 1.12, f.h, 12), LM(M.rock)); m.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(m);
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, 0.5, 12), LM(M.ground2)); top.position.set(f.x, f.h - 0.5, f.z); G.add(top);
-    add(f.x, f.z, f.r * 0.94, f.h - 0.25);
-  } else if (f.t === 'column') {
-    const c = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.h, 6), LM(M.rock)); c.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(c);
-    add(f.x, f.z, f.r * 0.82, f.h - 0.5);
-  } else if (f.t === 'ledge') {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, f.h, 6), LM(M.rock)); post.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(post);
-    const l = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, 0.5, 14), LM(M.capCol)); l.position.set(f.x, f.h - 0.5, f.z); G.add(l);
-    add(f.x, f.z, f.r, f.h - 0.25);
-  } else if (f.t === 'peak') {
-    const steps = 4;
-    for (let i = 0; i < steps; i++) { const rr = f.r * (1 - i * 0.19), hh = f.h * (i / steps); const seg = f.h / steps + 0.6; const step = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.82, rr, seg, 14), LM(i % 2 ? M.rock : M.capCol)); step.position.set(f.x, hh + seg / 2 - 0.5, f.z); G.add(step); add(f.x, f.z, rr * 0.8, hh + seg - 0.5); }
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(f.r * 0.25, 3.5, 14), LM(M.capCol)); tip.position.set(f.x, f.h + 1, f.z); G.add(tip);
-  } else if (f.t === 'crater') {
-    const wall = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r + 1.6, f.h, 24), LM(M.rock)); wall.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(wall);
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, 0.7, 24), LM(M.capCol)); rim.position.set(f.x, f.h - 0.5, f.z); G.add(rim);
-    const lava = new THREE.Mesh(new THREE.CircleGeometry(f.r * 0.7, 24), new THREE.MeshBasicMaterial({ color: '#ff5a1e' })); lava.rotation.x = -Math.PI / 2; lava.position.set(f.x, f.h - 0.35, f.z); G.add(lava);
-    add(f.x, f.z, f.r * 0.94, f.h - 0.2);
-  } else if (f.t === 'tree') {
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, f.h, 6), LM('#7a5230')); trunk.position.set(f.x, f.h / 2, f.z); G.add(trunk);
-    const leaves = new THREE.Mesh(new THREE.ConeGeometry(2.1, 3.6, 8), LM('#3a8a4a')); leaves.position.set(f.x, f.h + 1.1, f.z); G.add(leaves);
-  } else if (f.t === 'cactus') {
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.62, f.h, 8), LM('#4a9a4a')); body.position.set(f.x, f.h / 2, f.z); G.add(body);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.6, 6), LM('#4a9a4a')); arm.position.set(f.x + 0.7, f.h * 0.6, f.z); arm.rotation.z = Math.PI / 2; G.add(arm);
+function groundAt(x, z, feetY) {
+  let best = -Infinity;
+  for (const p of pieces) { if (!p.solid || p.broken) continue; const top = p.y + p.h / 2; if (top <= feetY + 0.65 && top > best && Math.abs(x - p.x) <= p.w / 2 && Math.abs(z - p.z) <= p.d / 2) best = top; }
+  for (const s of lobbySolids) {
+    if (s.type === 'disc') { if (Math.hypot(x - s.x, z - s.z) <= s.r && s.top <= feetY + 0.65 && s.top > best) best = s.top; }
+    else { const dx = x - s.x, dz = z - s.z, c = Math.cos(-s.ry), sn = Math.sin(-s.ry), lx = dx * c - dz * sn, lz = dx * sn + dz * c; if (Math.abs(lx) <= s.w / 2 + 0.3 && Math.abs(lz) <= s.d / 2 + 0.3 && s.top <= feetY + 0.65 && s.top > best) best = s.top; }
+  }
+  return best;
+}
+function collideWalls(px, pz, feetY) {
+  const r = 0.5, headY = feetY + 1.7, footY = feetY + 0.25;
+  for (const p of pieces) {
+    if (!p.solid || p.broken) continue;
+    const top = p.y + p.h / 2, bot = p.y - p.h / 2;
+    if (top <= feetY + 0.65) continue;
+    if (headY < bot || footY > top) continue;
+    const nx = Math.max(p.x - p.w / 2, Math.min(px, p.x + p.w / 2));
+    const nz = Math.max(p.z - p.d / 2, Math.min(pz, p.z + p.d / 2));
+    const dx = px - nx, dz = pz - nz, dd = Math.hypot(dx, dz);
+    if (dd < r) { if (dd < 1e-4) px += r; else { px = nx + dx / dd * r; pz = nz + dz / dd * r; } }
+  }
+  return { x: px, z: pz };
+}
+function breakPiece(p) { if (p.broken) return; p.broken = true; p.solid = false; p.vx = (Math.random() - 0.5) * 4; p.vz = (Math.random() - 0.5) * 4; p.vy = 1 + Math.random() * 3; p.sx = (Math.random() - 0.5) * 6; p.sz = (Math.random() - 0.5) * 6; p.fall = 0; p.mesh.material.transparent = true; }
+function damagePiece(p, amt) { if (p.hp <= 0 || p.broken) return; p.hp -= amt; if (p.hp <= 0) breakPiece(p); }
+function damageArea(x, z, radius, amt) { for (const p of pieces) { if (p.broken || p.hp <= 0) continue; if (Math.hypot(p.x - x, p.z - z) < radius) damagePiece(p, amt); } }
+function tickBroken(dt) {
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const p = pieces[i]; if (!p.broken) continue;
+    p.fall += dt; p.vy -= 22 * dt;
+    p.mesh.position.x += p.vx * dt; p.mesh.position.y += p.vy * dt; p.mesh.position.z += p.vz * dt;
+    p.mesh.rotation.x += p.sx * dt; p.mesh.rotation.z += p.sz * dt;
+    if (p.fall > 2) p.mesh.material.opacity = Math.max(0, (p.mesh.material.opacity == null ? 1 : p.mesh.material.opacity) - dt * 1.2);
+    if (p.fall > 3.4 || p.mesh.position.y < WATER_Y - 8) { scene.remove(p.mesh); pieces.splice(i, 1); }
   }
 }
 
@@ -146,7 +151,7 @@ const lobbyGroup = buildLobby();
 
 // spawn points
 const LOBBY_SPAWN = () => ({ x: LOBBY.x + rndBetween(-4, 4), y: 1.4, z: LOBBY.z + rndBetween(-4, 4) });
-const ISLAND_SPAWN = () => { const a = Math.random() * Math.PI * 2, d = Math.random() * (R_ISLAND - 6); return { x: Math.cos(a) * d, y: 1.4, z: Math.sin(a) * d }; };
+const ISLAND_SPAWN = () => { const M = MAPS[currentMap]; const r = (M && M.spawnR) || 12; const a = Math.random() * Math.PI * 2, dd = Math.random() * r; return { x: Math.cos(a) * dd, y: 3, z: Math.sin(a) * dd }; };
 
 // ============================ PLAYER ============================
 const me = { pos: LOBBY_SPAWN(), vel: { x: 0, y: 0, z: 0 }, ry: 0, grounded: true, dead: false, anim: 'idle', eye: 1.4 };
@@ -161,41 +166,11 @@ document.addEventListener('pointerlockchange', () => { locked = document.pointer
 addEventListener('mousemove', (e) => { if (!locked) return; camYaw -= e.movementX * 0.0024; camPitch = Math.max(-0.5, Math.min(1.1, camPitch + e.movementY * 0.0022)); });
 addEventListener('wheel', (e) => { camDist = Math.max(4, Math.min(16, camDist + Math.sign(e.deltaY))); });
 
-function surfaceAt(x, z, feetY) {
-  let best = -Infinity;
-  for (const arr of [lobbySolids, mapSolids]) for (const s of arr) {
-    if (s.type === 'disc') { if (Math.hypot(x - s.x, z - s.z) <= s.r) { if (s.top <= feetY + 0.65 && s.top > best) best = s.top; } }
-    else { // rotated box (staircase steps)
-      const dx = x - s.x, dz = z - s.z, c = Math.cos(-s.ry), sn = Math.sin(-s.ry);
-      const lx = dx * c - dz * sn, lz = dx * sn + dz * c;
-      if (Math.abs(lx) <= s.w / 2 + 0.3 && Math.abs(lz) <= s.d / 2 + 0.3) { if (s.top <= feetY + 0.65 && s.top > best) best = s.top; }
-    }
-  }
-  return best;
-}
 
-// ============================ AVATARS (simple blocky) ============================
-function buildAvatar(av) {
-  const g = new THREE.Group();
-  const shirt = (av && av.shirtColor) || '#38b6e8';
-  const skin = (av && av.skin) || '#f0c9a0';
-  const pants = (av && av.pantsColor) || '#3a4a5d';
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.4), LM(shirt)); torso.position.y = 1.15; g.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), LM(skin)); head.position.y = 1.9; g.add(head);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.32), LM(pants)); legL.position.set(-0.18, 0.4, 0); g.add(legL);
-  const legR = legL.clone(); legR.position.x = 0.18; g.add(legR);
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.8, 0.28), LM(shirt)); armL.position.set(-0.48, 1.15, 0); g.add(armL);
-  const armR = armL.clone(); armR.position.x = 0.48; g.add(armR);
-  g.userData = { legL, legR, armL, armR, walk: 0 };
-  return g;
-}
-function animAvatar(g, moving, dt) {
-  const u = g.userData; u.walk += dt * (moving ? 9 : 2);
-  const s = Math.sin(u.walk) * (moving ? 0.5 : 0.05);
-  u.legL.rotation.x = s; u.legR.rotation.x = -s; u.armL.rotation.x = -s; u.armR.rotation.x = s;
-}
-const myAvatar = buildAvatar(loadAv()); scene.add(myAvatar);
+
+// ============================ AVATARS (Roblox-style shared models) ============================
 function loadAv() { try { return JSON.parse(localStorage.getItem('featherfriends.lastProfile') || '{}').avatar || {}; } catch { return {}; } }
+let myAvatar = null;   // controller { group, setAnim, update }
 
 // ============================ NETWORK ============================
 const identityName = (() => { try { return localStorage.getItem('claudebox.user') || 'Survivor'; } catch { return 'Survivor'; } })();
@@ -267,17 +242,17 @@ function applyPhase(ph, until, disasters, stk, map) {
 
 function addOther(p) {
   if (others.has(p.id) || p.id === myId) return;
-  const group = buildAvatar(p.avatar); scene.add(group);
-  const plate = makeNameplate(p.name); group.add(plate);
-  others.set(p.id, { group, target: { x: p.x || 0, y: p.y || 0, z: p.z || 0, ry: p.ry || 0 }, alive: p.alive !== false, name: p.name });
+  const ctrl = makeAvatar(p.avatar || {}); scene.add(ctrl.group);
+  ctrl.group.add(makeNameplate(p.name));
+  others.set(p.id, { ctrl, target: { x: p.x || 0, y: p.y || 0, z: p.z || 0, ry: p.ry || 0 }, alive: p.alive !== false, name: p.name });
 }
-function removeOther(id) { const o = others.get(id); if (o) { scene.remove(o.group); others.delete(id); } }
+function removeOther(id) { const o = others.get(id); if (o) { scene.remove(o.ctrl.group); o.ctrl.dispose && o.ctrl.dispose(); others.delete(id); } }
 function applySnap(players) {
   for (const arr of players) {
     const [id, x, y, z, ry, anim, alive] = arr;
     if (id === myId) continue;
     const o = others.get(id);
-    if (o) { o.target = { x, y, z, ry }; o.anim = anim; o.alive = !!alive; o.group.visible = !!alive || phase !== 'disaster'; }
+    if (o) { o.target = { x, y, z, ry }; o.anim = anim; o.alive = !!alive; o.ctrl.group.visible = !!alive || phase !== 'disaster'; }
   }
 }
 function makeNameplate(name) {
@@ -308,7 +283,7 @@ function spawnDisasters(specs) {
   for (const spec of specs) {
     const d = { spec, mesh: null, id: spec.id, state: {} };
     if (spec.id === 'tornado') { d.state = { x: spec.x, z: spec.z, vx: spec.vx, vz: spec.vz }; d.mesh = makeTornado(spec.radius); scene.add(d.mesh); }
-    else if (spec.id === 'flood') { floodMesh = new THREE.Mesh(new THREE.CircleGeometry(R_ISLAND + 3, 48), new THREE.MeshLambertMaterial({ color: '#2f7fd0', transparent: true, opacity: 0.7 })); floodMesh.rotation.x = -Math.PI / 2; floodMesh.position.y = WATER_Y; scene.add(floodMesh); }
+    else if (spec.id === 'flood') { floodMesh = new THREE.Mesh(new THREE.PlaneGeometry((R_ISLAND + 10) * 2, (R_ISLAND + 10) * 2), new THREE.MeshLambertMaterial({ color: '#2f7fd0', transparent: true, opacity: 0.7 })); floodMesh.rotation.x = -Math.PI / 2; floodMesh.position.y = WATER_Y; scene.add(floodMesh); }
     else if (spec.id === 'meteors') { d.state = { fired: new Array(spec.impacts.length).fill(false), meteors: [] }; }
     else if (spec.id === 'quake') { d.mesh = new THREE.Group(); for (const f of spec.fissures) { const cr = new THREE.Mesh(new THREE.PlaneGeometry(f.w, f.len), new THREE.MeshBasicMaterial({ color: '#120a06' })); cr.rotation.x = -Math.PI / 2; cr.rotation.z = f.ang; cr.position.set(f.x, 0.06, f.z); cr.scale.set(0.01, 1, 1); d.mesh.add(cr); } scene.add(d.mesh); }
     else if (spec.id === 'tsunami') { d.mesh = makeWave(); scene.add(d.mesh); }
@@ -316,6 +291,8 @@ function spawnDisasters(specs) {
     else if (spec.id === 'volcano') { d.mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: '#e03a10' })); d.mesh.rotation.x = -Math.PI / 2; d.mesh.position.y = 0.08; d.mesh.scale.setScalar(0.1); scene.add(d.mesh); const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 6, 16), LM('#5a3a2a')); cone.position.y = 2.5; scene.add(cone); d.state = { cone, r: 0 }; }
     else if (spec.id === 'blizzard') { scene.fog = new THREE.FogExp2('#dbe8f2', 0.05); d.state = { cold: 0 }; const warm = new THREE.Mesh(new THREE.CylinderGeometry(spec.warm.r, spec.warm.r, 0.2, 24), new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.4 })); warm.position.set(spec.warm.x, 0.1, spec.warm.z); scene.add(warm); d.mesh = warm; }
     else if (spec.id === 'acid') { d.state = { pools: spec.pools.map((p) => ({ ...p, cur: 0.1 })) }; d.mesh = new THREE.Group(); scene.add(d.mesh); }
+    else if (spec.id === 'thunderstorm') { d.state = { fired: new Array((spec.strikes || []).length).fill(false) }; scene.fog = new THREE.FogExp2('#8a94a8', 0.02); }
+    else if (spec.id === 'sandstorm') { scene.fog = new THREE.FogExp2('#d9b46a', 0.05); d.state = {}; }
     activeDisasters.push(d);
   }
   // update HUD disaster label
@@ -338,6 +315,7 @@ function updateDisasters(dt, elapsed) {
       const st = d.state; st.x += st.vx * dt; st.z += st.vz * dt;
       if (Math.hypot(st.x, st.z) > R_ISLAND - 4) { st.vx *= -1; st.vz *= -1; }
       d.mesh.position.set(st.x, 0, st.z); d.mesh.userData.spin += dt * 6; d.mesh.rotation.y = d.mesh.userData.spin;
+      damageArea(st.x, st.z, s.radius + 3, dt * 55);
       if (!me.dead && Math.hypot(me.pos.x - st.x, me.pos.z - st.z) < s.radius) { me.vel.y = 18; die('tornado'); }
     } else if (s.id === 'flood') {
       floodLevel = Math.min(WATER_Y + 12, WATER_Y + Math.max(0, elapsed - (s.delay || 3)) * s.rise);
@@ -348,10 +326,11 @@ function updateDisasters(dt, elapsed) {
         const im = s.impacts[i];
         if (!d.state.fired[i] && elapsed > im.t - 1.1 && !d.state.meteors[i]) { const mm = new THREE.Mesh(new THREE.SphereGeometry(1.2, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff6a2a' })); mm.position.set(im.x, 60, im.z); scene.add(mm); d.state.meteors[i] = mm; }
         const mm = d.state.meteors[i];
-        if (mm && !d.state.fired[i]) { mm.position.y = 60 - (elapsed - (im.t - 1.1)) / 1.1 * 60; if (elapsed >= im.t) { d.state.fired[i] = true; scene.remove(mm); boom(im.x, 0, im.z, im.r); if (!me.dead && Math.hypot(me.pos.x - im.x, me.pos.z - im.z) < im.r) die('meteor'); } }
+        if (mm && !d.state.fired[i]) { mm.position.y = 60 - (elapsed - (im.t - 1.1)) / 1.1 * 60; if (elapsed >= im.t) { d.state.fired[i] = true; scene.remove(mm); boom(im.x, 0, im.z, im.r); damageArea(im.x, im.z, im.r + 2, 9999); if (!me.dead && Math.hypot(me.pos.x - im.x, me.pos.z - im.z) < im.r) die('meteor'); } }
       }
     } else if (s.id === 'quake') {
-      shake = 0.25;
+      shake = 0.3;
+      if (Math.random() < dt * 7) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 45); }
       d.mesh.children.forEach((cr, i) => { const f = s.fissures[i]; const o = Math.max(0, Math.min(1, (elapsed - f.openAt) / 1.5)); cr.scale.x = Math.max(0.01, o); });
       if (!me.dead) for (const f of s.fissures) { if (elapsed < f.openAt + 0.5) continue; const dx = me.pos.x - f.x, dz = me.pos.z - f.z, c = Math.cos(-f.ang), sn = Math.sin(-f.ang); const lx = dx * c - dz * sn, lz = dx * sn + dz * c; if (Math.abs(lx) < f.w / 2 && Math.abs(lz) < f.len / 2 && me.grounded) { me.grounded = false; me.vel.y = -2; if (me.pos.y < -3) die('fissure'); } }
     } else if (s.id === 'tsunami') {
@@ -365,9 +344,11 @@ function updateDisasters(dt, elapsed) {
       // redraw fire discs
       d.mesh.clear();
       for (const f of d.state.fires) { const fire = new THREE.Mesh(new THREE.CircleGeometry(f.r, 20), new THREE.MeshBasicMaterial({ color: '#ff4d1a', transparent: true, opacity: 0.55 })); fire.rotation.x = -Math.PI / 2; fire.position.set(f.x, 0.09, f.z); d.mesh.add(fire); }
+      for (const f of d.state.fires) damageArea(f.x, f.z, f.r, dt * 18);
       if (!me.dead) for (const f of d.state.fires) if (Math.hypot(me.pos.x - f.x, me.pos.z - f.z) < f.r && me.pos.y < 1.5) die('wildfire');
     } else if (s.id === 'volcano') {
       d.state.r = Math.min(R_ISLAND, Math.max(0, elapsed - (s.delay || 3)) * s.lavaRate * 2);
+      damageArea(0, 0, d.state.r, dt * 24);
       d.mesh.scale.setScalar(Math.max(0.1, d.state.r));
       if (!me.dead && Math.hypot(me.pos.x, me.pos.z) < d.state.r && me.pos.y < 1.5) die('lava');
     } else if (s.id === 'blizzard') {
@@ -378,9 +359,15 @@ function updateDisasters(dt, elapsed) {
     } else if (s.id === 'acid') {
       d.mesh.clear();
       for (const p of d.state.pools) { if (elapsed > p.growAt) p.cur = Math.min(p.r, p.cur + dt * 0.8); const pool = new THREE.Mesh(new THREE.CircleGeometry(Math.max(0.1, p.cur), 18), new THREE.MeshBasicMaterial({ color: '#7de04a', transparent: true, opacity: 0.6 })); pool.rotation.x = -Math.PI / 2; pool.position.set(p.x, 0.07, p.z); d.mesh.add(pool); if (!me.dead && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < p.cur && me.pos.y < 1.5) die('acid'); }
+    } else if (s.id === 'thunderstorm') {
+      for (let i = 0; i < (s.strikes || []).length; i++) { const st = s.strikes[i]; if (!d.state.fired[i] && elapsed > st.t) { d.state.fired[i] = true; lightning(st.x, st.z); damageArea(st.x, st.z, 5, 9999); if (!me.dead && Math.hypot(me.pos.x - st.x, me.pos.z - st.z) < 5) die('lightning'); } }
+    } else if (s.id === 'sandstorm') {
+      me.pos.x += s.windX * dt * 4; me.pos.z += s.windZ * dt * 4;
+      if (Math.random() < dt * 4) { const wk = pieces.filter((q) => !q.broken && q.t === 'glass'); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 26); }
     }
   }
 }
+function lightning(x, z) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.1, 60, 6), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true })); b.position.set(x, 30, z); scene.add(b); boom(x, 0, z, 4); let tt = 0; const iv = setInterval(() => { tt += 0.05; b.material.opacity = Math.max(0, 1 - tt * 4); if (tt > 0.3) { clearInterval(iv); scene.remove(b); } }, 22); }
 function boom(x, y, z, r) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), new THREE.MeshBasicMaterial({ color: '#ffaa40', transparent: true, opacity: 0.85 }));
   m.position.set(x, y + 0.5, z); scene.add(m);
@@ -413,13 +400,13 @@ function frame() {
   const speed = me.dead ? 10 : 8;
   if (!me.dead) {
     me.vel.x = mv.x * speed; me.vel.z = mv.z * speed;
-    if (keys.has('Space') && me.grounded) { me.vel.y = 9; me.grounded = false; }
+    if (keys.has('Space') && me.grounded) { me.vel.y = 9.5; me.grounded = false; }
     me.vel.y -= 26 * dt;
-    me.pos.x += me.vel.x * dt; me.pos.z += me.vel.z * dt; me.pos.y += me.vel.y * dt;
-    // keep-in walls (lobby glass)
-    for (const w of walls) { if (me.pos.y > w.yMin && me.pos.y < w.yMax) { const dx = me.pos.x - w.x, dz = me.pos.z - w.z, d = Math.hypot(dx, dz); if (d > w.r && d < w.r + 22) { me.pos.x = w.x + dx / d * w.r; me.pos.z = w.z + dz / d * w.r; } } }   // keep-in only near the lobby, not across the map
-    // ground
-    const gy = surfaceAt(me.pos.x, me.pos.z, me.pos.y);
+    me.pos.x += me.vel.x * dt; me.pos.z += me.vel.z * dt;
+    const cw = collideWalls(me.pos.x, me.pos.z, me.pos.y); me.pos.x = cw.x; me.pos.z = cw.z;
+    for (const w of walls) { if (me.pos.y > w.yMin && me.pos.y < w.yMax) { const dx = me.pos.x - w.x, dz = me.pos.z - w.z, d = Math.hypot(dx, dz); if (d > w.r && d < w.r + 22) { me.pos.x = w.x + dx / d * w.r; me.pos.z = w.z + dz / d * w.r; } } }
+    me.pos.y += me.vel.y * dt;
+    const gy = groundAt(me.pos.x, me.pos.z, me.pos.y);
     if (me.pos.y <= gy) { me.pos.y = gy; me.vel.y = 0; me.grounded = true; } else me.grounded = false;
     // face movement
     if (moving) me.ry = Math.atan2(-mv.x, -mv.z);
@@ -434,14 +421,14 @@ function frame() {
   }
 
   // my avatar
-  myAvatar.visible = !me.dead;
-  myAvatar.position.set(me.pos.x, me.pos.y, me.pos.z); myAvatar.rotation.y = me.ry; animAvatar(myAvatar, moving, dt);
+  if (myAvatar) { myAvatar.group.visible = !me.dead; myAvatar.group.position.set(me.pos.x, me.pos.y, me.pos.z); myAvatar.group.rotation.y = me.ry; myAvatar.setAnim(me.dead ? 'fall' : moving ? 'run' : 'idle'); myAvatar.update(dt); }
 
   // others
-  for (const [, o] of others) { const g = o.group; g.position.x += (o.target.x - g.position.x) * Math.min(1, dt * 12); g.position.y += (o.target.y - g.position.y) * Math.min(1, dt * 12); g.position.z += (o.target.z - g.position.z) * Math.min(1, dt * 12); let d = o.target.ry - g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; g.rotation.y += d * Math.min(1, dt * 10); animAvatar(g, o.anim === 'run', dt); }
+  for (const [, o] of others) { const g = o.ctrl.group; g.position.x += (o.target.x - g.position.x) * Math.min(1, dt * 12); g.position.y += (o.target.y - g.position.y) * Math.min(1, dt * 12); g.position.z += (o.target.z - g.position.z) * Math.min(1, dt * 12); let d = o.target.ry - g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; g.rotation.y += d * Math.min(1, dt * 10); o.ctrl.setAnim(o.alive === false ? 'fall' : o.anim === 'run' ? 'run' : 'idle'); o.ctrl.update(dt); }
 
   // disasters
   if (phase === 'disaster') updateDisasters(dt, now - disasterStart);
+  tickBroken(dt);
 
   // machine prompt + dish spin
   lobbyGroup.userData.dish.rotation.z += dt * (1 + stacks) * 1.5;
@@ -465,5 +452,4 @@ function frame() {
 
   renderer.render(scene, camera);
 }
-connect();
-frame();
+(async () => { try { await preloadAvatars(['boy', 'girl']); } catch {} myAvatar = makeAvatar(myAvatarData || {}); scene.add(myAvatar.group); connect(); frame(); })();

@@ -40,6 +40,8 @@ function makeDisaster(id) {
     case 'volcano': return { id, delay: 3, lavaRate: 1.4 };
     case 'blizzard': { const warm = { x: rnd(-R * 0.5, R * 0.5), z: rnd(-R * 0.5, R * 0.5), r: 5 }; return { id, warm, freezeIn: 5 }; }
     case 'acid': { const pools = []; for (let i = 0; i < 8; i++) pools.push({ x: rnd(-R, R), z: rnd(-R, R), r: rnd(2.5, 4), growAt: rnd(1, 10) }); return { id, pools }; }
+    case 'thunderstorm': { const strikes = []; for (let i = 0; i < 15; i++) strikes.push({ x: rnd(-R, R), z: rnd(-R, R), t: rnd(1.5, ROUND.disaster - 2) }); return { id, strikes }; }
+    case 'sandstorm': { const a = rnd(0, Math.PI * 2); return { id, windX: Math.cos(a), windZ: Math.sin(a) }; }
     default: return { id };
   }
 }
