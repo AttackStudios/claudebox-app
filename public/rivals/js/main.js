@@ -542,6 +542,7 @@ function onRightDown() {
     const W = WEAPONS.satchel;
     if (now - (me.satchelBtnAt || -9) < W.btnCd || me.dead || game.phase === 'freeze' || game.phase === 'podium') return;
     me.satchelBtnAt = now;
+    vmAnim.satchelBtnT = 0;   // left hand slams the detonator button
     const dirX = -Math.sin(me.ry), dirZ = -Math.cos(me.ry);
     me.vel.x = dirX * W.btnBoost; me.vel.z = dirZ * W.btnBoost;
     me.vel.y = Math.max(me.vel.y, W.btnUp);
@@ -961,6 +962,43 @@ function buildViewmodels() {
     ], [0.54, -0.23, 0.06], [0.28, -0.55, 0.6], [-0.54, -0.23, 0.06], [0.28, 0.55, -0.6]);
     viewmodels.jumppad = g;
   }
+  // ---- satchel: a red explosive in the RIGHT hand + a detonator box with a
+  // red plunger button in the LEFT hand (hands animate throw + button-press) ----
+  {
+    const g = new THREE.Group();
+    const gun = new THREE.Group();                    // unused holder (satisfies base-reset)
+    const rArm = mkArm(); rArm.position.set(0.42, -0.24, 0.06); rArm.rotation.set(0.55, -0.32, 0.14);
+    const lArm = mkArm(); lArm.position.set(-0.42, -0.24, 0.06); lArm.rotation.set(0.5, 0.34, -0.16);
+    // explosive bundle riding in the right hand
+    const explosive = new THREE.Group();
+    explosive.add(box(0.13, 0.19, 0.13, '#c23b3b', 0, 0, -0.44));       // red charge
+    explosive.add(box(0.145, 0.07, 0.145, '#8a2a2a', 0, 0.06, -0.44));  // tape band
+    explosive.add(box(0.145, 0.07, 0.145, '#8a2a2a', 0, -0.06, -0.44)); // tape band
+    explosive.add(box(0.03, 0.1, 0.03, '#e8c96a', 0, 0.15, -0.44));     // fuse stub
+    rArm.add(explosive);
+    // detonator box + plunger in the left hand
+    const det = new THREE.Group();
+    det.add(box(0.22, 0.13, 0.28, '#24272e', 0, 0, -0.42));             // box body
+    det.add(box(0.22, 0.03, 0.28, '#3a3f48', 0, 0.07, -0.42));          // lid trim
+    const plunger = new THREE.Group();
+    plunger.add(box(0.09, 0.05, 0.09, '#d64545', 0, 0, 0));             // red button cap
+    plunger.add(box(0.03, 0.08, 0.03, '#9a9fa8', 0, -0.06, 0));         // shaft
+    plunger.position.set(0, 0.12, -0.42);
+    det.add(plunger);
+    det.add(box(0.02, 0.02, 0.16, '#4a4a4a', 0.05, -0.02, -0.26));      // wire
+    lArm.add(det);
+    g.add(gun, rArm, lArm);
+    g.userData = {
+      gun, rArm, lArm,
+      base: {
+        gun: { p: gun.position.clone(), r: gun.rotation.clone() },
+        rArm: { p: rArm.position.clone(), r: rArm.rotation.clone() },
+        lArm: { p: lArm.position.clone(), r: lArm.rotation.clone() },
+      },
+      explosive, plunger, plungerY: plunger.position.y,
+    };
+    viewmodels.satchel = g;
+  }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
@@ -1011,7 +1049,7 @@ viewmodels.carbine = vmVariant('ar', 0.86, '#8ea0b8');
 viewmodels.battle = vmVariant('ar', 1.05, '#3f4653');
 viewmodels.autosniper = vmVariant('sniper', 0.95, '#4a5568');
 viewmodels.deagle = vmVariant('handgun', 1.12, '#c9a24a');
-viewmodels.satchel = vmVariant('grenade', 1.0, '#d64545');
+// satchel now has its own two-handed model (built above)
 
 // ---- weapon skins: re-material a gun group with an equipped skin ----
 let mySkins = { owned: [], equipped: {} };
@@ -1206,6 +1244,7 @@ const VM_HIPS = {
   butterfly: { x: 0.06, y: -0.22, z: -0.48 },
   daggers: { x: 0.03, y: -0.22, z: -0.46 },
   jumppad: { x: 0.03, y: -0.24, z: -0.58 },
+  satchel: { x: 0.02, y: -0.22, z: -0.5 },
 };
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
@@ -1216,8 +1255,9 @@ const vmAnim = {
   lastRy: 0, lastPitch: 0,
   equipT: 1,                    // 0→1 raise-with-flick on weapon swap
   reloadStart: 0, reloadDur: 0, // hand-animated reload
-  swingT: 1, swingSide: 1,      // scythe arcs, alternating sides
-  throwT: 1,                    // grenade overhand
+  swingT: 1, swingSide: 1,      // melee arcs, alternating sides
+  throwT: 1,                    // grenade / satchel overhand throw
+  satchelBtnT: 1,               // satchel detonator button-press (right-click)
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -2579,6 +2619,7 @@ function frame() {
     vmAnim.equipT = Math.min(1, vmAnim.equipT + dt / 0.3);
     vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / 0.38);
     vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
+    vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
@@ -2624,17 +2665,36 @@ function frame() {
       ry2 -= (1 - rise) * 0.55;
       rz += (1 - rise) * 0.6 - settle;
     }
-    // knife slash: quick compact arcs, alternating sides
-    if (me.weapon === 'scythe' && vmAnim.swingT < 1) {
-      const s = Math.sin(Math.pow(vmAnim.swingT, 0.7) * Math.PI);
-      rz += vmAnim.swingSide * -0.7 * s;
-      ry2 += vmAnim.swingSide * 0.55 * s;
-      rx += 0.2 * s;
-      px += vmAnim.swingSide * -0.1 * s;
-      pz -= 0.2 * s;                       // stab forward
+    // melee swings — each weapon gets its own signature motion
+    const mw = WEAPONS[me.weapon];
+    if (mw?.melee && me.weapon !== 'fists' && vmAnim.swingT < 1) {
+      const t = vmAnim.swingT, sd = vmAnim.swingSide;
+      const s = Math.sin(Math.pow(t, 0.7) * Math.PI);          // 0→1→0 arc
+      const wind = sstep(0, 0.22, t);                           // quick wind-up
+      if (me.weapon === 'katana') {
+        // big diagonal overhead slash
+        rz += (wind * 0.5 - s * 1.3) * sd;
+        rx += -wind * 0.5 + s * 1.15;
+        ry2 += (wind * 0.3 - s * 0.7) * sd;
+        py += wind * 0.12 - s * 0.16; pz -= s * 0.28;
+      } else if (me.weapon === 'bat') {
+        // flat home-run swing across the body
+        ry2 += (wind * 0.6 - s * 1.7) * sd;
+        rz += (wind * 0.2 - s * 0.5) * sd;
+        px += (wind * 0.1 - s * 0.34) * sd; pz -= s * 0.18;
+      } else if (me.weapon === 'butterfly') {
+        // flashy flip then a quick forward stab
+        rx += Math.sin(t * Math.PI * 2) * 0.5 * (1 - t);        // flip spin
+        rz += Math.sin(t * Math.PI * 2) * 0.6 * (1 - t) * sd;
+        pz -= s * 0.32; py += s * 0.05;
+      } else {
+        // scythe/knife: quick compact alternating arcs
+        rz += sd * -0.7 * s; ry2 += sd * 0.55 * s;
+        rx += 0.2 * s; px += sd * -0.1 * s; pz -= 0.2 * s;
+      }
     }
-    // grenade throw: wind back, then whip forward overhand
-    if (me.weapon === 'grenade' && vmAnim.throwT < 1) {
+    // throw: wind back, then whip forward overhand (grenade + satchel)
+    if ((me.weapon === 'grenade' || me.weapon === 'satchel') && vmAnim.throwT < 1) {
       const t = vmAnim.throwT;
       const wind = sstep(0, 0.3, t) * (1 - sstep(0.3, 0.55, t));
       const whip = sstep(0.3, 0.55, t) * (1 - sstep(0.75, 1, t));
@@ -2692,14 +2752,28 @@ function frame() {
         P.gun.rotation.z += Math.sin(rT * Math.PI) * 0.45;
         P.gun.rotation.x += Math.sin(rT * Math.PI) * 0.12;
       }
-      // grenade throw: the right hand does the throwing
-      if (me.weapon === 'grenade' && vmAnim.throwT < 1) {
+      // grenade / satchel throw: the RIGHT hand winds up and hurls the charge
+      if ((me.weapon === 'grenade' || me.weapon === 'satchel') && vmAnim.throwT < 1) {
         const t = vmAnim.throwT;
         const whip = sstep(0.3, 0.55, t) * (1 - sstep(0.8, 1, t));
         P.rArm.position.z -= whip * 0.28;
         P.rArm.rotation.x -= whip * 1.2;
-        P.gun.visible = t < 0.42 || t > 0.85;   // nade leaves the hand mid-throw
-      } else if (P.gun) P.gun.visible = true;
+        // the charge leaves the hand mid-throw
+        if (me.weapon === 'satchel' && P.explosive) P.explosive.visible = t < 0.42 || t > 0.9;
+        else P.gun.visible = t < 0.42 || t > 0.85;
+      } else { if (P.gun) P.gun.visible = true; if (P.explosive) P.explosive.visible = true; }
+      // satchel detonator: the LEFT hand slams the red plunger button down
+      if (me.weapon === 'satchel' && P.plunger) {
+        P.plunger.position.y = P.plungerY;
+        if (vmAnim.satchelBtnT < 1) {
+          const t = vmAnim.satchelBtnT;
+          const press = Math.sin(sstep(0, 0.3, t) * Math.PI * 0.5) * (1 - sstep(0.5, 1, t));
+          P.plunger.position.y = P.plungerY - press * 0.08;   // button pushes down
+          P.lArm.position.z -= press * 0.06;                  // thumb drives it
+          P.lArm.rotation.x -= press * 0.4;
+          P.rArm.rotation.z += press * 0.14;                  // little kick in the charge hand
+        }
+      }
     }
   }
   // interpolate others
