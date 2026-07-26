@@ -554,6 +554,16 @@ function onRightDown() {
   // guns: ADS handled continuously via rightDown
 }
 
+// is a point inside any solid map box? (grenade/satchel wall detonation)
+function pointInMap(x, y, z) {
+  for (const b of mapBoxes) {
+    if (x > b.x - b.sx / 2 && x < b.x + b.sx / 2 &&
+        y > b.y - b.sy / 2 && y < b.y + b.sy / 2 &&
+        z > b.z - b.sz / 2 && z < b.z + b.sz / 2) return true;
+  }
+  return false;
+}
+
 // collision vs current mapBoxes (feet-based AABB)
 function collideMove(nx, ny, nz) {
   const r = MOVE.radius;
@@ -723,7 +733,7 @@ function stepMe(dt) {
     const g = localNades[i], w = WEAPONS[g.wid];
     g.vy -= MOVE.gravity * 0.8 * dt;
     g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt;
-    let impact = g.y < 0.12;
+    let impact = g.y < 0.12 || pointInMap(g.x, g.y, g.z);   // ground OR any wall/cover
     g.y = Math.max(0.12, g.y); g.mesh.position.set(g.x, g.y, g.z);
     if (!impact && now >= g.armAt && Math.hypot(me.pos.x - g.x, (me.pos.y + 0.9) - g.y, me.pos.z - g.z) < 1.6) impact = true;
     if (impact || now >= g.explodeAt) {
@@ -2741,16 +2751,45 @@ function frame() {
         hand.rotation.x -= jab * 0.5;
         off.position.z += jab * 0.06;
       }
-      // reload: left hand rips the mag out (kept in frame), gun tips over
+      // reload: each gun reloads its own way
       if (me.reloading) {
         const rT = clamp((cn - vmAnim.reloadStart) / (vmAnim.reloadDur || 1), 0, 1);
-        const out = sstep(0, 0.28, rT) * (1 - sstep(0.62, 0.92, rT));
-        P.lArm.position.y -= out * 0.18;
-        P.lArm.position.z += out * 0.16;               // pulls toward the camera, stays visible
-        P.lArm.position.x += out * 0.04;
-        P.lArm.rotation.x -= out * 1.0;
-        P.gun.rotation.z += Math.sin(rT * Math.PI) * 0.45;
-        P.gun.rotation.x += Math.sin(rT * Math.PI) * 0.12;
+        const w = me.weapon;
+        if (w === 'revolver') {
+          // cylinder swings OUT to the side, left hand feeds rounds, snaps shut
+          const swing = Math.sin(sstep(0, 0.32, rT) * Math.PI * 0.5) * (1 - sstep(0.74, 1, rT));
+          P.gun.rotation.z += swing * 1.05;
+          P.gun.rotation.y += swing * 0.35;
+          P.gun.position.x -= swing * 0.05;
+          const load = Math.sin(sstep(0.28, 0.72, rT) * Math.PI);
+          P.lArm.position.x += load * 0.12; P.lArm.position.z += load * 0.1;
+          P.lArm.rotation.z += load * 0.5;
+        } else if (w === 'shotgun' || w === 'shorty') {
+          // rack the fore-end and thumb shells in (a few pumps)
+          const pumps = w === 'shorty' ? 2 : 4;
+          const pump = Math.abs(Math.sin(rT * Math.PI * pumps));
+          P.lArm.position.z += pump * 0.2 - 0.06;
+          P.gun.position.z += (1 - pump) * 0.05;
+          P.gun.rotation.x += Math.sin(rT * Math.PI) * 0.1;
+        } else if (w === 'sniper' || w === 'autosniper') {
+          // work the bolt: left hand pulls back on top, then forward
+          const back = Math.sin(sstep(0.12, 0.5, rT) * Math.PI);
+          P.lArm.position.z += back * 0.17; P.lArm.position.y += back * 0.07;
+          P.lArm.position.x += back * 0.05; P.lArm.rotation.x -= back * 0.55;
+          P.gun.rotation.z += Math.sin(rT * Math.PI) * 0.18;
+        } else if (w === 'minigun') {
+          // barrels whir + fresh belt fed from below
+          P.gun.rotation.z += Math.sin(rT * Math.PI * 12) * 0.13;
+          const feed = sstep(0, 0.3, rT) * (1 - sstep(0.7, 1, rT));
+          P.lArm.position.y -= feed * 0.12; P.lArm.position.z += feed * 0.12;
+        } else {
+          // default detachable-mag swap: left hand rips the mag, gun tips over
+          const out = sstep(0, 0.28, rT) * (1 - sstep(0.62, 0.92, rT));
+          P.lArm.position.y -= out * 0.18; P.lArm.position.z += out * 0.16;
+          P.lArm.position.x += out * 0.04; P.lArm.rotation.x -= out * 1.0;
+          P.gun.rotation.z += Math.sin(rT * Math.PI) * 0.45;
+          P.gun.rotation.x += Math.sin(rT * Math.PI) * 0.12;
+        }
       }
       // grenade / satchel throw: the RIGHT hand winds up and hurls the charge
       if ((me.weapon === 'grenade' || me.weapon === 'satchel') && vmAnim.throwT < 1) {
