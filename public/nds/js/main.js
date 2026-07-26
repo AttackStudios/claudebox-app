@@ -50,8 +50,8 @@ water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; scene.add(water);
 let pieces = [];
 let currentMap = null;
 function clearMap() { for (const p of pieces) { scene.remove(p.mesh); p.mesh.geometry && p.mesh.geometry.dispose(); p.mesh.material && p.mesh.material.dispose(); } pieces = []; }
-function buildMap(mapId) {
-  const M = MAPS[mapId]; if (!M || currentMap === mapId) return;
+function buildMap(mapId, force) {
+  const M = MAPS[mapId]; if (!M || (currentMap === mapId && !force)) return;
   currentMap = mapId; R_ISLAND = M.ground / 2;
   clearMap();
   scene.background = skyTex(M.sky[0], M.sky[1]); scene.fog = new THREE.FogExp2(M.fog, 0.0016); water.material.color.set(M.water);
@@ -78,6 +78,7 @@ function collideWalls(px, pz, feetY) {
   const r = 0.5, headY = feetY + 1.7, footY = feetY + 0.25;
   for (const p of pieces) {
     if (!p.solid || p.broken) continue;
+    if (p.t === 'stair') continue;   // stairs support you (groundAt) but never shove — steps deeper than the tolerance were acting as walls
     const top = p.y + p.h / 2, bot = p.y - p.h / 2;
     if (top <= feetY + 0.65) continue;
     if (headY < bot || footY > top) continue;
@@ -160,7 +161,11 @@ const lobbyGroup = buildLobby();
 
 // spawn points
 const LOBBY_SPAWN = () => ({ x: LOBBY.x + rndBetween(-4, 4), y: 1.4, z: LOBBY.z + rndBetween(-4, 4) });
-const ISLAND_SPAWN = () => { const M = MAPS[currentMap]; const r = (M && M.spawnR) || 12; const a = Math.random() * Math.PI * 2, dd = Math.random() * r; return { x: Math.cos(a) * dd, y: 3, z: Math.sin(a) * dd }; };
+const ISLAND_SPAWN = () => {
+  const M = MAPS[currentMap];
+  if (M && M.spawn) { const s = M.spawn, a = Math.random() * Math.PI * 2, dd = Math.random() * s.r; return { x: s.x + Math.cos(a) * dd, y: 3, z: s.z + Math.sin(a) * dd }; }   // outside, in front of the building
+  const r = (M && M.spawnR) || 12; const a = Math.random() * Math.PI * 2, dd = Math.random() * r; return { x: Math.cos(a) * dd, y: 3, z: Math.sin(a) * dd };
+};
 
 // ============================ PLAYER ============================
 const me = { pos: LOBBY_SPAWN(), vel: { x: 0, y: 0, z: 0 }, ry: 0, grounded: true, dead: false, anim: 'idle', eye: 1.4 };
@@ -230,7 +235,7 @@ let participating = false;     // am I playing this round (was in the lobby at w
 function applyPhase(ph, until, disasters, stk, map) {
   phase = ph; phaseUntil = until; stacks = stk;
   if (disasters && disasters.length) activeSpecs = disasters;
-  if (map) buildMap(map);
+  if (map) buildMap(map, ph === 'warning');   // force at round start — resets last round's destruction
   if (ph === 'warning') {
     // players in the lobby now join the round on the island
     participating = true; me.dead = false; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
@@ -387,6 +392,8 @@ function updateDisasters(dt, elapsed) {
     } else if (s.id === 'flood') {
       floodLevel = Math.min(WATER_Y + 12, WATER_Y + Math.max(0, elapsed - (s.delay || 3)) * s.rise);
       if (floodMesh) floodMesh.position.y = floodLevel;
+      // submerged weak pieces crumble as the water rises
+      if (Math.random() < dt * 10) { const sub = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130 && q.y + q.h / 2 < floodLevel); if (sub.length) damagePiece(sub[(Math.random() * sub.length) | 0], 999); }
       if (!me.dead && me.pos.y + me.eye < floodLevel + 0.2) die('flood');
     } else if (s.id === 'meteors') {
       for (let i = 0; i < s.impacts.length; i++) {
@@ -397,7 +404,9 @@ function updateDisasters(dt, elapsed) {
       }
     } else if (s.id === 'quake') {
       shake = 0.3;
-      if (Math.random() < dt * 7) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 45); }
+      // shockwaves that actually tear the building apart
+      if (Math.random() < dt * 2.5) { const a = Math.random() * Math.PI * 2, rr = Math.random() * R_ISLAND * 0.8; damageArea(Math.cos(a) * rr, Math.sin(a) * rr, 7, 80); }
+      if (Math.random() < dt * 6) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 999); }
       d.mesh.children.forEach((cr, i) => { const f = s.fissures[i]; const o = Math.max(0, Math.min(1, (elapsed - f.openAt) / 1.5)); cr.scale.x = Math.max(0.01, o); });
       if (!me.dead) for (const f of s.fissures) { if (elapsed < f.openAt + 0.5) continue; const dx = me.pos.x - f.x, dz = me.pos.z - f.z, c = Math.cos(-f.ang), sn = Math.sin(-f.ang); const lx = dx * c - dz * sn, lz = dx * sn + dz * c; if (Math.abs(lx) < f.w / 2 && Math.abs(lz) < f.len / 2 && me.grounded) { me.grounded = false; me.vel.y = -2; if (me.pos.y < -3) die('fissure'); } }
     } else if (s.id === 'tsunami') {
@@ -405,17 +414,19 @@ function updateDisasters(dt, elapsed) {
       const dist = -R_ISLAND * 1.6 + prog * 22;   // wave sweeps across
       const wx = s.dirX * -dist, wz = s.dirZ * -dist;
       d.mesh.position.set(wx, 2, wz); d.mesh.rotation.y = Math.atan2(s.dirX, s.dirZ);
+      // the wave smashes everything in its path below its crest
+      if (prog > 0) { for (const q of pieces) { if (q.broken || q.maxHp <= 0) continue; const qa = q.x * -s.dirX + q.z * -s.dirZ; if (Math.abs(qa - dist) < 4 && q.y - q.h / 2 < 5) damagePiece(q, dt * 500); } }
       if (!me.dead && prog > 0) { const along = (me.pos.x * -s.dirX + me.pos.z * -s.dirZ); if (Math.abs(along - dist) < 3 && me.pos.y + me.eye < 5) die('tsunami'); }
     } else if (s.id === 'wildfire') {
       for (const f of d.state.fires) { if (elapsed > (s.delay || 2)) f.r = Math.min(10, f.r + s.spread * dt); }
       // redraw fire discs
       d.mesh.clear();
       for (const f of d.state.fires) { const fire = new THREE.Mesh(new THREE.CircleGeometry(f.r, 20), new THREE.MeshBasicMaterial({ color: '#ff4d1a', transparent: true, opacity: 0.55 })); fire.rotation.x = -Math.PI / 2; fire.position.set(f.x, 0.09, f.z); d.mesh.add(fire); }
-      for (const f of d.state.fires) damageArea(f.x, f.z, f.r, dt * 18);
+      for (const f of d.state.fires) damageArea(f.x, f.z, f.r, dt * 34);
       if (!me.dead) for (const f of d.state.fires) if (Math.hypot(me.pos.x - f.x, me.pos.z - f.z) < f.r && me.pos.y < 1.5) die('wildfire');
     } else if (s.id === 'volcano') {
       d.state.r = Math.min(R_ISLAND, Math.max(0, elapsed - (s.delay || 3)) * s.lavaRate * 2);
-      damageArea(0, 0, d.state.r, dt * 24);
+      damageArea(0, 0, d.state.r, dt * 42);
       d.mesh.scale.setScalar(Math.max(0.1, d.state.r));
       if (!me.dead && Math.hypot(me.pos.x, me.pos.z) < d.state.r && me.pos.y < 1.5) die('lava');
     } else if (s.id === 'blizzard') {
@@ -423,13 +434,17 @@ function updateDisasters(dt, elapsed) {
       if (elapsed > (s.freezeIn || 5)) { if (warmD > s.warm.r) d.state.cold += dt; else d.state.cold = Math.max(0, d.state.cold - dt * 2); }
       $('status').textContent = warmD > s.warm.r ? `❄️ Freezing! Get to the fire (${(6 - d.state.cold).toFixed(0)}s)` : '🔥 Warm — stay here';
       if (!me.dead && d.state.cold > 6) die('frozen');
+      // deep freeze shatters glass and frail pieces under the ice load
+      if (Math.random() < dt * 3.5) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 60); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 999); }
       // falling snow follows the player; recycle flakes that hit the ground
       const snow = d.state.snow;
       if (snow) { const arr = snow.geometry.attributes.position.array; for (let i = 0; i < arr.length; i += 3) { arr[i + 1] -= dt * 15; arr[i] += dt * 3; if (arr[i + 1] < 0) { arr[i + 1] = 48; arr[i] = (Math.random() - 0.5) * 95; arr[i + 2] = (Math.random() - 0.5) * 95; } } snow.geometry.attributes.position.needsUpdate = true; snow.position.set(me.pos.x, 0, me.pos.z); }
       if (d.state.flame) { d.state.flame.scale.y = 1 + Math.sin(elapsed * 20) * 0.14; d.state.flame2.scale.y = 1 + Math.cos(elapsed * 26) * 0.18; if (d.state.light) d.state.light.intensity = 1.2 + Math.sin(elapsed * 18) * 0.5; }
     } else if (s.id === 'acid') {
       d.mesh.clear();
-      for (const p of d.state.pools) { if (elapsed > p.growAt) p.cur = Math.min(p.r, p.cur + dt * 0.8); const pool = new THREE.Mesh(new THREE.CircleGeometry(Math.max(0.1, p.cur), 18), new THREE.MeshBasicMaterial({ color: '#7de04a', transparent: true, opacity: 0.6 })); pool.rotation.x = -Math.PI / 2; pool.position.set(p.x, 0.07, p.z); d.mesh.add(pool); if (!me.dead && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < p.cur && me.pos.y < 1.5) die('acid'); }
+      for (const p of d.state.pools) { if (elapsed > p.growAt) p.cur = Math.min(p.r, p.cur + dt * 0.8); const pool = new THREE.Mesh(new THREE.CircleGeometry(Math.max(0.1, p.cur), 18), new THREE.MeshBasicMaterial({ color: '#7de04a', transparent: true, opacity: 0.6 })); pool.rotation.x = -Math.PI / 2; pool.position.set(p.x, 0.07, p.z); d.mesh.add(pool); damageArea(p.x, p.z, p.cur, dt * 35); if (!me.dead && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < p.cur && me.pos.y < 1.5) die('acid'); }
+      // corrosive rain eats away at the building itself
+      if (Math.random() < dt * 5) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 70); }
     } else if (s.id === 'thunderstorm') {
       for (let i = 0; i < (s.strikes || []).length; i++) { const st = s.strikes[i]; if (!d.state.fired[i] && elapsed > st.t) { d.state.fired[i] = true; lightning(st.x, st.z); damageArea(st.x, st.z, 5, 9999); if (!me.dead && Math.hypot(me.pos.x - st.x, me.pos.z - st.z) < 5) die('lightning'); } }
     } else if (s.id === 'sandstorm') {

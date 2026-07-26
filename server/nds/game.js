@@ -49,7 +49,9 @@ function makeDisaster(id) {
 function startRound() {
   state.round++;
   rand = mulberry((state.round * 2654435761) >>> 0);
-  state.map = MAP_IDS[Math.floor(rand() * MAP_IDS.length)] || 'grassy';   // rotate maps
+  let mi = Math.floor(rand() * MAP_IDS.length);
+  if (MAP_IDS[mi] === state.map) mi = (mi + 1) % MAP_IDS.length;   // never the same map twice in a row
+  state.map = MAP_IDS[mi] || MAP_IDS[0];
   const count = 1 + state.stacks;
   const picked = [];
   const pool = [...DISASTER_IDS];
