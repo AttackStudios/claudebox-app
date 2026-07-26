@@ -34,7 +34,7 @@ const rndBetween = (a, b) => a + Math.random() * (b - a);
 // ============================ WORLD ============================
 let R_ISLAND = 30;             // rough bounding radius (disasters)
 const WATER_Y = WORLD.waterY;
-const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 14, radius: 9 };
+const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 4.6, radius: 9, hole: 4.2 };
 const lobbySolids = [];        // lobby collision (discs/boxes)
 const walls = [];              // lobby keep-in cylinders
 
@@ -65,6 +65,7 @@ function groundAt(x, z, feetY) {
   for (const p of pieces) { if (!p.solid || p.broken) continue; const top = p.y + p.h / 2; if (top <= feetY + 0.65 && top > best && Math.abs(x - p.x) <= p.w / 2 && Math.abs(z - p.z) <= p.d / 2) best = top; }
   for (const s of lobbySolids) {
     if (s.type === 'disc') { if (Math.hypot(x - s.x, z - s.z) <= s.r && s.top <= feetY + 0.65 && s.top > best) best = s.top; }
+    else if (s.type === 'ring') { const dd = Math.hypot(x - s.x, z - s.z); if (dd <= s.r && dd >= s.inner && s.top <= feetY + 0.65 && s.top > best) best = s.top; }
     else { const dx = x - s.x, dz = z - s.z, c = Math.cos(-s.ry), sn = Math.sin(-s.ry), lx = dx * c - dz * sn, lz = dx * sn + dz * c; if (Math.abs(lx) <= s.w / 2 + 0.3 && Math.abs(lz) <= s.d / 2 + 0.3 && s.top <= feetY + 0.65 && s.top > best) best = s.top; }
   }
   return best;
@@ -110,10 +111,14 @@ function buildLobby() {
   const ring1 = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 3.2, 40, 1, true), glassMat);
   ring1.position.y = 1.6; g.add(ring1);
   walls.push({ x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius - 0.4, yMin: -1, yMax: 3.5 });
-  // upper platform
-  const upper = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 1, 40), LM('#d6dde8'));
-  upper.position.y = LOBBY.upperY - 0.5; g.add(upper);
-  lobbySolids.push({ type: 'disc', x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius, top: LOBBY.upperY });
+  // upper floor — a RING with a central hole the spiral stair rises through
+  const upper = new THREE.Mesh(new THREE.RingGeometry(LOBBY.hole, LOBBY.radius, 40), LM('#d6dde8'));
+  upper.rotation.x = -Math.PI / 2; upper.position.y = LOBBY.upperY; g.add(upper);
+  const lip = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.hole, LOBBY.hole, 0.5, 40, 1, true), LM('#b7c0cd'));
+  lip.position.y = LOBBY.upperY - 0.25; g.add(lip);
+  const underside = new THREE.Mesh(new THREE.RingGeometry(LOBBY.hole, LOBBY.radius, 40), LM('#aeb8c6'));
+  underside.rotation.x = Math.PI / 2; underside.position.y = LOBBY.upperY - 0.02; g.add(underside);
+  lobbySolids.push({ type: 'ring', x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius, inner: LOBBY.hole, top: LOBBY.upperY });
   // glass walls (upper — the invisible-walled viewing deck)
   const ring2 = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 5, 40, 1, true), glassMat);
   ring2.position.y = LOBBY.upperY + 2; g.add(ring2);
@@ -124,7 +129,7 @@ function buildLobby() {
   const roof = new THREE.Mesh(new THREE.ConeGeometry(LOBBY.radius + 1.2, 4, 40), LM('#8a5a3a'));
   roof.position.y = LOBBY.upperY + 6.5; g.add(roof);
   // ---- spiral staircase ----
-  const steps = 44, rStair = 6.2, turns = 2;
+  const steps = 22, rStair = 6.4, turns = 1.25;
   for (let i = 0; i < steps; i++) {
     const t = i / steps, ang = t * turns * Math.PI * 2, y = t * LOBBY.upperY;
     const sx = Math.cos(ang) * rStair, sz = Math.sin(ang) * rStair;
@@ -421,10 +426,10 @@ function frame() {
   }
 
   // my avatar
-  if (myAvatar) { myAvatar.group.visible = !me.dead; myAvatar.group.position.set(me.pos.x, me.pos.y, me.pos.z); myAvatar.group.rotation.y = me.ry; myAvatar.setAnim(me.dead ? 'fall' : moving ? 'run' : 'idle'); myAvatar.update(dt); }
+  if (myAvatar) { myAvatar.group.visible = !me.dead; myAvatar.group.position.set(me.pos.x, me.pos.y, me.pos.z); myAvatar.group.rotation.y = me.ry + Math.PI; myAvatar.setAnim(me.dead ? 'fall' : moving ? 'run' : 'idle'); myAvatar.update(dt); }
 
   // others
-  for (const [, o] of others) { const g = o.ctrl.group; g.position.x += (o.target.x - g.position.x) * Math.min(1, dt * 12); g.position.y += (o.target.y - g.position.y) * Math.min(1, dt * 12); g.position.z += (o.target.z - g.position.z) * Math.min(1, dt * 12); let d = o.target.ry - g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; g.rotation.y += d * Math.min(1, dt * 10); o.ctrl.setAnim(o.alive === false ? 'fall' : o.anim === 'run' ? 'run' : 'idle'); o.ctrl.update(dt); }
+  for (const [, o] of others) { const g = o.ctrl.group; g.position.x += (o.target.x - g.position.x) * Math.min(1, dt * 12); g.position.y += (o.target.y - g.position.y) * Math.min(1, dt * 12); g.position.z += (o.target.z - g.position.z) * Math.min(1, dt * 12); let d = (o.target.ry + Math.PI) - g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; g.rotation.y += d * Math.min(1, dt * 10); o.ctrl.setAnim(o.alive === false ? 'fall' : o.anim === 'run' ? 'run' : 'idle'); o.ctrl.update(dt); }
 
   // disasters
   if (phase === 'disaster') updateDisasters(dt, now - disasterStart);

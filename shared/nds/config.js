@@ -7,7 +7,7 @@
 export const WORLD = { waterY: -1.4 };
 
 export const ROUND = {
-  intermission: 14, warning: 6, disaster: 27, aftermath: 6,
+  intermission: 14, warning: 30, disaster: 27, aftermath: 6,
   reward: { stars: 2, cubes: 1 },
   machineCost: 5,
 };
@@ -127,48 +127,91 @@ function schoolMap() {
   return P;
 }
 
-// ===================== FURIOUS STATION =====================
+// ===================== FURIOUS STATION (gas station) =====================
 function stationMap() {
   const P = [];
-  const plat = '#b8b0a2', edge = '#e0c040', steel = '#6a7280', canopy = '#3a4450', train = '#c23a3a', train2 = '#a02a2a', win = '#bfe0f0', bench = '#6a4a2a', rail = '#8a8f98', tie = '#5a4632';
-  const L = 70, PW = 12;   // platform length + width
-  add(P, 0, -1, 0, L + 20, 2, 60, '#7a7266', INDEST, { t: 'ground' });
-  // two platforms with a track pit between
-  for (const side of [-1, 1]) {
-    const pz = side * 10;
-    add(P, 0, 0, pz, L, 1, PW, plat, INDEST, { t: 'floor' });
-    add(P, 0, 0.55, pz - side * (PW / 2 - 0.4), L, 0.2, 0.8, edge, INDEST, { t: 'edge', ns: 1 });   // warning line
-    // canopy pillars + roof
-    for (let i = 0; i < 8; i++) { const px = -L / 2 + (i + 0.5) * (L / 8); add(P, px, 4.5, pz, 0.6, 9, 0.6, steel, INDEST, { t: 'col' }); }
-    add(P, 0, 9.2, pz, L, 0.5, PW + 2, canopy, STRONG, { t: 'roof' });
-    add(P, 0, 9.7, pz, L, 0.6, 1, steel, STRONG, { t: 'ridge' });
-    // benches + signs
-    for (let i = 0; i < 5; i++) { const bx = -L / 2 + (i + 0.5) * (L / 5); add(P, bx, 1.2, pz + side * 1.5, 3, 0.5, 1, bench, WOOD, { t: 'furn' }); }
-    add(P, -L / 2 + 6, 3, pz, 3, 1.4, 0.3, '#1a2230', WEAK, { t: 'sign' });
+  const grass = '#6faa54', lot = '#b7b3a8', curb = '#8f8a7e', wall = '#ece6da', pier = '#d8d2c4',
+        storeRoof = '#455063', glass = '#bfe0f0', door = '#34424f',
+        canopyTop = '#f2f2f2', trim = '#d2382c', post = '#c2c6ce',
+        pump = '#dadada', pumpTop = '#c23a3a', screen = '#243040',
+        signPole = '#8a8f98', signFace = '#e8b830', prop = '#3a4450';
+
+  // ---- island: green grass + a paved forecourt ----
+  add(P, 0, -1, 0, 60, 2, 60, grass, INDEST, { t: 'ground' });
+  add(P, 0, 0.06, -1, 46, 0.12, 34, lot, INDEST, { t: 'deco', ns: 1 });          // asphalt forecourt
+  add(P, 0, 0.14, -1, 44, 0.06, 0.3, '#e8e2d0', INDEST, { t: 'deco', ns: 1 });   // lot line
+  add(P, 0, 0.14, -8, 44, 0.06, 0.3, '#e8e2d0', INDEST, { t: 'deco', ns: 1 });
+
+  // ---- convenience store (back of the lot) ----
+  const bx = 13, bz = 11, bw = 17, bd = 8, bh = 4.8, fz = bz - bd / 2;
+  add(P, bx, 0.22, bz, bw, 0.5, bd, '#cfc9bd', INDEST, { t: 'floor' });
+  add(P, bx, bh / 2, bz + bd / 2, bw, bh, 0.4, wall, STRONG, { t: 'wall' });      // back wall
+  add(P, bx - bw / 2, bh / 2, bz, 0.4, bh, bd, wall, STRONG, { t: 'wall' });      // side walls
+  add(P, bx + bw / 2, bh / 2, bz, 0.4, bh, bd, wall, STRONG, { t: 'wall' });
+  add(P, bx - bw / 2 + 0.7, bh / 2, fz, 1.4, bh, 0.4, pier, STRONG, { t: 'wall' });   // front piers
+  add(P, bx + bw / 2 - 0.7, bh / 2, fz, 1.4, bh, 0.4, pier, STRONG, { t: 'wall' });
+  add(P, bx + bw / 2 - 4, bh / 2, fz, 2, bh, 0.35, door, WEAK, { t: 'door' });    // glass door
+  // storefront glazing (breakable) between piers
+  for (let i = 0; i < 5; i++) { const gx = bx - 5 + i * 2.4; if (Math.abs(gx - (bx + bw / 2 - 4)) < 1.4) continue; add(P, gx, 2.3, fz, 2.1, 3.4, 0.16, glass, GLASS, { t: 'glass' }); }
+  add(P, bx, bh + 0.25, bz, bw + 1.4, 0.5, bd + 1.4, storeRoof, MED, { t: 'roof' });   // flat overhang roof
+  add(P, bx, bh - 0.5, fz - 0.35, bw - 2, 1.3, 0.25, signFace, WEAK, { t: 'sign', ns: 1 });   // fascia sign
+  // roof HVAC
+  add(P, bx - 4, bh + 1, bz + 1, 2.4, 1.2, 2.2, post, WEAK, { t: 'furn' });
+
+  // ---- fuel canopy (the big flat roof over the pumps) ----
+  const cx = -5, cz = -3, cw = 24, cd = 15, cy = 5.4;
+  for (const [dx, dz] of [[-cw / 2 + 2, -cd / 2 + 2], [cw / 2 - 2, -cd / 2 + 2], [-cw / 2 + 2, cd / 2 - 2], [cw / 2 - 2, cd / 2 - 2]]) {
+    add(P, cx + dx, 0.5, cz + dz, 1.8, 1, 1.8, curb, STRONG, { t: 'curb' });      // post footing
+    add(P, cx + dx, cy / 2 + 0.5, cz + dz, 0.8, cy, 0.8, post, STRONG, { t: 'col' });
   }
-  // track bed + rails + ties (center)
-  add(P, 0, -0.4, 0, L, 0.6, 6, '#4a4436', INDEST, { t: 'trackbed' });
-  for (let i = 0; i < 24; i++) add(P, -L / 2 + (i + 0.5) * (L / 24), -0.05, 0, 0.6, 0.25, 6, tie, INDEST, { t: 'tie', ns: 1 });
-  for (const rz of [-2, 2]) add(P, 0, 0.05, rz, L, 0.2, 0.25, rail, INDEST, { t: 'rail', ns: 1 });
-  // a train — several breakable cars
-  for (let c = 0; c < 4; c++) {
-    const cx = -L / 2 + 10 + c * 15;
-    add(P, cx, 2.4, 0, 13, 3.4, 4.4, c % 2 ? train2 : train, MED, { t: 'car' });   // car body (breakable)
-    add(P, cx, 4.3, 0, 12.4, 0.6, 4, steel, WEAK, { t: 'carroof' });
-    for (let w = 0; w < 4; w++) add(P, cx - 5 + w * 3.2, 2.7, 2.22, 1.8, 1.4, 0.12, win, GLASS, { t: 'glass' });
-    for (let w = 0; w < 4; w++) add(P, cx - 5 + w * 3.2, 2.7, -2.22, 1.8, 1.4, 0.12, win, GLASS, { t: 'glass' });
-    add(P, cx, 0.6, 0, 12, 0.8, 3.6, '#2a2e36', STRONG, { t: 'chassis' });
+  add(P, cx, cy + 1, cz, cw, 0.8, cd, canopyTop, MED, { t: 'roof' });             // canopy deck (breakable)
+  add(P, cx, cy + 0.4, cz - cd / 2, cw, 0.7, 0.35, trim, MED, { t: 'trim' });     // red fascia
+  add(P, cx, cy + 0.4, cz + cd / 2, cw, 0.7, 0.35, trim, MED, { t: 'trim' });
+  add(P, cx - cw / 2, cy + 0.4, cz, 0.35, 0.7, cd, trim, MED, { t: 'trim' });
+  add(P, cx + cw / 2, cy + 0.4, cz, 0.35, 0.7, cd, trim, MED, { t: 'trim' });
+  add(P, cx, cy + 2.1, cz - cd / 2 + 1, 7, 1.8, 0.5, signFace, WEAK, { t: 'sign', ns: 1 });   // brand sign on top
+
+  // ---- pump islands under the canopy ----
+  for (const px of [cx - 6, cx + 6]) {
+    add(P, px, 0.45, cz, 4.4, 0.9, 2, curb, STRONG, { t: 'curb' });
+    for (const s of [-1, 1]) {
+      add(P, px + s * 1.3, 1.7, cz, 1.1, 2, 1.5, pump, FURN, { t: 'pump' });      // pump body (breakable)
+      add(P, px + s * 1.3, 3, cz, 1.1, 0.5, 1.5, pumpTop, WEAK, { t: 'pumphat' });
+      add(P, px + s * 1.3, 2.2, cz + 0.85, 0.7, 0.9, 0.12, screen, WEAK, { t: 'furn', ns: 1 });
+    }
   }
-  // footbridge over the tracks
-  add(P, 0, 6, 0, 5, 0.5, 8, steel, MED, { t: 'bridge' });
-  stairs(P, 2.2, 10, 0, 6, 3, 8, steel);
-  stairs(P, -2.2, -10, 0, 6, 3, 8, steel);
+
+  // ---- roadside price sign ----
+  add(P, -24, 3, -22, 0.9, 6, 0.9, signPole, STRONG, { t: 'pole' });
+  add(P, -24, 6.6, -22, 5, 3, 0.5, screen, WEAK, { t: 'sign' });
+  add(P, -24, 6.6, -21.7, 4.2, 2.4, 0.3, signFace, WEAK, { t: 'sign', ns: 1 });
+
+  // ---- scattered props (all breakable) ----
+  add(P, bx - 10, 0.7, bz - 2, 1, 1.4, 1, prop, WEAK, { t: 'furn' });             // trash can
+  add(P, 6, 0.7, -14, 1, 1.4, 1, prop, WEAK, { t: 'furn' });
+  add(P, -18, 1, 4, 1.2, 2, 1.6, '#3a6ea5', WEAK, { t: 'furn' });                 // air/water box
+  add(P, 18, 0.5, -12, 5, 1, 2.4, curb, STRONG, { t: 'curb' });                   // parking bumper strip
+  // protective bollards around each pump island
+  for (const px of [cx - 6, cx + 6]) for (const [ox, oz] of [[-2.4, 0], [2.4, 0], [0, -1.4], [0, 1.4]]) add(P, px + ox, 0.9, cz + oz, 0.45, 1.4, 0.45, pumpTop, WEAK, { t: 'bollard' });
+  // canopy underside light strips
+  for (const lz of [cz - 4, cz, cz + 4]) add(P, cx, cy + 0.55, lz, cw - 1.5, 0.12, 0.5, '#fff6cf', MED, { t: 'deco', ns: 1 });
+  // storefront kickplate + window mullions
+  add(P, bx, 0.7, fz, bw - 3, 1, 0.3, pier, STRONG, { t: 'wall' });
+  for (let i = 0; i < 4; i++) add(P, bx - 3.6 + i * 2.4, 2.3, fz, 0.16, 3.4, 0.3, wall, WEAK, { t: 'mullion' });
+  // vending machines + ice box against the store front
+  add(P, bx - 6.5, 1.3, fz - 0.7, 1.3, 2.4, 0.9, '#c23a3a', WEAK, { t: 'furn' });
+  add(P, bx - 5, 1.3, fz - 0.7, 1.3, 2.4, 0.9, '#3a6ea5', WEAK, { t: 'furn' });
+  add(P, bx + 6.5, 0.9, fz - 0.7, 1.6, 1.6, 1, '#e8ecf0', WEAK, { t: 'furn' });   // ice box
+  // planters + shrubs on the grass
+  for (const [gx, gz] of [[-26, 20], [26, 20], [0, 24], [-26, -2]]) { add(P, gx, 0.5, gz, 3, 0.7, 3, curb, STRONG, { t: 'planter' }); add(P, gx, 1.5, gz, 2.4, 1.4, 2.4, '#4f8a45', WEAK, { t: 'shrub' }); }
+  // propane cage by the store
+  add(P, bx + bw / 2 + 2, 0.9, bz - 2, 1.8, 1.6, 1.8, '#8a8f98', WEAK, { t: 'furn' });
   return P;
 }
 
 export const MAPS = {
   glass:   { id: 'glass',   name: 'Glass Office',    spawnR: 12, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#bcd6ee', ground: 60, pieces: officeMap() },
   school:  { id: 'school',  name: 'Heights School',  spawnR: 16, sky: ['#8fc0e8', '#e0eef8'], water: '#3a86c0', fog: '#c8dcc0', ground: 68, pieces: schoolMap() },
-  station: { id: 'station', name: 'Furious Station', spawnR: 22, sky: ['#9aa8b8', '#d8e2ec'], water: '#3a4450', fog: '#aeb8c4', ground: 84, pieces: stationMap() },
+  station: { id: 'station', name: 'Furious Station', spawnR: 16, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#c6ddc4', ground: 60, pieces: stationMap() },
 };
 export const MAP_IDS = Object.keys(MAPS);
