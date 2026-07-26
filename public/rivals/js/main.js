@@ -1020,48 +1020,47 @@ function buildViewmodels() {
     const sph = (r, c, x, y, z, sy = 1) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), vmMat(c)); m.position.set(x, y, z); m.scale.y = sy; return m; };
     const paw = new THREE.Group();                 // everything below rides in the right hand
     const CX = 0.42;
-    // --- LEG: a bent, tapered limb (angled up-and-back, not a stiff rod) ---
-    const leg = new THREE.Group();
-    leg.add(sph(0.115, FUR, 0, 0, 0.02, 1.3));                     // ankle
-    leg.add(rb(0.15, 0.16, 0.26, FUR, 0, 0.03, 0.2));             // lower leg
-    const upper = new THREE.Group();                               // bends further up
-    upper.add(rb(0.135, 0.15, 0.24, FUR, 0, 0, 0.1));
-    upper.add(sph(0.09, FUR2, 0, 0.01, 0.22, 1.2));               // fluffy elbow
-    upper.position.set(0, 0.06, 0.32); upper.rotation.x = -0.7;    // knee bend
-    leg.add(upper);
-    // soft fur tufts down the leg
-    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; leg.add(rb(0.045, 0.045, 0.1, i % 2 ? FUR3 : FUR2, Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0.16)); }
-    // tabby stripes wrapping the leg
-    leg.add(rb(0.17, 0.028, 0.05, FUR2, 0, 0.08, 0.1));
-    leg.add(rb(0.17, 0.028, 0.05, FUR2, 0, 0.08, 0.24));
-    leg.position.set(CX, -0.13, 0.06); leg.rotation.x = -0.42;     // whole limb tips up toward you
-    paw.add(leg);
-    // --- PAW: a plump rounded pad, curving down/forward ---
+    // --- FOREARM raised straight UP out of the hand ---
+    const arm = new THREE.Group();
+    arm.add(sph(0.12, FUR2, 0, -0.04, 0, 1.1));                    // wrist joint (bottom)
+    arm.add(rb(0.16, 0.44, 0.15, FUR, 0, 0.2, 0));               // vertical forearm
+    arm.add(sph(0.115, FUR2, 0, 0.44, 0, 1.15));                 // fluffy elbow at the top
+    arm.add(rb(0.185, 0.03, 0.05, FUR2, 0, 0.1, 0));            // tabby stripes
+    arm.add(rb(0.185, 0.03, 0.05, FUR2, 0, 0.24, 0));
+    arm.add(rb(0.185, 0.03, 0.05, FUR2, 0, 0.36, 0));
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; arm.add(rb(0.045, 0.045, 0.045, i % 2 ? FUR3 : FUR2, Math.cos(a) * 0.09, 0.2 + Math.sin(a) * 0.2, 0.08)); }
+    arm.position.set(CX, -0.4, 0.14);                             // base low → rises up into view
+    paw.add(arm);
+    // --- WRIST folds the paw forward OVER the top of the arm (>100°) ---
+    const wrist = new THREE.Group();
+    wrist.position.set(CX, 0.0, 0.14);                            // at the top of the forearm
+    wrist.rotation.x = -0.55;                                     // droop the paw forward past horizontal
+    paw.add(wrist);
+    // plump paw pad hanging forward-down from the wrist
     const pad = new THREE.Group();
-    pad.add(sph(0.16, FUR, 0, 0.01, 0.04, 0.78));                  // fluffy back of paw
-    pad.add(sph(0.15, TOE, 0, -0.02, -0.08, 0.72));               // white paw front
-    pad.add(sph(0.115, PAD, 0, -0.11, -0.03, 0.5));               // big pink palm bean
-    pad.add(sph(0.05, PAD2, -0.06, -0.12, 0.02, 0.6));            // little side beans
-    pad.add(sph(0.05, PAD2, 0.06, -0.12, 0.02, 0.6));
-    pad.position.set(CX, -0.17, -0.02);
-    paw.add(pad);
-    // --- TOES: four splayed toe groups (each flexes) with claw + bean ---
+    pad.add(sph(0.16, FUR, 0, 0.0, -0.14, 0.85));                // fluffy back of paw
+    pad.add(sph(0.15, TOE, 0, -0.04, -0.24, 0.75));             // white paw front
+    pad.add(sph(0.12, PAD, 0, -0.12, -0.2, 0.6));               // big pink palm bean
+    pad.add(sph(0.05, PAD2, -0.07, -0.13, -0.14, 0.6));         // side beans
+    pad.add(sph(0.05, PAD2, 0.07, -0.13, -0.14, 0.6));
+    wrist.add(pad);
+    // --- TOES: four splayed toe groups hanging off the front (each flexes) ---
     const claws = [], toes = [];
     for (let i = 0; i < 4; i++) {
       const toe = new THREE.Group();
-      const fan = (i - 1.5) * 0.2;                                 // splay out
-      toe.add(sph(0.062, TOE, 0, 0, -0.09, 1.15));                // white toe
-      toe.add(sph(0.05, FUR3, 0, 0.035, -0.03, 1.0));            // fur on top
-      toe.add(sph(0.04, PAD2, 0, -0.052, -0.12, 0.85));          // pink toe bean
+      const fan = (i - 1.5) * 0.22;                               // splay out
+      toe.add(sph(0.062, TOE, 0, 0, -0.09, 1.15));              // white toe
+      toe.add(sph(0.05, FUR3, 0, 0.035, -0.03, 1.0));          // fur on top
+      toe.add(sph(0.04, PAD2, 0, -0.052, -0.12, 0.85));        // pink toe bean
       const claw = new THREE.Mesh(new THREE.ConeGeometry(0.023, 0.15, 10), vmMat(CLAW));
-      claw.rotation.x = -Math.PI / 2 - 0.5;                       // hook forward+down
+      claw.rotation.x = -Math.PI / 2 - 0.5;                      // hook forward+down
       claw.position.set(0, -0.005, -0.19);
       claw.userData.tip = new THREE.Vector3(0, 0.075, 0);
       toe.add(claw); claws.push(claw);
-      toe.position.set(CX + Math.sin(fan) * 0.12, -0.18, -0.16 - Math.cos(fan) * 0.02);
+      toe.position.set(Math.sin(fan) * 0.12, -0.14, -0.3 - Math.cos(fan) * 0.02);
       toe.rotation.y = fan;
-      toe.userData.baseRX = 0; toe.userData.phase = i * 1.3;       // for idle flex
-      paw.add(toe); toes.push(toe);
+      toe.userData.baseRX = 0; toe.userData.phase = i * 1.3;      // for idle flex
+      wrist.add(toe); toes.push(toe);
     }
     g.add(paw);
     const rArm = mkArm(); rArm.position.set(0.4, -0.34, 0.24); rArm.rotation.set(0.62, -0.22, 0.12);
@@ -1387,7 +1386,7 @@ const VM_HIPS = {
   daggers: { x: 0.03, y: -0.22, z: -0.46 },
   jumppad: { x: 0.03, y: -0.24, z: -0.58 },
   satchel: { x: 0.02, y: -0.22, z: -0.5 },
-  catpaw: { x: 0.08, y: -0.2, z: -0.46 },
+  catpaw: { x: 0.05, y: -0.04, z: -0.64 },
 };
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
