@@ -502,6 +502,8 @@ function tryAirJump() {
 }
 function tryCrouch(on) {
   if (on) {
+    // pressing slide AGAIN while already sliding cancels it early (stand up)
+    if (me.sliding) { me.sliding = false; me.crouch = false; me.slideEndAt = clockNow(); return; }
     me.slidePressAt = clockNow();   // fresh press — buffers a slide onto landing
     // SLIDE — crouch while moving on the ground bursts you forward, then decays
     const speed = Math.hypot(me.vel.x, me.vel.z);

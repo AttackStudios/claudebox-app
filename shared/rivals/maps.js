@@ -41,32 +41,31 @@ export const ARENA = {
   ground: { color: '#eef1f6', sizeX: 46, sizeZ: 62, thick: 4, tex: ['#eef1f6', 'rgba(120,135,160,0.34)', 'rgba(150,175,205,0.12)'] },
   emblem: '#8fa7c4',
   boxes: [
-    // ---- perimeter walls (tall white box) ----
-    B(0, 11, -31, 46, 22, 1.2, AR_W), B(0, 11, 31, 46, 22, 1.2, AR_W),
-    B(-23, 11, 0, 1.2, 22, 62, AR_W), B(23, 11, 0, 1.2, 22, 62, AR_W),
-    // ---- central cluster ----
-    ...table(0, 0, 6, 4, 2.0, AR_W2, AR_ACC),          // centre table (walk under/on)
-    B(0, 0.6, -9, 5, 1.2, 3, AR_ACC), B(0, 0.6, 9, 5, 1.2, 3, AR_ACC),
-    B(-5, 0.75, -5, 7, 1.5, 2.2, AR_W2, { ry: 0.5 }), B(5, 0.75, 5, 7, 1.5, 2.2, AR_W2, { ry: 0.5 }),
-    // ---- cubes ----
-    B(-9, 1.2, 3, 2.6, 2.4, 2.6, AR_W2), B(9, 1.2, -3, 2.6, 2.4, 2.6, AR_W2),
-    B(-7, 0.9, 12, 2.4, 1.8, 2.4, AR_ACC), B(7, 0.9, -12, 2.4, 1.8, 2.4, AR_ACC),
+    // ---- perimeter walls ----
+    B(0, 7, -31, 46, 14, 1.2, AR_W), B(0, 7, 31, 46, 14, 1.2, AR_W),
+    B(-23, 7, 0, 1.2, 14, 62, AR_W), B(23, 7, 0, 1.2, 14, 62, AR_W),
+    // ---- central cluster (tall chunky greybox cover) ----
+    ...table(0, 0, 6, 4.5, 3.4, AR_W2, AR_ACC),          // centre raised platform
+    B(0, 1.6, -9, 5, 3.2, 3, AR_ACC), B(0, 1.6, 9, 5, 3.2, 3, AR_ACC),
+    B(-6, 2.1, -5, 6.5, 4.2, 2.4, AR_W2, { ry: 0.5 }), B(6, 2.1, 5, 6.5, 4.2, 2.4, AR_W2, { ry: 0.5 }),
+    // ---- chunky cubes ----
+    B(-9, 2.6, 3, 3, 5.2, 3, AR_W2), B(9, 2.6, -3, 3, 5.2, 3, AR_W2),
+    B(-7, 2.0, 13, 2.8, 4, 2.8, AR_ACC), B(7, 2.0, -13, 2.8, 4, 2.8, AR_ACC),
     // ---- angled slabs ----
-    B(-11, 0.55, -13, 6, 1.1, 3.4, AR_W2, { ry: 0.22 }), B(11, 0.55, 13, 6, 1.1, 3.4, AR_W2, { ry: 0.22 }),
-    B(-6, 0.7, 17, 6, 1.4, 2, AR_W2, { ry: -0.6 }), B(6, 0.7, -17, 6, 1.4, 2, AR_W2, { ry: -0.6 }),
-    // ---- ramps in front of each spawn, climbing to (nearly) the wall top ----
-    slope(12, 0, 18, 'x', 22, 21, 7, 1, AR_W2), slope(-12, 0, -18, 'x', 22, 21, 7, -1, AR_W2),
-    // ---- tall boxes near the walls ----
-    B(-17, 0.9, 7, 3, 1.8, 2.6, AR_ACC), B(17, 0.9, -7, 3, 1.8, 2.6, AR_ACC),
+    B(-6, 1.9, 18, 6, 3.8, 2.4, AR_W2, { ry: -0.6 }), B(6, 1.9, -18, 6, 3.8, 2.4, AR_W2, { ry: -0.6 }),
+    // ---- tall pillars near the side walls ----
+    B(-18, 3.0, 6, 3, 6, 3, AR_W2), B(18, 3.0, -6, 3, 6, 3, AR_W2),
+    B(-19, 2.2, -4, 2.6, 4.4, 2.6, AR_ACC), B(19, 2.2, 4, 2.6, 4.4, 2.6, AR_ACC),
     // ---- long blocks along z (angled) ----
-    B(12, 0.8, -9, 2.2, 1.6, 7, AR_W2, { ry: -0.15 }), B(-12, 0.8, 9, 2.2, 1.6, 7, AR_W2, { ry: -0.15 }),
+    B(12, 2.2, -11, 2.4, 4.4, 7, AR_W2, { ry: -0.15 }), B(-12, 2.2, 11, 2.4, 4.4, 7, AR_W2, { ry: -0.15 }),
     // ---- second pair of tables ----
-    ...table(-13, 10, 4.5, 3, 1.7, AR_W2, AR_ACC), ...table(13, -10, 4.5, 3, 1.7, AR_W2, AR_ACC),
-    // ---- mid-far flat platforms (on-axis) ----
-    B(0, 0.6, -22, 7, 1.2, 3, AR_ACC), B(0, 0.6, 22, 7, 1.2, 3, AR_ACC),
-    // ---- low cover near the two spawns ----
-    B(-15, 0.7, 23, 2.6, 1.4, 2.6, AR_ACC), B(15, 0.7, -23, 2.6, 1.4, 2.6, AR_ACC),
-    B(-9, 0.55, -24, 4, 1.1, 2.4, AR_W2), B(9, 0.55, 24, 4, 1.1, 2.4, AR_W2),
+    ...table(-13, 12, 4.5, 3, 3.0, AR_W2, AR_ACC), ...table(13, -12, 4.5, 3, 3.0, AR_W2, AR_ACC),
+    // ---- mid-far platforms (on-axis) ----
+    B(0, 1.6, -22, 7, 3.2, 3, AR_ACC), B(0, 1.6, 22, 7, 3.2, 3, AR_ACC),
+    // ---- short ramps in front of each spawn, rising toward the OPPOSITE side ----
+    slope(15, 0, 18, 'z', 14, 5, 5, -1, AR_W2), slope(-15, 0, -18, 'z', 14, 5, 5, 1, AR_W2),
+    // ---- cover flanking the spawns ----
+    B(-9, 1.5, -24, 4, 3, 2.4, AR_W2), B(9, 1.5, 24, 4, 3, 2.4, AR_W2),
     // ---- subtle team-colour floor pads at each spawn (only glow on the map) ----
     B(-17, 0.05, -25, 6, 0.1, 6, TEAM_A, { glow: true }), B(17, 0.05, 25, 6, 0.1, 6, TEAM_B, { glow: true }),
   ],
