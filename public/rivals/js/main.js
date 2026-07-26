@@ -187,6 +187,10 @@ function panelTex(w, h) {
 let mapGroup = null;
 let mapBoxes = [];
 let placedPads = [];     // deployed jump pads: { id, x,y,z, nx,ny,nz, group, core, cd }
+let localPadSeq = 0;     // ids for client-only practice-arena pads
+let localNades = [];     // client-only grenades/satchels thrown in the practice arena
+const PRACTICE_CLEAR_SECS = 300;   // practice arena wipes placed pads/objects every 5 min
+let lobbyClearAt = 0;
 let rangeTargets = [];   // lobby shooting-range dummies
 
 // Ray against the current map's meshes → { point, normal } of the first hit,
@@ -298,8 +302,7 @@ function buildMap(def) {
     mapGroup.add(l1, l2, l3);
   }
   // deployed jump pads reset on map change (they're placed live via the net)
-  for (const p of placedPads) mapGroup.remove?.(p.group);
-  placedPads = [];
+  clearPads();
   scene.add(mapGroup);
   mapBoxes = def.boxes.filter((b) => !b.glow);
   // shooting range dummies (lobby only)
@@ -707,6 +710,34 @@ function stepMe(dt) {
       me.grounded = false; me.sliding = false; p.cd = now;
       sfx.dash?.();
     }
+  }
+
+  // practice arena: local grenades/satchels — arc, explode on ground/contact/fuse,
+  // and self-launch you (grenade/satchel-jump practice)
+  for (let i = localNades.length - 1; i >= 0; i--) {
+    const g = localNades[i], w = WEAPONS[g.wid];
+    g.vy -= MOVE.gravity * 0.8 * dt;
+    g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt;
+    let impact = g.y < 0.12;
+    g.y = Math.max(0.12, g.y); g.mesh.position.set(g.x, g.y, g.z);
+    if (!impact && now >= g.armAt && Math.hypot(me.pos.x - g.x, (me.pos.y + 0.9) - g.y, me.pos.z - g.z) < 1.6) impact = true;
+    if (impact || now >= g.explodeAt) {
+      scene.remove(g.mesh); localNades.splice(i, 1); boomFx(g.x, g.y, g.z);
+      const dx = me.pos.x - g.x, dy = (me.pos.y + 0.9) - g.y, dz = me.pos.z - g.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (!me.dead && d < w.radius) {
+        const dd = Math.hypot(dx, dz) || 0.001, power = 13 * (1 - d / w.radius) + 5;
+        me.vel.x += (dx / dd) * power; me.vel.z += (dz / dd) * power;
+        me.vel.y = Math.max(me.vel.y, Math.max(11, 9 + (1 - d / w.radius) * 8));
+        me.grounded = false; me.sliding = false; sfx.dash?.();
+      }
+    }
+  }
+  // practice arena: wipe everything players placed every 5 minutes
+  if (game.phase === 'lobby' && lobbyClearAt && now >= lobbyClearAt) {
+    if (placedPads.length || localNades.length) toast?.('Practice arena cleared');
+    clearPads(); clearLocalNades();
+    lobbyClearAt = now + PRACTICE_CLEAR_SECS;
   }
 
   // camera — eye height eases down smoothly while sliding/crouching
@@ -1245,6 +1276,7 @@ function tryFire() {
     vmAnim.throwT = 0;                            // wind-up + overhand whip
     const d = aimDir(0);
     if (game.phase === 'live') net.send({ t: 'nade', dx: d.x, dy: d.y + 0.18, dz: d.z });
+    else throwLocalNade('grenade', { x: d.x, y: d.y + 0.18, z: d.z });   // practice arena
     updateLoadoutHud();
     return;
   }
@@ -1255,6 +1287,7 @@ function tryFire() {
     vmAnim.throwT = 0;
     const d = aimDir(0);
     if (game.phase === 'live') net.send({ t: 'nade', wid: 'satchel', dx: d.x, dy: d.y + 0.14, dz: d.z });
+    else throwLocalNade('satchel', { x: d.x, y: d.y + 0.14, z: d.z });   // practice arena
     return;
   }
   if (me.weapon === 'jumppad') {
@@ -1266,9 +1299,8 @@ function tryFire() {
     if (!hit) { sfx.reload?.(); return; }         // nothing in range to stick to
     me.lastFire = now; if (game.phase === 'live') me.pads = Math.max(0, (me.pads ?? 0) - 1);
     vmAnim.throwT = 0;
-    if (game.phase === 'live' || game.phase === 'lobby') {
-      net.send({ t: 'pad', x: hit.point.x, y: hit.point.y, z: hit.point.z, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z });
-    }
+    if (game.phase === 'live') net.send({ t: 'pad', x: hit.point.x, y: hit.point.y, z: hit.point.z, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z });
+    else placeLocalPad(hit);   // practice arena: place a local pad you can launch off
     updateLoadoutHud();
     return;
   }
@@ -1748,6 +1780,7 @@ net.on('queue.state', (msg) => {
 
 net.on('match.start', (msg) => {
   if (msg.mode === 'wave') return startWaveMatch(msg);
+  clearPads();   // no stray jump pads carried into a fresh match
   game.waveMode = false; game.loadout = null;
   game.phase = 'vote';
   game.roster = msg.roster;
@@ -2280,6 +2313,24 @@ net.on('nade.boom', (msg) => {
 });
 
 // ---- deployed jump pads (placeable utility) ----
+function clearPads() {
+  for (const p of placedPads) { scene.remove(p.group); p.group.traverse?.((n) => { n.geometry?.dispose?.(); n.material?.dispose?.(); }); }
+  placedPads = [];
+}
+function clearLocalNades() { for (const n of localNades) scene.remove(n.mesh); localNades = []; }
+// practice arena: pads/grenades are simulated CLIENT-SIDE (no server match)
+function placeLocalPad(hit) {
+  const pad = buildPad(hit.point.x, hit.point.y, hit.point.z, hit.normal);
+  scene.add(pad.group);
+  placedPads.push({ id: 'local_' + localPadSeq++, x: hit.point.x, y: hit.point.y, z: hit.point.z, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z, group: pad.group, core: pad.core, cd: 0 });
+}
+function throwLocalNade(wid, dir) {
+  const w = WEAPONS[wid];
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), new THREE.MeshLambertMaterial({ color: wid === 'satchel' ? '#d64545' : '#3f7d3f' }));
+  const p = camera.position;
+  mesh.position.copy(p); scene.add(mesh);
+  localNades.push({ mesh, x: p.x, y: p.y, z: p.z, vx: dir.x * w.throwVel, vy: dir.y * w.throwVel + 2.5, vz: dir.z * w.throwVel, wid, explodeAt: clockNow() + w.fuse, armAt: clockNow() + 0.14 });
+}
 net.on('pad.spawn', (msg) => {
   const pad = buildPad(msg.x, msg.y, msg.z, { x: msg.nx, y: msg.ny, z: msg.nz });
   scene.add(pad.group);
@@ -2289,6 +2340,8 @@ net.on('pad.remove', (msg) => {
   const i = placedPads.findIndex((p) => p.id === msg.id);
   if (i >= 0) { scene.remove(placedPads[i].group); placedPads.splice(i, 1); }
 });
+// server wipes deployed pads at round start / match end — mirror it on the client
+net.on('pad.clearall', () => clearPads());
 net.on('padcount', (msg) => { me.pads = msg.n | 0; updateLoadoutHud(); });
 
 function boomFx(x, y, z) {
@@ -2315,22 +2368,26 @@ function enterLobby(fromMatch) {
   $('#wave-top')?.classList.add('hidden');
   for (const g of dropMeshes.values()) scene.remove(g);
   dropMeshes.clear();
-  game.mapId = 'lobby'; game.builtMap = 'lobby';
-  buildMap(LOBBY);
+  // the "range" IS the Arena, empty — a free practice space (no bots/targets)
+  game.mapId = 'arena'; game.builtMap = 'arena';
+  buildMap(MAPS.arena);
   clearOthers();
-  me.pos = { x: LOBBY.spawnsA[0].x, y: 0, z: LOBBY.spawnsA[0].z };
-  me.ry = LOBBY.spawnsA[0].ry; me.pitch = 0;
+  clearPads(); clearLocalNades();
+  lobbyClearAt = clockNow() + PRACTICE_CLEAR_SECS;   // auto-wipe placed stuff every 5 min
+  const sp = MAPS.arena.spawnsA[0];
+  me.pos = { x: sp.x, y: 0, z: sp.z };
+  me.ry = sp.ry; me.pitch = 0;
   me.hp = 100; me.dead = false; me.weapon = 'ar';
   me.ammo = freshAmmo();
-  me.grenades = WEAPONS.grenade.count;
+  me.grenades = WEAPONS.grenade.count; me.pads = WEAPONS.jumppad.count;
   $('#match-top').classList.add('hidden');
   $('#freeze-count').classList.add('hidden');
   $('#health-wrap').classList.add('hidden');
-  $('#ammo-wrap').classList.remove('hidden');  // range shooting still shows ammo
-  $('#lobby-tip').classList.remove('hidden');
+  $('#ammo-wrap').classList.remove('hidden');
+  const tip = $('#lobby-tip'); if (tip) tip.textContent = 'Practice Arena — try any weapon, pad or slide-hop. Press E to queue for a match.';
+  tip?.classList.remove('hidden');
   $('#kb-open')?.classList.remove('hidden');
   $('#podium').classList.add('hidden');
-  spawnRangeDummies();   // practice dummies for the shooting range
   updateAmmoHud(); updateLoadoutHud();
 }
 

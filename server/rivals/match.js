@@ -373,6 +373,7 @@ function elim(m, victim, killer, weapon) {
 function endRound(m, winner, reason) {
   if (winner) m.score[winner]++;
   m.state = 'roundEnd'; m.stateUntil = clock() + 3;
+  m.pads = []; matchSend(m, { t: 'pad.clearall' });   // deployed pads vanish when a round ends (and thus at match end)
   matchSend(m, { t: 'round.end', winner, reason, score: m.score });
   if (m.score.A >= ROUND.winScore || m.score.B >= ROUND.winScore) {
     m.state = 'podium'; m.stateUntil = clock() + ROUND.podiumSecs;

@@ -42,8 +42,8 @@ export const ARENA = {
   emblem: '#8fa7c4',
   boxes: [
     // ---- perimeter walls (tall white box) ----
-    B(0, 5, -31, 46, 10, 1.2, AR_W), B(0, 5, 31, 46, 10, 1.2, AR_W),
-    B(-23, 5, 0, 1.2, 10, 62, AR_W), B(23, 5, 0, 1.2, 10, 62, AR_W),
+    B(0, 11, -31, 46, 22, 1.2, AR_W), B(0, 11, 31, 46, 22, 1.2, AR_W),
+    B(-23, 11, 0, 1.2, 22, 62, AR_W), B(23, 11, 0, 1.2, 22, 62, AR_W),
     // ---- central cluster ----
     ...table(0, 0, 6, 4, 2.0, AR_W2, AR_ACC),          // centre table (walk under/on)
     B(0, 0.6, -9, 5, 1.2, 3, AR_ACC), B(0, 0.6, 9, 5, 1.2, 3, AR_ACC),
@@ -54,8 +54,9 @@ export const ARENA = {
     // ---- angled slabs ----
     B(-11, 0.55, -13, 6, 1.1, 3.4, AR_W2, { ry: 0.22 }), B(11, 0.55, 13, 6, 1.1, 3.4, AR_W2, { ry: 0.22 }),
     B(-6, 0.7, 17, 6, 1.4, 2, AR_W2, { ry: -0.6 }), B(6, 0.7, -17, 6, 1.4, 2, AR_W2, { ry: -0.6 }),
+    // ---- ramps in front of each spawn, climbing to (nearly) the wall top ----
+    slope(12, 0, 18, 'x', 22, 21, 7, 1, AR_W2), slope(-12, 0, -18, 'x', 22, 21, 7, -1, AR_W2),
     // ---- tall boxes near the walls ----
-    B(-16, 1.4, -19, 3, 2.8, 3, AR_W2), B(16, 1.4, 19, 3, 2.8, 3, AR_W2),
     B(-17, 0.9, 7, 3, 1.8, 2.6, AR_ACC), B(17, 0.9, -7, 3, 1.8, 2.6, AR_ACC),
     // ---- long blocks along z (angled) ----
     B(12, 0.8, -9, 2.2, 1.6, 7, AR_W2, { ry: -0.15 }), B(-12, 0.8, 9, 2.2, 1.6, 7, AR_W2, { ry: -0.15 }),
