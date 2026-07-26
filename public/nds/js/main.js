@@ -31,35 +31,65 @@ const LM = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
 const rndBetween = (a, b) => a + Math.random() * (b - a);
 
 // ============================ WORLD ============================
-const R_ISLAND = WORLD.islandRadius;
+import { MAPS } from '/shared/nds/config.js';
+let R_ISLAND = 34;             // active map radius (set by buildMap)
 const WATER_Y = WORLD.waterY;
-const LOBBY = { x: 0, z: -118, lowerY: 0, upperY: 14, radius: 9 };
-const solids = [];   // { type:'disc'|'box', ... top }  for ground height
-const walls = [];    // { x, z, r, yMin, yMax }  cylinder keep-in
+const LOBBY = { x: 0, z: -82, lowerY: 0, upperY: 14, radius: 9 };   // sits just off the island so you can watch rounds
+const lobbySolids = [];        // fixed collision (lobby + stairs)
+let mapSolids = [];            // per-map collision (rebuilt each map)
+const walls = [];              // { x, z, r, yMin, yMax }  cylinder keep-in
 
 // water (huge plane)
-const waterGeo = new THREE.PlaneGeometry(3000, 3000);
-const water = new THREE.Mesh(waterGeo, new THREE.MeshLambertMaterial({ color: '#2f7fd0', transparent: true, opacity: 0.86 }));
+const water = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshLambertMaterial({ color: '#2f7fd0', transparent: true, opacity: 0.86 }));
 water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; scene.add(water);
 
-// island (grass disc)
-const island = new THREE.Mesh(new THREE.CylinderGeometry(R_ISLAND, R_ISLAND + 2, 3, 48), LM('#54c46e'));
-island.position.y = -1.5; scene.add(island);
-const beach = new THREE.Mesh(new THREE.CylinderGeometry(R_ISLAND + 2.4, R_ISLAND + 3, 0.6, 48), LM('#d8c98a'));
-beach.position.y = -0.3; scene.add(beach);
-solids.push({ type: 'disc', x: 0, z: 0, r: R_ISLAND, top: 0 });
-
-// high-ground rocks (survive floods / tsunamis by climbing these)
-const rocks = [];
-for (let i = 0; i < 7; i++) {
-  const a = (i / 7) * Math.PI * 2 + 0.4, d = rndBetween(8, 24), h = rndBetween(3.5, 8);
-  const rx = Math.cos(a) * d, rz = Math.sin(a) * d, rr = rndBetween(3, 5.5);
-  const rock = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.7, rr, h, 8), LM('#8f9aa6'));
-  rock.position.set(rx, h / 2 - 0.5, rz); scene.add(rock);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.72, rr * 0.72, 0.4, 8), LM('#54c46e'));
-  cap.position.set(rx, h - 0.5, rz); scene.add(cap);
-  solids.push({ type: 'disc', x: rx, z: rz, r: rr * 0.7, top: h - 0.5 });
-  rocks.push({ x: rx, z: rz, r: rr * 0.7, top: h - 0.5 });
+// ---- MAP: the island for the round; rebuilt whenever the map changes ----
+let islandGroup = null, currentMap = null;
+function buildMap(mapId) {
+  const M = MAPS[mapId]; if (!M || currentMap === mapId) return;
+  currentMap = mapId; R_ISLAND = M.radius;
+  if (islandGroup) { scene.remove(islandGroup); islandGroup.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+  islandGroup = new THREE.Group(); mapSolids = [];
+  scene.background = skyTex(M.sky[0], M.sky[1]); scene.fog = new THREE.FogExp2(M.fog, 0.0016); water.material.color.set(M.water);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(R_ISLAND, R_ISLAND + 2, 3, 52), LM(M.ground)); disc.position.y = -1.5; islandGroup.add(disc);
+  const beach = new THREE.Mesh(new THREE.CylinderGeometry(R_ISLAND + 2.4, R_ISLAND + 3, 0.6, 52), LM(M.beach)); beach.position.y = -0.3; islandGroup.add(beach);
+  mapSolids.push({ type: 'disc', x: 0, z: 0, r: R_ISLAND, top: 0 });
+  for (const f of M.features) buildFeature(f, M);
+  scene.add(islandGroup);
+}
+function buildFeature(f, M) {
+  const G = islandGroup, add = (x, z, r, top) => mapSolids.push({ type: 'disc', x, z, r, top });
+  if (f.t === 'rock') {
+    const rock = new THREE.Mesh(new THREE.CylinderGeometry(f.r * 0.7, f.r, f.h, 8), LM(M.rock)); rock.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(rock);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(f.r * 0.72, f.r * 0.72, 0.5, 8), LM(M.capCol)); cap.position.set(f.x, f.h - 0.5, f.z); G.add(cap);
+    add(f.x, f.z, f.r * 0.72, f.h - 0.25);
+  } else if (f.t === 'mesa') {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r * 1.12, f.h, 12), LM(M.rock)); m.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(m);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, 0.5, 12), LM(M.ground2)); top.position.set(f.x, f.h - 0.5, f.z); G.add(top);
+    add(f.x, f.z, f.r * 0.94, f.h - 0.25);
+  } else if (f.t === 'column') {
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.h, 6), LM(M.rock)); c.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(c);
+    add(f.x, f.z, f.r * 0.82, f.h - 0.5);
+  } else if (f.t === 'ledge') {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, f.h, 6), LM(M.rock)); post.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(post);
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, 0.5, 14), LM(M.capCol)); l.position.set(f.x, f.h - 0.5, f.z); G.add(l);
+    add(f.x, f.z, f.r, f.h - 0.25);
+  } else if (f.t === 'peak') {
+    const steps = 4;
+    for (let i = 0; i < steps; i++) { const rr = f.r * (1 - i * 0.19), hh = f.h * (i / steps); const seg = f.h / steps + 0.6; const step = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.82, rr, seg, 14), LM(i % 2 ? M.rock : M.capCol)); step.position.set(f.x, hh + seg / 2 - 0.5, f.z); G.add(step); add(f.x, f.z, rr * 0.8, hh + seg - 0.5); }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(f.r * 0.25, 3.5, 14), LM(M.capCol)); tip.position.set(f.x, f.h + 1, f.z); G.add(tip);
+  } else if (f.t === 'crater') {
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r + 1.6, f.h, 24), LM(M.rock)); wall.position.set(f.x, f.h / 2 - 0.5, f.z); G.add(wall);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, 0.7, 24), LM(M.capCol)); rim.position.set(f.x, f.h - 0.5, f.z); G.add(rim);
+    const lava = new THREE.Mesh(new THREE.CircleGeometry(f.r * 0.7, 24), new THREE.MeshBasicMaterial({ color: '#ff5a1e' })); lava.rotation.x = -Math.PI / 2; lava.position.set(f.x, f.h - 0.35, f.z); G.add(lava);
+    add(f.x, f.z, f.r * 0.94, f.h - 0.2);
+  } else if (f.t === 'tree') {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, f.h, 6), LM('#7a5230')); trunk.position.set(f.x, f.h / 2, f.z); G.add(trunk);
+    const leaves = new THREE.Mesh(new THREE.ConeGeometry(2.1, 3.6, 8), LM('#3a8a4a')); leaves.position.set(f.x, f.h + 1.1, f.z); G.add(leaves);
+  } else if (f.t === 'cactus') {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.62, f.h, 8), LM('#4a9a4a')); body.position.set(f.x, f.h / 2, f.z); G.add(body);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.6, 6), LM('#4a9a4a')); arm.position.set(f.x + 0.7, f.h * 0.6, f.z); arm.rotation.z = Math.PI / 2; G.add(arm);
+  }
 }
 
 // ---- LOBBY: spawn building ----
@@ -70,7 +100,7 @@ function buildLobby() {
   // lower platform
   const lower = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 1, 40), LM('#d6dde8'));
   lower.position.y = -0.5; g.add(lower);
-  solids.push({ type: 'disc', x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius, top: 0 });
+  lobbySolids.push({ type: 'disc', x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius, top: 0 });
   // glass ring (lower)
   const ring1 = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 3.2, 40, 1, true), glassMat);
   ring1.position.y = 1.6; g.add(ring1);
@@ -78,7 +108,7 @@ function buildLobby() {
   // upper platform
   const upper = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 1, 40), LM('#d6dde8'));
   upper.position.y = LOBBY.upperY - 0.5; g.add(upper);
-  solids.push({ type: 'disc', x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius, top: LOBBY.upperY });
+  lobbySolids.push({ type: 'disc', x: LOBBY.x, z: LOBBY.z, r: LOBBY.radius, top: LOBBY.upperY });
   // glass walls (upper — the invisible-walled viewing deck)
   const ring2 = new THREE.Mesh(new THREE.CylinderGeometry(LOBBY.radius, LOBBY.radius, 5, 40, 1, true), glassMat);
   ring2.position.y = LOBBY.upperY + 2; g.add(ring2);
@@ -95,7 +125,7 @@ function buildLobby() {
     const sx = Math.cos(ang) * rStair, sz = Math.sin(ang) * rStair;
     const step = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.35, 1.5), LM(i % 2 ? '#b7c0cd' : '#c9d3e0'));
     step.position.set(sx, y, sz); step.rotation.y = -ang; g.add(step);
-    solids.push({ type: 'box', x: LOBBY.x + sx, z: LOBBY.z + sz, w: 2.4, d: 1.5, ry: -ang, top: y + 0.18 });
+    lobbySolids.push({ type: 'box', x: LOBBY.x + sx, z: LOBBY.z + sz, w: 2.4, d: 1.5, ry: -ang, top: y + 0.18 });
   }
   // center column
   const col = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, LOBBY.upperY, 16), pillarMat); col.position.y = LOBBY.upperY / 2; g.add(col);
@@ -121,7 +151,7 @@ const ISLAND_SPAWN = () => { const a = Math.random() * Math.PI * 2, d = Math.ran
 // ============================ PLAYER ============================
 const me = { pos: LOBBY_SPAWN(), vel: { x: 0, y: 0, z: 0 }, ry: 0, grounded: true, dead: false, anim: 'idle', eye: 1.4 };
 me.pos.y = 0;
-let camYaw = 0, camPitch = 0.35, camDist = 8;
+let camYaw = Math.PI, camPitch = 0.32, camDist = 8;   // start looking toward the island
 const keys = new Set();
 let locked = false;
 addEventListener('keydown', (e) => { if (e.repeat) return; keys.add(e.code); if (e.code === 'KeyE') tryInteract(); });
@@ -133,9 +163,9 @@ addEventListener('wheel', (e) => { camDist = Math.max(4, Math.min(16, camDist + 
 
 function surfaceAt(x, z, feetY) {
   let best = -Infinity;
-  for (const s of solids) {
+  for (const arr of [lobbySolids, mapSolids]) for (const s of arr) {
     if (s.type === 'disc') { if (Math.hypot(x - s.x, z - s.z) <= s.r) { if (s.top <= feetY + 0.65 && s.top > best) best = s.top; } }
-    else { // rotated box
+    else { // rotated box (staircase steps)
       const dx = x - s.x, dz = z - s.z, c = Math.cos(-s.ry), sn = Math.sin(-s.ry);
       const lx = dx * c - dz * sn, lz = dx * sn + dz * c;
       if (Math.abs(lx) <= s.w / 2 + 0.3 && Math.abs(lz) <= s.d / 2 + 0.3) { if (s.top <= feetY + 0.65 && s.top > best) best = s.top; }
@@ -190,13 +220,19 @@ let disasterStart = 0;
 function onMsg(m) {
   switch (m.t) {
     case 'welcome':
+      // you ALWAYS join into the lobby, even mid-round — then spectate the
+      // active round from the deck and jump in at the next warning.
       myId = m.id; roundNum = m.round || 0; $('loading').style.display = 'none';
-      applyPhase(m.phase, m.until, m.disasters || [], m.stacks || 0, false);
+      phase = m.phase; phaseUntil = m.until; stacks = m.stacks || 0;
+      if (m.disasters && m.disasters.length) activeSpecs = m.disasters;
+      if (m.map) buildMap(m.map);
+      participating = false; me.dead = false; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
+      if (m.phase === 'disaster') { spawnDisasters(activeSpecs); disasterStart = performance.now() / 1000; }
       for (const p of m.players || []) addOther(p);
       break;
     case 'player.join': if (m.player.id !== myId) addOther(m.player); break;
     case 'player.leave': removeOther(m.id); break;
-    case 'round': if (m.round) roundNum = m.round; applyPhase(m.phase, m.until, m.disasters || activeSpecs, m.stacks ?? stacks, true); if (m.survivors) showSurvivors(m.survivors); break;
+    case 'round': if (m.round) roundNum = m.round; applyPhase(m.phase, m.until, m.disasters || activeSpecs, m.stacks ?? stacks, m.map); if (m.survivors) showSurvivors(m.survivors); break;
     case 'stacks': stacks = m.stacks; toast(`${m.by} stacked a disaster! Next round: ${1 + stacks} 🌪️`); break;
     case 'wallet': setCubes(m.cubes); break;
     case 'dead': { const o = others.get(m.id); if (o) o.alive = false; break; }
@@ -205,25 +241,27 @@ function onMsg(m) {
   }
 }
 let activeSpecs = [];
-function applyPhase(ph, until, disasters, stk, animate) {
+let participating = false;     // am I playing this round (was in the lobby at warning)?
+function clearDeadUI() { $('dead-overlay').classList.remove('show'); $('dead-tag').style.display = 'none'; }
+function applyPhase(ph, until, disasters, stk, map) {
   phase = ph; phaseUntil = until; stacks = stk;
   if (disasters && disasters.length) activeSpecs = disasters;
+  if (map) buildMap(map);
   if (ph === 'warning') {
-    me.dead = false; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
-    $('dead-overlay').classList.remove('show'); $('dead-tag').style.display = 'none';
+    // players in the lobby now join the round on the island
+    participating = true; me.dead = false; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
+    clearDeadUI();
     const names = activeSpecs.map((d) => DISASTERS[d.id]?.name).filter(Boolean).join(' + ');
-    banner(`⚠️ ${names || 'Disaster'} incoming!`);
+    banner(`⚠️ ${names || 'Disaster'} on ${MAPS[currentMap]?.name || 'the island'}!`);
     clearDisasters();
   } else if (ph === 'disaster') {
-    if (me.pos.z < -60 || me.dead) { me.dead = false; me.pos = ISLAND_SPAWN(); me.pos.y = 4; me.vel = { x: 0, y: 0, z: 0 }; $('dead-overlay').classList.remove('show'); $('dead-tag').style.display = 'none'; }   // teleport late joiners onto the island
     spawnDisasters(activeSpecs); disasterStart = performance.now() / 1000;
-    banner('SURVIVE!');
+    banner(participating ? 'SURVIVE!' : `Watching — ${MAPS[currentMap]?.name || ''}`);
   } else if (ph === 'aftermath') {
-    banner(me.dead ? '💀 Eliminated' : '🏆 You survived!');
+    banner(!participating ? 'Round over — you join the next one!' : (me.dead ? '💀 Eliminated' : '🏆 You survived!'));
   } else if (ph === 'intermission') {
-    me.dead = false; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
-    $('dead-overlay').classList.remove('show'); $('dead-tag').style.display = 'none';
-    clearDisasters(); banner('Intermission — head to the machine!');
+    participating = false; me.dead = false; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
+    clearDeadUI(); clearDisasters(); banner('Intermission — head to the machine!');
   }
 }
 
@@ -350,7 +388,8 @@ function boom(x, y, z, r) {
   let t = 0; const iv = setInterval(() => { t += 0.05; m.scale.setScalar(1 + t * 1.5); m.material.opacity = Math.max(0, 0.85 - t * 1.5); if (t > 0.6) { clearInterval(iv); scene.remove(m); } }, 30);
 }
 function die(cause) {
-  if (me.dead) return; me.dead = true;
+  if (me.dead || !participating) return;   // lobby spectators can't die
+  me.dead = true;
   send({ t: 'dead', cause });
   $('dead-overlay').classList.add('show'); $('dead-tag').style.display = 'block';
   banner('💀 ' + cause.toUpperCase());

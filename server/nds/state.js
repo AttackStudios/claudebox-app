@@ -11,5 +11,6 @@ export const state = {
   disasters: [],           // active disaster param objects this round
   stacks: 0,               // extra disasters queued by the Multi-Disaster Machine
   seed: 1,
+  map: 'grassy',           // island the round is played on
 };
 export const nowSec = () => Date.now() / 1000;

@@ -4,7 +4,7 @@
 // and clients report their own death (water/disaster) which the server tallies.
 
 import { state, genId, nowSec } from './state.js';
-import { ROUND, DISASTER_IDS, WORLD } from '../../shared/nds/config.js';
+import { ROUND, DISASTER_IDS, WORLD, MAPS, MAP_IDS } from '../../shared/nds/config.js';
 import { ensurePlatformUser, grantReward, spendCubes } from '../hub.js';
 
 let rand = mulberry(12345);
@@ -17,7 +17,7 @@ export { broadcast as ndsBroadcast };
 
 // ---- disaster param generation (server-authoritative, seeded) ----
 function makeDisaster(id) {
-  const R = WORLD.islandRadius;
+  const R = MAPS[state.map]?.radius || WORLD.islandRadius;
   const now = nowSec();
   switch (id) {
     case 'tornado': {
@@ -47,21 +47,22 @@ function makeDisaster(id) {
 function startRound() {
   state.round++;
   rand = mulberry((state.round * 2654435761) >>> 0);
+  state.map = MAP_IDS[Math.floor(rand() * MAP_IDS.length)] || 'grassy';   // rotate maps
   const count = 1 + state.stacks;
   const picked = [];
   const pool = [...DISASTER_IDS];
   for (let i = 0; i < count; i++) { const idx = Math.floor(rand() * pool.length); picked.push(pool[idx] ?? DISASTER_IDS[0]); }
   state.disasters = picked.map(makeDisaster);
   state.stacks = 0;
-  // everyone starts the round ALIVE on the island
+  // everyone in the lobby joins the round on the island
   for (const p of joined()) { p.alive = true; p.onIsland = true; }
   state.phase = 'warning'; state.phaseUntil = nowSec() + ROUND.warning;
-  broadcast({ t: 'round', phase: 'warning', round: state.round, until: state.phaseUntil, disasters: state.disasters, seed: state.round });
+  broadcast({ t: 'round', phase: 'warning', round: state.round, until: state.phaseUntil, disasters: state.disasters, map: state.map, seed: state.round });
 }
 
 function toDisaster() {
   state.phase = 'disaster'; state.phaseUntil = nowSec() + ROUND.disaster;
-  broadcast({ t: 'round', phase: 'disaster', round: state.round, until: state.phaseUntil, disasters: state.disasters });
+  broadcast({ t: 'round', phase: 'disaster', round: state.round, until: state.phaseUntil, disasters: state.disasters, map: state.map });
 }
 
 function endRound() {
@@ -74,7 +75,7 @@ function endRound() {
     } catch {}
   }
   state.phase = 'aftermath'; state.phaseUntil = nowSec() + ROUND.aftermath;
-  broadcast({ t: 'round', phase: 'aftermath', round: state.round, until: state.phaseUntil, survivors: survivors.map((p) => p.id) });
+  broadcast({ t: 'round', phase: 'aftermath', round: state.round, until: state.phaseUntil, map: state.map, survivors: survivors.map((p) => p.id) });
 }
 
 function toIntermission() {
@@ -103,7 +104,7 @@ export function handleMessage(p, msg, ctx) {
       p.code = msg.code || '';
       p.joined = true; p.alive = true; p.onIsland = false;
       try { ensurePlatformUser(p.name); } catch {}
-      p.ws.send(JSON.stringify({ t: 'welcome', id: p.id, phase: state.phase, until: state.phaseUntil, round: state.round, disasters: state.disasters, stacks: state.stacks, players: joined().filter((q) => q.id !== p.id).map(pub) }));
+      p.ws.send(JSON.stringify({ t: 'welcome', id: p.id, phase: state.phase, until: state.phaseUntil, round: state.round, disasters: state.disasters, map: state.map, stacks: state.stacks, players: joined().filter((q) => q.id !== p.id).map(pub) }));
       broadcast({ t: 'player.join', player: pub(p) });
       return;
     }
