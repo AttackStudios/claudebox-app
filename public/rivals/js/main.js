@@ -239,12 +239,15 @@ function buildMap(def) {
   scene.background = skyTex(sky[0], sky[1], sky[2]);
   scene.fog = new THREE.FogExp2(sky[2], def.fog || 0.01);
   // ground — textured grid with a soft centre glow (flat colour for the lobby)
+  const gW = def.ground.sizeX || def.ground.size, gL = def.ground.sizeZ || def.ground.size;
   const gt = def.ground.tex;
   const gmat = gt
-    ? (() => { const t = groundTex(gt[0], gt[1], gt[2]); t.repeat.set(def.ground.size / 8, def.ground.size / 8); return new THREE.MeshLambertMaterial({ color: '#ffffff', map: t }); })()
+    ? (() => { const t = groundTex(gt[0], gt[1], gt[2]); t.repeat.set(gW / 8, gL / 8); return new THREE.MeshLambertMaterial({ color: '#ffffff', map: t }); })()
     : new THREE.MeshLambertMaterial({ color: def.ground.color });
-  const g = new THREE.Mesh(new THREE.BoxGeometry(def.ground.size, 1, def.ground.size), gmat);
-  g.position.y = -0.5;
+  // a floating platform gets real thickness so you see its underside edge
+  const gThick = def.ground.thick || 1;
+  const g = new THREE.Mesh(new THREE.BoxGeometry(gW, gThick, gL), gmat);
+  g.position.y = -gThick / 2;
   mapGroup.add(g);
   // centre emblem decal (match maps) — a subtle painted ring on the floor
   if (def.emblem) {
@@ -278,6 +281,7 @@ function buildMap(def) {
     }
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.sx, b.sy, b.sz), mat);
     mesh.position.set(b.x, b.y, b.z);
+    if (b.ry) mesh.rotation.y = b.ry;   // cosmetic yaw (collision stays AABB)
     mapGroup.add(mesh);
   }
   // flat, bright, even light in matches (like the original's arenas)

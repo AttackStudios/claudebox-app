@@ -5,9 +5,16 @@ import { MOVE, WEAPONS } from '../../shared/rivals/config.js';
 import { boxesOf, hasLOS, eyeY, fireHitscan, meleeSwing, throwGrenade } from './match.js';
 import { clock } from './state.js';
 
+// turn = max facing turn-rate (rad/s): low enough that a circle-strafing player
+//        can get behind a bot and backstab it.
+// track = how fast the aim converges on where you ACTUALLY are (lower = laggier
+//         aim, so strafing throws off their shots — no more perfect tracking).
+// forget = seconds after losing sight before the bot stops knowing your position.
+// cone = min dot(facing, you) required to fire — a bot can only shoot what's in
+//        front of it, so flanking makes it stop shooting until it turns to face you.
 const SKILLS = {
-  easy:   { aimErr: 0.16, reaction: 0.85, burst: 3, pause: 0.7, speed: 0.5 },
-  normal: { aimErr: 0.065, reaction: 0.4, burst: 6, pause: 0.35, speed: 0.68 },
+  easy:   { aimErr: 0.22, reaction: 1.05, burst: 3, pause: 0.9, speed: 0.5, turn: 2.6, track: 4.5, forget: 2.0, cone: 0.5 },
+  normal: { aimErr: 0.11, reaction: 0.6, burst: 5, pause: 0.55, speed: 0.66, turn: 3.9, track: 7, forget: 2.5, cone: 0.42 },
 };
 
 function collideXZ(boxes, x, z, y) {
@@ -66,16 +73,45 @@ export function tickBots(m, dt) {
     }
     if (!enemy) { f.anim = 'idle'; continue; }
 
+    const turnRate = skill.turn ?? 5, trackRate = skill.track ?? 8;
+    const forget = skill.forget ?? 2.5, cone = skill.cone ?? 0.4;
+
     const los = hasLOS(boxes, f.pos.x, eyeY(f), f.pos.z, enemy.pos.x, eyeY(enemy), enemy.pos.z);
-    if (los) { mem.sawAt = mem.sawAt || now; mem.lastSeen = { ...enemy.pos }; }
-    else mem.sawAt = null;
+    if (los) {
+      mem.sawAt = mem.sawAt || now;
+      mem.lastSeen = { ...enemy.pos }; mem.lastSeenAt = now;
+      // aim converges on your real position over time — laggy, so it can't
+      // perfectly follow a strafe. Only tracks while it can actually SEE you.
+      const eye = { x: enemy.pos.x, y: eyeY(enemy) - 0.18, z: enemy.pos.z };
+      if (!mem.aimPos) mem.aimPos = { ...eye };
+      const k = 1 - Math.exp(-trackRate * dt);
+      mem.aimPos.x += (eye.x - mem.aimPos.x) * k;
+      mem.aimPos.y += (eye.y - mem.aimPos.y) * k;
+      mem.aimPos.z += (eye.z - mem.aimPos.z) * k;
+    } else {
+      mem.sawAt = null;
+      // lose the trail a couple seconds after you break line of sight
+      if (mem.lastSeenAt && now - mem.lastSeenAt > forget) { mem.lastSeen = null; mem.aimPos = null; }
+    }
 
     // ---- movement: approach to mid range, then strafe ----
     if (!mem.strafeUntil || now > mem.strafeUntil) {
       mem.strafeDir = Math.random() < 0.5 ? -1 : 1;
       mem.strafeUntil = now + 0.6 + Math.random() * 0.9;
     }
-    const tx = mem.lastSeen?.x ?? enemy.pos.x, tz = mem.lastSeen?.z ?? enemy.pos.z;
+    // where the bot THINKS you are: your real spot only while visible, else the
+    // last place it saw you, else it has no idea — so it roams your general area
+    // (fuzzy, not your exact position) until it spots you again.
+    let tx, tz;
+    if (los) { tx = enemy.pos.x; tz = enemy.pos.z; }
+    else if (mem.lastSeen) { tx = mem.lastSeen.x; tz = mem.lastSeen.z; }
+    else {
+      if (!mem.roam || Math.hypot(f.pos.x - mem.roam.x, f.pos.z - mem.roam.z) < 2.5 || now > (mem.roamUntil || 0)) {
+        mem.roam = { x: enemy.pos.x + (Math.random() - 0.5) * 22, z: enemy.pos.z + (Math.random() - 0.5) * 22 };
+        mem.roamUntil = now + 3 + Math.random() * 3;
+      }
+      tx = mem.roam.x; tz = mem.roam.z;
+    }
     const dx = tx - f.pos.x, dz = tz - f.pos.z;
     const dist = Math.hypot(dx, dz) || 1e-4;
     const fwdX = dx / dist, fwdZ = dz / dist;
@@ -115,17 +151,25 @@ export function tickBots(m, dt) {
       if (f.pos.y <= 0) { f.pos.y = 0; delete mem.vy; }
     }
     f.anim = 'run';
-    // facing is COSMETIC only — the shots above aim straight at the enemy
-    // regardless of f.ry. Face the way we're actually moving so bots visibly
-    // turn as they roam, instead of moonwalking with the body locked toward an
-    // enemy they can't even see (through a wall). Snap to the target only in a
-    // close fight or when standing still, so gunfights still read as aiming.
+    // facing now MATTERS: the bot can only fire at what's in front of it (cone
+    // check below) and it turns at a limited rate — so it must actually rotate
+    // to face you, and a quick flank leaves it looking the wrong way (backstab!).
     const moveLen = Math.hypot(moveX, moveZ);
-    if ((los && dist < 16) || moveLen < 0.01) {
-      f.ry = Math.atan2(-(enemy.pos.x - f.pos.x), -(enemy.pos.z - f.pos.z));
-    } else {
-      f.ry = Math.atan2(-moveX, -moveZ);
-    }
+    let desiredRy;
+    if (los && mem.aimPos) desiredRy = Math.atan2(-(mem.aimPos.x - f.pos.x), -(mem.aimPos.z - f.pos.z));
+    else if (moveLen > 0.01) desiredRy = Math.atan2(-moveX, -moveZ);
+    else desiredRy = f.ry;
+    let dRy = desiredRy - f.ry;
+    while (dRy > Math.PI) dRy -= Math.PI * 2;
+    while (dRy < -Math.PI) dRy += Math.PI * 2;
+    const maxTurn = turnRate * dt;
+    f.ry += Math.max(-maxTurn, Math.min(maxTurn, dRy));
+
+    // is the enemy within the bot's forward view cone right now?
+    const fFx = -Math.sin(f.ry), fFz = -Math.cos(f.ry);
+    const eDx = enemy.pos.x - f.pos.x, eDz = enemy.pos.z - f.pos.z;
+    const eDl = Math.hypot(eDx, eDz) || 1;
+    const facingEnemy = ((eDx / eDl) * fFx + (eDz / eDl) * fFz) > cone;
 
     // ---- weapon choice ----
     if (f.bot.weapon) {
@@ -133,15 +177,17 @@ export function tickBots(m, dt) {
     } else if (dist < 3.2 && los) f.weapon = 'scythe';
     else if (dist > 3.8 && f.weapon === 'scythe') f.weapon = 'ar';
 
-    // ---- combat ----
-    if (los && mem.sawAt && now - mem.sawAt >= skill.reaction) {
+    // ---- combat ---- (must see you, have reacted, AND be facing you)
+    if (los && mem.sawAt && now - mem.sawAt >= skill.reaction && facingEnemy) {
       if (f.weapon === 'scythe') { if (dist < 3.4) meleeSwing(m, f, 'scythe'); continue; }
       // burst-fire management
       if (mem.pauseUntil && now < mem.pauseUntil) continue;
       mem.shots = mem.shots || 0;
-      const ax = enemy.pos.x - f.pos.x;
-      const ay = eyeY(enemy) - 0.18 - eyeY(f);
-      const az = enemy.pos.z - f.pos.z;
+      // aim at the LAGGED position, not your exact spot — strafing beats it
+      const aim = mem.aimPos || { x: enemy.pos.x, y: eyeY(enemy) - 0.18, z: enemy.pos.z };
+      const ax = aim.x - f.pos.x;
+      const ay = aim.y - eyeY(f);
+      const az = aim.z - f.pos.z;
       const al = Math.hypot(ax, ay, az) || 1;
       const err = skill.aimErr * (0.6 + Math.random() * 0.8);
       const dirX = ax / al + (Math.random() - 0.5) * err;

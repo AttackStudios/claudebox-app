@@ -14,50 +14,64 @@ function slope(cx, y0, cz, axis, len, rise, w, up, color) {
   return B(cx, y0 + rise / 2, cz, sx, rise, sz, color, { ramp: { axis, up, rise } });
 }
 
-// ================= ARENA — bright white box with team-colour trim =====
+// a "table": a flat WALKABLE slab on four thin legs — cover you can duck under
+// or hop onto (the arena's signature raised platforms).
+function table(x, z, sx, sz, topY, color, legColor = color) {
+  const t = 0.5, lw = 0.5;
+  const lx = sx / 2 - 0.6, lz = sz / 2 - 0.6;
+  const legH = topY - t / 2, legY = legH / 2;
+  return [
+    B(x, topY, z, sx, t, sz, color, { walk: true }),
+    B(x - lx, legY, z - lz, lw, legH, lw, legColor),
+    B(x + lx, legY, z - lz, lw, legH, lw, legColor),
+    B(x - lx, legY, z + lz, lw, legH, lw, legColor),
+    B(x + lx, legY, z + lz, lw, legH, lw, legColor),
+  ];
+}
+
+// ================= ARENA — floating white greybox box (Rivals-style) =====
 const AR_W = '#eef1f6', AR_W2 = '#d9dee6', AR_ACC = '#c6ccd6';
 const TEAM_A = '#2fa4ff', TEAM_B = '#ff7a34';   // blue side vs orange side
+// A floating portrait box: tall white walls all round, a grid floor, and a
+// scattered field of white greybox cover (slabs, cubes, angled blocks, tables).
+// Laid out with 180° rotational symmetry so the two diagonal spawns are fair.
 export const ARENA = {
   id: 'arena', name: 'Arena',
-  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#e8f1f8'], fog: 0.008,
-  ground: { color: '#e9edf3', size: 96, tex: ['#e9edf3', 'rgba(110,125,150,0.30)', 'rgba(140,190,255,0.18)'] },
-  emblem: '#2fa4ff',
+  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#e8f1f8'], fog: 0.006,
+  ground: { color: '#eef1f6', sizeX: 46, sizeZ: 62, thick: 4, tex: ['#eef1f6', 'rgba(120,135,160,0.34)', 'rgba(150,175,205,0.12)'] },
+  emblem: '#8fa7c4',
   boxes: [
-    // outer walls
-    B(0, 4.5, -23, 70, 9, 1, AR_W), B(0, 4.5, 23, 70, 9, 1, AR_W),
-    B(-35, 4.5, 0, 1, 9, 47, AR_W), B(35, 4.5, 0, 1, 9, 47, AR_W),
-    // center monolith + flanks
-    B(0, 1.75, 0, 8, 3.5, 2.5, AR_W2),
-    B(0, 4.1, 0, 8, 1.2, 2.5, AR_ACC),
-    B(-13, 1.25, -9, 5, 2.5, 5, AR_W2), B(13, 1.25, 9, 5, 2.5, 5, AR_W2),
-    B(-13, 1.0, 10, 4, 2, 4, AR_ACC), B(13, 1.0, -10, 4, 2, 4, AR_ACC),
-    // side platforms + their stairs
-    B(-26, 1.5, 0, 10, 3, 14, AR_W2, { walk: true }),
-    B(26, 1.5, 0, 10, 3, 14, AR_W2, { walk: true }),
-    slope(-22, 0, -12, 'x', 6, 3, 5, -1, AR_ACC),
-    slope(22, 0, 12, 'x', 6, 3, 5, 1, AR_ACC),
-    // scattered cover across the bigger floor
-    B(-6, 0.75, 15, 4, 1.5, 2, AR_ACC), B(6, 0.75, -15, 4, 1.5, 2, AR_ACC),
-    B(0, 0.6, -11, 2.5, 1.2, 2.5, AR_W2), B(0, 0.6, 11, 2.5, 1.2, 2.5, AR_W2),
-    B(-20, 1, -17, 3, 2, 3, AR_W2), B(20, 1, 17, 3, 2, 3, AR_W2),
-    B(-8, 0.9, -5, 2, 1.8, 2, AR_ACC), B(8, 0.9, 5, 2, 1.8, 2, AR_ACC),
-    B(-27, 0.9, 16, 3, 1.8, 2, AR_ACC), B(27, 0.9, -16, 3, 1.8, 2, AR_ACC),
-    B(0, 1.4, -18.5, 5, 2.8, 1.5, AR_W2), B(0, 1.4, 18.5, 5, 2.8, 1.5, AR_W2),
-    // ---- decorative emissive trim (glow → not solid) ----
-    // wall-top neon, team-coloured per side (blue west, orange east)
-    B(-17.5, 9.05, -23, 34, 0.32, 0.5, TEAM_A, { glow: true }), B(17.5, 9.05, -23, 34, 0.32, 0.5, TEAM_B, { glow: true }),
-    B(-17.5, 9.05, 23, 34, 0.32, 0.5, TEAM_A, { glow: true }), B(17.5, 9.05, 23, 34, 0.32, 0.5, TEAM_B, { glow: true }),
-    B(-35, 9.05, 0, 0.5, 0.32, 46, TEAM_A, { glow: true }), B(35, 9.05, 0, 0.5, 0.32, 46, TEAM_B, { glow: true }),
-    // glowing corner posts
-    B(-35, 9.3, -23, 1.1, 0.7, 1.1, TEAM_A, { glow: true }), B(-35, 9.3, 23, 1.1, 0.7, 1.1, TEAM_A, { glow: true }),
-    B(35, 9.3, -23, 1.1, 0.7, 1.1, TEAM_B, { glow: true }), B(35, 9.3, 23, 1.1, 0.7, 1.1, TEAM_B, { glow: true }),
-    // platform inner-edge light lines + monolith crown
-    B(-21, 3.06, 0, 0.3, 0.16, 14, TEAM_A, { glow: true }), B(21, 3.06, 0, 0.3, 0.16, 14, TEAM_B, { glow: true }),
-    B(0, 4.76, 0, 8.1, 0.16, 2.6, '#eaf4ff', { glow: true }),
+    // ---- perimeter walls (tall white box) ----
+    B(0, 5, -31, 46, 10, 1.2, AR_W), B(0, 5, 31, 46, 10, 1.2, AR_W),
+    B(-23, 5, 0, 1.2, 10, 62, AR_W), B(23, 5, 0, 1.2, 10, 62, AR_W),
+    // ---- central cluster ----
+    ...table(0, 0, 6, 4, 2.0, AR_W2, AR_ACC),          // centre table (walk under/on)
+    B(0, 0.6, -9, 5, 1.2, 3, AR_ACC), B(0, 0.6, 9, 5, 1.2, 3, AR_ACC),
+    B(-5, 0.75, -5, 7, 1.5, 2.2, AR_W2, { ry: 0.5 }), B(5, 0.75, 5, 7, 1.5, 2.2, AR_W2, { ry: 0.5 }),
+    // ---- cubes ----
+    B(-9, 1.2, 3, 2.6, 2.4, 2.6, AR_W2), B(9, 1.2, -3, 2.6, 2.4, 2.6, AR_W2),
+    B(-7, 0.9, 12, 2.4, 1.8, 2.4, AR_ACC), B(7, 0.9, -12, 2.4, 1.8, 2.4, AR_ACC),
+    // ---- angled slabs ----
+    B(-11, 0.55, -13, 6, 1.1, 3.4, AR_W2, { ry: 0.22 }), B(11, 0.55, 13, 6, 1.1, 3.4, AR_W2, { ry: 0.22 }),
+    B(-6, 0.7, 17, 6, 1.4, 2, AR_W2, { ry: -0.6 }), B(6, 0.7, -17, 6, 1.4, 2, AR_W2, { ry: -0.6 }),
+    // ---- tall boxes near the walls ----
+    B(-16, 1.4, -19, 3, 2.8, 3, AR_W2), B(16, 1.4, 19, 3, 2.8, 3, AR_W2),
+    B(-17, 0.9, 7, 3, 1.8, 2.6, AR_ACC), B(17, 0.9, -7, 3, 1.8, 2.6, AR_ACC),
+    // ---- long blocks along z (angled) ----
+    B(12, 0.8, -9, 2.2, 1.6, 7, AR_W2, { ry: -0.15 }), B(-12, 0.8, 9, 2.2, 1.6, 7, AR_W2, { ry: -0.15 }),
+    // ---- second pair of tables ----
+    ...table(-13, 10, 4.5, 3, 1.7, AR_W2, AR_ACC), ...table(13, -10, 4.5, 3, 1.7, AR_W2, AR_ACC),
+    // ---- mid-far flat platforms (on-axis) ----
+    B(0, 0.6, -22, 7, 1.2, 3, AR_ACC), B(0, 0.6, 22, 7, 1.2, 3, AR_ACC),
+    // ---- low cover near the two spawns ----
+    B(-15, 0.7, 23, 2.6, 1.4, 2.6, AR_ACC), B(15, 0.7, -23, 2.6, 1.4, 2.6, AR_ACC),
+    B(-9, 0.55, -24, 4, 1.1, 2.4, AR_W2), B(9, 0.55, 24, 4, 1.1, 2.4, AR_W2),
+    // ---- subtle team-colour floor pads at each spawn (only glow on the map) ----
+    B(-17, 0.05, -25, 6, 0.1, 6, TEAM_A, { glow: true }), B(17, 0.05, 25, 6, 0.1, 6, TEAM_B, { glow: true }),
   ],
   // ry chosen so spawns FACE the arena centre (forward = (-sin ry, -cos ry))
-  spawnsA: [{ x: -31, z: -17, ry: -2.07 }, { x: -31, z: 17, ry: -1.07 }],
-  spawnsB: [{ x: 31, z: 17, ry: 1.07 }, { x: 31, z: -17, ry: 2.07 }],
+  spawnsA: [{ x: -16, z: -25, ry: -2.57 }, { x: -19, z: -22, ry: -2.43 }],
+  spawnsB: [{ x: 16, z: 25, ry: 0.57 }, { x: 19, z: 22, ry: 0.71 }],
 };
 
 // ============ BATTLEGROUND — big outdoor industrial ========
@@ -248,13 +262,14 @@ export const COLOSSUS = {
 // Ring the map edge with tall INVISIBLE walls so you can't slide/pad/launch
 // out of bounds. `invisible` boxes are solid (collision) but not rendered.
 function withBarriers(map) {
-  const s = (map.ground?.size || 96) / 2 - 0.5;
+  const sx = (map.ground?.sizeX || map.ground?.size || 96) / 2 - 0.5;
+  const sz = (map.ground?.sizeZ || map.ground?.size || 96) / 2 - 0.5;
   const h = 60;
   map.boxes.push(
-    B(0, h / 2, -s, s * 2, h, 1, '#000000', { invisible: true }),
-    B(0, h / 2, s, s * 2, h, 1, '#000000', { invisible: true }),
-    B(-s, h / 2, 0, 1, h, s * 2, '#000000', { invisible: true }),
-    B(s, h / 2, 0, 1, h, s * 2, '#000000', { invisible: true }),
+    B(0, h / 2, -sz, sx * 2, h, 1, '#000000', { invisible: true }),
+    B(0, h / 2, sz, sx * 2, h, 1, '#000000', { invisible: true }),
+    B(-sx, h / 2, 0, 1, h, sz * 2, '#000000', { invisible: true }),
+    B(sx, h / 2, 0, 1, h, sz * 2, '#000000', { invisible: true }),
   );
   return map;
 }
