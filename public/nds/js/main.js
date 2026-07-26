@@ -31,6 +31,10 @@ const sun = new THREE.DirectionalLight('#fff4e0', 1.0); sun.position.set(60, 120
 const LM = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
 const rndBetween = (a, b) => a + Math.random() * (b - a);
 
+const oofSfx = new Audio('/backpacking/audio/oof.mp3');
+oofSfx.preload = 'auto'; oofSfx.volume = 0.9;
+function playOof() { oofSfx.currentTime = 0; oofSfx.play().catch(() => {}); }
+
 // ============================ WORLD ============================
 let R_ISLAND = 30;             // rough bounding radius (disasters)
 const WATER_Y = WORLD.waterY;
@@ -176,6 +180,7 @@ addEventListener('wheel', (e) => { camDist = Math.max(4, Math.min(16, camDist + 
 // ============================ AVATARS (Roblox-style shared models) ============================
 function loadAv() { try { return JSON.parse(localStorage.getItem('featherfriends.lastProfile') || '{}').avatar || {}; } catch { return {}; } }
 let myAvatar = null;   // controller { group, setAnim, update }
+let myHpBar = null;
 
 // ============================ NETWORK ============================
 const identityName = (() => { try { return localStorage.getItem('claudebox.user') || 'Survivor'; } catch { return 'Survivor'; } })();
@@ -215,14 +220,13 @@ function onMsg(m) {
     case 'round': if (m.round) roundNum = m.round; applyPhase(m.phase, m.until, m.disasters || activeSpecs, m.stacks ?? stacks, m.map); if (m.survivors) showSurvivors(m.survivors); break;
     case 'stacks': stacks = m.stacks; toast(`${m.by} stacked a disaster! Next round: ${1 + stacks} 🌪️`); break;
     case 'wallet': setCubes(m.cubes); break;
-    case 'dead': { const o = others.get(m.id); if (o) o.alive = false; break; }
+    case 'dead': { const o = others.get(m.id); if (o) { o.alive = false; killOther(o); } break; }
     case 'snap': applySnap(m.players); break;
     case 'toast': toast(m.text); break;
   }
 }
 let activeSpecs = [];
 let participating = false;     // am I playing this round (was in the lobby at warning)?
-function clearDeadUI() { $('dead-overlay').classList.remove('show'); $('dead-tag').style.display = 'none'; }
 function applyPhase(ph, until, disasters, stk, map) {
   phase = ph; phaseUntil = until; stacks = stk;
   if (disasters && disasters.length) activeSpecs = disasters;
@@ -230,7 +234,7 @@ function applyPhase(ph, until, disasters, stk, map) {
   if (ph === 'warning') {
     // players in the lobby now join the round on the island
     participating = true; me.dead = false; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
-    clearDeadUI();
+    clearGibs(); myHpBar && myHpBar.set(1);
     const names = activeSpecs.map((d) => DISASTERS[d.id]?.name).filter(Boolean).join(' + ');
     banner(`⚠️ ${names || 'Disaster'} on ${MAPS[currentMap]?.name || 'the island'}!`);
     clearDisasters();
@@ -241,7 +245,7 @@ function applyPhase(ph, until, disasters, stk, map) {
     banner(!participating ? 'Round over — you join the next one!' : (me.dead ? '💀 Eliminated' : '🏆 You survived!'));
   } else if (ph === 'intermission') {
     participating = false; me.dead = false; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
-    clearDeadUI(); clearDisasters(); banner('Intermission — head to the machine!');
+    clearGibs(); myHpBar && myHpBar.set(1); clearDisasters(); banner('Intermission — head to the machine!');
   }
 }
 
@@ -249,15 +253,32 @@ function addOther(p) {
   if (others.has(p.id) || p.id === myId) return;
   const ctrl = makeAvatar(p.avatar || {}); scene.add(ctrl.group);
   ctrl.group.add(makeNameplate(p.name));
-  others.set(p.id, { ctrl, target: { x: p.x || 0, y: p.y || 0, z: p.z || 0, ry: p.ry || 0 }, alive: p.alive !== false, name: p.name });
+  const hpBar = makeHealthBar(); ctrl.group.add(hpBar.sprite);
+  const rec = { ctrl, target: { x: p.x || 0, y: p.y || 0, z: p.z || 0, ry: p.ry || 0 }, alive: p.alive !== false, name: p.name, hpBar, avatar: p.avatar || {}, gibbed: false };
+  if (p.alive === false) { hpBar.set(0); rec.gibbed = true; }
+  others.set(p.id, rec);
 }
 function removeOther(id) { const o = others.get(id); if (o) { scene.remove(o.ctrl.group); o.ctrl.dispose && o.ctrl.dispose(); others.delete(id); } }
+function killOther(o) {
+  if (o.gibbed) return;
+  o.gibbed = true;
+  const g = o.ctrl.group;
+  gib(g.position.x, g.position.y, g.position.z, o.avatar);
+  o.hpBar && o.hpBar.set(0);
+  g.visible = false;
+  if (Math.hypot(g.position.x - me.pos.x, g.position.z - me.pos.z) < 40) playOof();
+}
 function applySnap(players) {
   for (const arr of players) {
     const [id, x, y, z, ry, anim, alive] = arr;
     if (id === myId) continue;
     const o = others.get(id);
-    if (o) { o.target = { x, y, z, ry }; o.anim = anim; o.alive = !!alive; o.ctrl.group.visible = !!alive || phase !== 'disaster'; }
+    if (o) {
+      const was = o.alive; o.target = { x, y, z, ry }; o.anim = anim; o.alive = !!alive;
+      if (was && !o.alive) killOther(o);
+      if (!was && o.alive) { o.gibbed = false; o.hpBar && o.hpBar.set(1); o.ctrl.group.visible = true; }
+      o.ctrl.group.visible = o.alive || (!o.gibbed && phase !== 'disaster');
+    }
   }
 }
 function makeNameplate(name) {
@@ -265,6 +286,22 @@ function makeNameplate(name) {
   x.font = 'bold 30px system-ui'; x.textAlign = 'center'; x.fillStyle = '#000'; x.globalAlpha = 0.5; x.fillText(name, 129, 41);
   x.globalAlpha = 1; x.fillStyle = '#fff'; x.fillText(name, 128, 40);
   const t = new THREE.CanvasTexture(c); const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false })); sp.scale.set(2.4, 0.6, 1); sp.position.y = 2.5; return sp;
+}
+function makeHealthBar() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 16;
+  const x = c.getContext('2d');
+  const t = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false }));
+  sp.scale.set(1.5, 0.19, 1); sp.position.y = 2.18;
+  const set = (frac) => {
+    x.clearRect(0, 0, 128, 16);
+    x.fillStyle = '#a02a1a'; x.fillRect(2, 2, 124, 12);
+    x.fillStyle = '#3fd141'; x.fillRect(2, 2, Math.round(124 * frac), 12);
+    x.strokeStyle = 'rgba(0,0,0,.6)'; x.lineWidth = 2; x.strokeRect(1, 1, 126, 14);
+    t.needsUpdate = true;
+  };
+  set(1);
+  return { sprite: sp, set };
 }
 
 // ============================ INTERACTION ============================
@@ -282,7 +319,7 @@ function showSurvivors(ids) { const n = ids.length; toast(`${n} survivor${n === 
 
 // ============================ DISASTERS ============================
 let floodLevel = WATER_Y, floodMesh = null;
-function clearDisasters() { for (const d of activeDisasters) if (d.mesh) scene.remove(d.mesh); activeDisasters = []; if (floodMesh) { scene.remove(floodMesh); floodMesh = null; } floodLevel = WATER_Y; }
+function clearDisasters() { for (const d of activeDisasters) { if (d.mesh) scene.remove(d.mesh); if (d.extra) scene.remove(d.extra); } activeDisasters = []; if (floodMesh) { scene.remove(floodMesh); floodMesh = null; } floodLevel = WATER_Y; }
 function spawnDisasters(specs) {
   clearDisasters();
   for (const spec of specs) {
@@ -294,7 +331,24 @@ function spawnDisasters(specs) {
     else if (spec.id === 'tsunami') { d.mesh = makeWave(); scene.add(d.mesh); }
     else if (spec.id === 'wildfire') { d.state = { fires: spec.seeds.map((s) => ({ x: s.x, z: s.z, r: 1.5 })) }; d.mesh = new THREE.Group(); scene.add(d.mesh); }
     else if (spec.id === 'volcano') { d.mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: '#e03a10' })); d.mesh.rotation.x = -Math.PI / 2; d.mesh.position.y = 0.08; d.mesh.scale.setScalar(0.1); scene.add(d.mesh); const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 6, 16), LM('#5a3a2a')); cone.position.y = 2.5; scene.add(cone); d.state = { cone, r: 0 }; }
-    else if (spec.id === 'blizzard') { scene.fog = new THREE.FogExp2('#dbe8f2', 0.05); d.state = { cold: 0 }; const warm = new THREE.Mesh(new THREE.CylinderGeometry(spec.warm.r, spec.warm.r, 0.2, 24), new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.4 })); warm.position.set(spec.warm.x, 0.1, spec.warm.z); scene.add(warm); d.mesh = warm; }
+    else if (spec.id === 'blizzard') {
+      scene.fog = new THREE.FogExp2('#dbe8f2', 0.055);   // whiteout haze
+      d.state = { cold: 0 };
+      // ---- warm campfire at the safe zone (visible so players can find it) ----
+      const fire = new THREE.Group(); fire.position.set(spec.warm.x, 0, spec.warm.z);
+      const glow = new THREE.Mesh(new THREE.CircleGeometry(spec.warm.r, 28), new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.32, depthWrite: false })); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.09; fire.add(glow);
+      for (let i = 0; i < 5; i++) { const log = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.5, 6), LM('#5a3a22')); const a = i / 5 * Math.PI * 2; log.position.set(Math.cos(a) * 0.5, 0.2, Math.sin(a) * 0.5); log.rotation.z = Math.PI / 2; log.rotation.y = a; fire.add(log); }
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.9, 8), new THREE.MeshBasicMaterial({ color: '#ff6a1a', transparent: true, opacity: 0.92 })); flame.position.y = 1.1; fire.add(flame);
+      const flame2 = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.15, 8), new THREE.MeshBasicMaterial({ color: '#ffd24a' })); flame2.position.y = 0.95; fire.add(flame2);
+      const pl = new THREE.PointLight('#ff9a3a', 1.4, spec.warm.r * 3.5); pl.position.y = 1.3; fire.add(pl);
+      scene.add(fire); d.mesh = fire; d.state.flame = flame; d.state.flame2 = flame2; d.state.light = pl;
+      // ---- falling snow that follows the player ----
+      const N = 1500, pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 95; pos[i * 3 + 1] = Math.random() * 48; pos[i * 3 + 2] = (Math.random() - 0.5) * 95; }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const snow = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.5, transparent: true, opacity: 0.9, depthWrite: false }));
+      snow.frustumCulled = false; scene.add(snow); d.extra = snow; d.state.snow = snow;
+    }
     else if (spec.id === 'acid') { d.state = { pools: spec.pools.map((p) => ({ ...p, cur: 0.1 })) }; d.mesh = new THREE.Group(); scene.add(d.mesh); }
     else if (spec.id === 'thunderstorm') { d.state = { fired: new Array((spec.strikes || []).length).fill(false) }; scene.fog = new THREE.FogExp2('#8a94a8', 0.02); }
     else if (spec.id === 'sandstorm') { scene.fog = new THREE.FogExp2('#d9b46a', 0.05); d.state = {}; }
@@ -361,6 +415,10 @@ function updateDisasters(dt, elapsed) {
       if (elapsed > (s.freezeIn || 5)) { if (warmD > s.warm.r) d.state.cold += dt; else d.state.cold = Math.max(0, d.state.cold - dt * 2); }
       $('status').textContent = warmD > s.warm.r ? `❄️ Freezing! Get to the fire (${(6 - d.state.cold).toFixed(0)}s)` : '🔥 Warm — stay here';
       if (!me.dead && d.state.cold > 6) die('frozen');
+      // falling snow follows the player; recycle flakes that hit the ground
+      const snow = d.state.snow;
+      if (snow) { const arr = snow.geometry.attributes.position.array; for (let i = 0; i < arr.length; i += 3) { arr[i + 1] -= dt * 15; arr[i] += dt * 3; if (arr[i + 1] < 0) { arr[i + 1] = 48; arr[i] = (Math.random() - 0.5) * 95; arr[i + 2] = (Math.random() - 0.5) * 95; } } snow.geometry.attributes.position.needsUpdate = true; snow.position.set(me.pos.x, 0, me.pos.z); }
+      if (d.state.flame) { d.state.flame.scale.y = 1 + Math.sin(elapsed * 20) * 0.14; d.state.flame2.scale.y = 1 + Math.cos(elapsed * 26) * 0.18; if (d.state.light) d.state.light.intensity = 1.2 + Math.sin(elapsed * 18) * 0.5; }
     } else if (s.id === 'acid') {
       d.mesh.clear();
       for (const p of d.state.pools) { if (elapsed > p.growAt) p.cur = Math.min(p.r, p.cur + dt * 0.8); const pool = new THREE.Mesh(new THREE.CircleGeometry(Math.max(0.1, p.cur), 18), new THREE.MeshBasicMaterial({ color: '#7de04a', transparent: true, opacity: 0.6 })); pool.rotation.x = -Math.PI / 2; pool.position.set(p.x, 0.07, p.z); d.mesh.add(pool); if (!me.dead && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < p.cur && me.pos.y < 1.5) die('acid'); }
@@ -379,11 +437,41 @@ function boom(x, y, z, r) {
   const scar = new THREE.Mesh(new THREE.CircleGeometry(r, 18), new THREE.MeshBasicMaterial({ color: '#2a1a10' })); scar.rotation.x = -Math.PI / 2; scar.position.set(x, 0.05, z); scene.add(scar);
   let t = 0; const iv = setInterval(() => { t += 0.05; m.scale.setScalar(1 + t * 1.5); m.material.opacity = Math.max(0, 0.85 - t * 1.5); if (t > 0.6) { clearInterval(iv); scene.remove(m); } }, 30);
 }
+let gibs = [];
+function gib(x, y, z, av = {}) {
+  const skin = av.skin || '#e8b48a', shirt = av.shirtColor || '#3a7bd5', pants = av.pantsColor || '#34404f';
+  const parts = [
+    [0.34, 0.34, 0.34, skin,  1.65],
+    [0.48, 0.56, 0.26, shirt, 1.15],
+    [0.16, 0.5,  0.16, skin,  1.25], [0.16, 0.5, 0.16, skin, 1.25],
+    [0.2,  0.55, 0.2,  pants, 0.55], [0.2, 0.55, 0.2, pants, 0.55],
+  ];
+  for (const [w, h, d, col, py] of parts) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: col, transparent: true }));
+    mesh.position.set(x + (Math.random() - 0.5) * 0.3, y + py, z + (Math.random() - 0.5) * 0.3);
+    scene.add(mesh);
+    const a = Math.random() * Math.PI * 2, sp = 2.5 + Math.random() * 3.5;
+    gibs.push({ mesh, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, vy: 4.5 + Math.random() * 4,
+      sx: (Math.random() - 0.5) * 10, sz: (Math.random() - 0.5) * 10, life: 0 });
+  }
+}
+function tickGibs(dt) {
+  for (let i = gibs.length - 1; i >= 0; i--) {
+    const p = gibs[i]; p.life += dt; p.vy -= 22 * dt;
+    p.mesh.position.x += p.vx * dt; p.mesh.position.y += p.vy * dt; p.mesh.position.z += p.vz * dt;
+    p.mesh.rotation.x += p.sx * dt; p.mesh.rotation.z += p.sz * dt;
+    if (p.life > 2.2) p.mesh.material.opacity = Math.max(0, 1 - (p.life - 2.2) * 1.2);
+    if (p.life > 3.2 || p.mesh.position.y < WATER_Y - 8) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); gibs.splice(i, 1); }
+  }
+}
+function clearGibs() { for (const p of gibs) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); } gibs = []; }
 function die(cause) {
-  if (me.dead || !participating) return;   // lobby spectators can't die
+  if (me.dead || !participating) return;
   me.dead = true;
   send({ t: 'dead', cause });
-  $('dead-overlay').classList.add('show'); $('dead-tag').style.display = 'block';
+  gib(me.pos.x, me.pos.y, me.pos.z, myAvatarData);
+  myHpBar && myHpBar.set(0);
+  playOof();
   banner('💀 ' + cause.toUpperCase());
 }
 
@@ -434,6 +522,7 @@ function frame() {
   // disasters
   if (phase === 'disaster') updateDisasters(dt, now - disasterStart);
   tickBroken(dt);
+  tickGibs(dt);
 
   // machine prompt + dish spin
   lobbyGroup.userData.dish.rotation.z += dt * (1 + stacks) * 1.5;
@@ -457,4 +546,4 @@ function frame() {
 
   renderer.render(scene, camera);
 }
-(async () => { try { await preloadAvatars(['boy', 'girl']); } catch {} myAvatar = makeAvatar(myAvatarData || {}); scene.add(myAvatar.group); connect(); frame(); })();
+(async () => { try { await preloadAvatars(['boy', 'girl']); } catch {} myAvatar = makeAvatar(myAvatarData || {}); scene.add(myAvatar.group); myHpBar = makeHealthBar(); myAvatar.group.add(myHpBar.sprite); connect(); frame(); })();
