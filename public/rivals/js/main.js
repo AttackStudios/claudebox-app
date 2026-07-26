@@ -279,7 +279,9 @@ function buildMap(def) {
       geo.translate(-len / 2, 0, -wid / 2);
       const wedge = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: b.color }));
       wedge.position.set(b.x, b.y - b.sy / 2, b.z);
-      if (axis === 'z') wedge.rotation.y = Math.PI / 2;
+      // -90° (not +90°) so the visible slope runs the SAME way as the ramp's
+      // collision surface (rampSurfaceY) — +90° mirrored it along z.
+      if (axis === 'z') wedge.rotation.y = -Math.PI / 2;
       mapGroup.add(wedge);
       continue;
     }
