@@ -31,10 +31,12 @@ export const SKINS = [
   S('sc-obsidian','scythe', 'Obsidian',   'common', { color: '#1a1020', metalness: 0.7, roughness: 0.3 }),
   S('sc-plasma',  'scythe', 'Plasma',     'epic',   { color: '#4dffff', emissive: '#10a0c0', emissiveIntensity: 0.85, metalness: 0.5, roughness: 0.2 }),
   S('sc-gold',    'scythe', 'Golden Edge','legendary', { color: '#e8bf5a', emissive: '#3a2600', emissiveIntensity: 0.3, metalness: 1, roughness: 0.2 }),
+  // ---- UNIQUE (not in cases, earned only) — swaps the whole viewmodel ----
+  { id: 'catpaw', weapon: 'scythe', name: 'Cat Paw', rarity: 'unique', unique: true, model: 'catpaw', mat: { color: '#e8944a' } },
 ];
 export const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
 export const SKINS_BY_WEAPON = SKIN_WEAPONS.reduce((o, w) => { o[w] = SKINS.filter((s) => s.weapon === w); return o; }, {});
-export const RARITY_COLOR = { common: '#9aa4b8', rare: '#4a9eff', epic: '#b46bff', legendary: '#ffbf3a' };
+export const RARITY_COLOR = { common: '#9aa4b8', rare: '#4a9eff', epic: '#b46bff', legendary: '#ffbf3a', unique: '#ff5fa8' };
 const RARITY_WEIGHT = { common: 55, rare: 28, epic: 13, legendary: 4 };
 
 function weightedPick(pool, rand) {
@@ -46,5 +48,8 @@ function weightedPick(pool, rand) {
 // 3 skins for 3 DISTINCT random weapons (weighted by rarity)
 export function rollCase(rand = Math.random) {
   const weps = [...SKIN_WEAPONS].sort(() => rand() - 0.5).slice(0, 3);
-  return weps.map((w) => weightedPick(SKINS_BY_WEAPON[w], rand).id);
+  const pool = (w) => SKINS_BY_WEAPON[w].filter((s) => !s.unique);   // unique skins are earned, never dropped
+  return weps.map((w) => weightedPick(pool(w), rand).id);
 }
+// unique skins are earned in-game, never bought / cased
+export const UNIQUE_SKINS = SKINS.filter((s) => s.unique).map((s) => s.id);

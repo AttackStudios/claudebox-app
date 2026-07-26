@@ -6,6 +6,10 @@
 import { state, genId, clock, publicFighter } from './state.js';
 import { MOVE, ROUND, WEAPONS, TIPS, WAVE } from '../../shared/rivals/config.js';
 import { MAPS, VOTE_OPTIONS, WAVE_MAPS } from '../../shared/rivals/maps.js';
+import { grantCatpaw, catpawEarnersLeft } from '../hub.js';
+
+// bladed melee weapons count as a "knife" kill for the Cat Paw unlock
+const KNIVES = ['scythe', 'katana', 'butterfly', 'daggers'];
 
 // ---------------- geometry helpers ----------------
 // only SOLID boxes collide/block shots — glow boxes are decorative neon trim
@@ -350,6 +354,16 @@ function elim(m, victim, killer, weapon) {
   const assist = victim.assistBy && victim.assistBy !== killer?.id ? m.fighters.get(victim.assistBy) : null;
   if (assist) assist.stats.assists++;
   matchSend(m, { t: 'elim', victim: victim.id, killer: killer?.id || null, weapon: weapon || 'ar' });
+  // Cat Paw unlock: knife-kill LilBugTrainer to earn the unique skin (max 3 earners)
+  if (killer && killer !== victim && !killer.bot && KNIVES.includes(weapon) &&
+      String(victim.name || '').toLowerCase() === 'lilbugtrainer') {
+    try {
+      if (grantCatpaw(killer.name) === 'granted') {
+        const kp = state.players.get(killer.id);
+        if (kp?.ws?.readyState === 1) kp.ws.send(JSON.stringify({ t: 'skin.unlock', skin: 'catpaw', left: catpawEarnersLeft() }));
+      }
+    } catch {}
+  }
   if (m.mode === 'wave') {
     if (victim.bot) {
       spawnDrop(m, victim);

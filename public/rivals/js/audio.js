@@ -5,6 +5,7 @@ const buffers = {};
 const FILES = {
   ar: 'AssaultRifleShoot', handgun: 'HandgunShoot', sniper: 'snipershoot',
   fists: 'fistswing', knife: 'knifeswing', reload: 'reload', equip: 'WeaponEquip', foot: 'footsteps',
+  catscratch: 'catscratch',
 };
 
 export async function loadAudio() {

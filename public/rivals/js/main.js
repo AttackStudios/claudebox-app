@@ -189,6 +189,7 @@ let mapBoxes = [];
 let placedPads = [];     // deployed jump pads: { id, x,y,z, nx,ny,nz, group, core, cd }
 let localPadSeq = 0;     // ids for client-only practice-arena pads
 let localNades = [];     // client-only grenades/satchels thrown in the practice arena
+let clawTrails = [];     // white transparent cat-paw claw slashes
 const PRACTICE_CLEAR_SECS = 300;   // practice arena wipes placed pads/objects every 5 min
 let lobbyClearAt = 0;
 let rangeTargets = [];   // lobby shooting-range dummies
@@ -748,6 +749,7 @@ function stepMe(dt) {
       }
     }
   }
+  tickClawTrails(dt);
   // practice arena: wipe everything players placed every 5 minutes
   if (game.phase === 'lobby' && lobbyClearAt && now >= lobbyClearAt) {
     if (placedPads.length || localNades.length) toast?.('Practice arena cleared');
@@ -1009,6 +1011,57 @@ function buildViewmodels() {
     };
     viewmodels.satchel = g;
   }
+  // ---- CAT PAW (unique skin model): a cartoon orange-tabby cat paw with white
+  // toes, pink paw pads, and curved 3D claws — the most detailed item in game ----
+  {
+    const g = new THREE.Group();
+    const FUR = '#e0913f', FUR2 = '#c9762d', FUR3 = '#f0b070', TOE = '#f6efe6', PAD = '#eb8d95', PAD2 = '#d96f79', CLAW = '#f4ecda';
+    const rb = (w, h, d, c, x, y, z, rx = 0) => { const m = new THREE.Mesh(roundedBoxGeo(w, h, d, Math.min(w, h, d) * 0.42), vmMat(c)); m.position.set(x, y, z); if (rx) m.rotation.x = rx; return m; };
+    const sph = (r, c, x, y, z, sy = 1) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), vmMat(c)); m.position.set(x, y, z); m.scale.y = sy; return m; };
+    const paw = new THREE.Group();                 // everything below rides in the right hand
+    const CX = 0.42;
+    // furry forearm tapering back to the wrist (orange tabby)
+    paw.add(rb(0.17, 0.18, 0.36, FUR, CX, -0.15, 0.18));
+    paw.add(rb(0.15, 0.16, 0.12, FUR2, CX, -0.15, 0.36));          // elbow fluff
+    // tabby stripes
+    paw.add(rb(0.185, 0.03, 0.05, FUR2, CX, -0.055, 0.1));
+    paw.add(rb(0.185, 0.03, 0.05, FUR2, CX, -0.055, 0.22));
+    paw.add(rb(0.185, 0.03, 0.05, FUR2, CX, -0.055, 0.32));
+    // fuzzy tufts ringing the wrist for a soft silhouette
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; paw.add(rb(0.05, 0.05, 0.11, i % 2 ? FUR3 : FUR2, CX + Math.cos(a) * 0.11, -0.15 + Math.sin(a) * 0.11, 0.14)); }
+    // rounded paw body (the "hand")
+    paw.add(sph(0.15, FUR, CX, -0.16, -0.04, 0.85));
+    paw.add(sph(0.135, TOE, CX, -0.17, -0.14, 0.8));               // white top of paw
+    // big pink palm bean (underside)
+    paw.add(sph(0.1, PAD, CX, -0.25, -0.12, 0.6));
+    // four toes: white bean + pink pad + a curved 3D claw
+    const claws = [], clawTips = [];
+    const toeX = [CX - 0.15, CX - 0.05, CX + 0.05, CX + 0.15];
+    for (let i = 0; i < 4; i++) {
+      const tx = toeX[i], fan = (i - 1.5) * 0.02, tz = -0.24 - Math.abs(i - 1.5) * 0.015;
+      paw.add(sph(0.058, TOE, tx, -0.16, tz, 1.05));               // toe (white, furry)
+      paw.add(sph(0.036, PAD2, tx, -0.205, tz - 0.02, 0.8));       // toe bean (pink)
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.024, 0.15, 10), vmMat(CLAW));
+      claw.rotation.x = -Math.PI / 2 - 0.55;                       // point forward + hook down
+      claw.rotation.z = fan;
+      claw.position.set(tx, -0.17, tz - 0.12);
+      claw.userData.tip = new THREE.Vector3(0, 0.075, 0);          // local tip offset
+      paw.add(claw); claws.push(claw);
+    }
+    g.add(paw);
+    const rArm = mkArm(); rArm.position.set(0.42, -0.3, 0.16); rArm.rotation.set(0.5, -0.2, 0.12);
+    g.add(rArm);
+    g.userData = {
+      gun: paw, rArm, lArm: rArm,   // reuse rArm as lArm to satisfy base-reset
+      base: {
+        gun: { p: paw.position.clone(), r: paw.rotation.clone() },
+        rArm: { p: rArm.position.clone(), r: rArm.rotation.clone() },
+        lArm: { p: rArm.position.clone(), r: rArm.rotation.clone() },
+      },
+      claws, isCatPaw: true,
+    };
+    viewmodels.catpaw = g;
+  }
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
@@ -1068,7 +1121,54 @@ function applySkinToGroup(group, def) {
   group.traverse((o) => { if (!o.isMesh) return; if (!o.userData._orig) o.userData._orig = o.material; o.material = def ? skinMat(def.mat) : o.userData._orig; });
 }
 function skinFor(equipped, weapon) { const id = equipped && equipped[weapon]; return id ? SKIN_BY_ID[id] : null; }
-function applyMyViewmodelSkins() { for (const w of SKIN_WEAPONS) { const vm = viewmodels[w]; if (vm && vm.userData.gun) applySkinToGroup(vm.userData.gun, skinFor(mySkins.equipped, w)); } }
+// model skins swap the whole viewmodel (not a material tint) — skip tinting for those
+function applyMyViewmodelSkins() { for (const w of SKIN_WEAPONS) { const vm = viewmodels[w]; if (vm && vm.userData.gun) { const def = skinFor(mySkins.equipped, w); applySkinToGroup(vm.userData.gun, def && def.model ? null : def); } } }
+const catpawEquipped = () => mySkins.equipped && mySkins.equipped.scythe === 'catpaw';
+// cat-paw hit: LOUD scratch + white claw slashes. returns true if it handled the sfx.
+function catpawHitFx() {
+  if (me.weapon !== 'scythe' || !catpawEquipped()) return false;
+  playOne('catscratch', 4.5);   // way louder than a normal hit
+  spawnClawTrail();
+  return true;
+}
+// a little cartoon cat-paw print drawn to a canvas (toast + skin chip thumbnail)
+function catPawIcon(size = 64) {
+  const c = document.createElement('canvas'); c.width = c.height = size; const x = c.getContext('2d'); const s = size;
+  const bean = (cx, cy, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, 7); x.fill(); };
+  // fur main pad
+  bean(s * 0.5, s * 0.6, s * 0.3, s * 0.26, '#e0913f');
+  bean(s * 0.5, s * 0.56, s * 0.24, s * 0.2, '#f0b070');
+  bean(s * 0.5, s * 0.66, s * 0.17, s * 0.14, '#eb8d95');   // pink palm bean
+  // 4 toes with claws
+  for (let i = 0; i < 4; i++) {
+    const tx = s * (0.26 + i * 0.16), ty = s * (i === 0 || i === 3 ? 0.34 : 0.27);
+    bean(tx, ty, s * 0.085, s * 0.11, '#f0b070');
+    bean(tx, ty + s * 0.03, s * 0.045, s * 0.055, '#d96f79');   // toe bean
+    x.strokeStyle = '#f4ecda'; x.lineWidth = s * 0.035; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(tx, ty - s * 0.09); x.lineTo(tx, ty - s * 0.2); x.stroke();   // claw
+  }
+  return c.toDataURL();
+}
+// top-left card: "you obtained the skin" with an image of it
+function showSkinUnlockToast(def) {
+  if (!document.getElementById('skunlock-kf')) {
+    const st = document.createElement('style'); st.id = 'skunlock-kf';
+    st.textContent = '@keyframes skunlock{from{transform:translateX(-40px) scale(.9);opacity:0}}';
+    document.head.appendChild(st);
+  }
+  const rc = RARITY_COLOR[def.rarity] || '#ff5fa8';
+  const card = document.createElement('div');
+  card.style.cssText = `position:fixed;left:14px;top:14px;z-index:200;display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#26192e,#182233);border:2px solid ${rc};border-radius:16px;padding:12px 16px 12px 12px;color:#fff;box-shadow:0 12px 34px rgba(0,0,0,.55),0 0 22px ${rc}55;font-family:-apple-system,system-ui,sans-serif;animation:skunlock .5s cubic-bezier(.2,1.4,.4,1);`;
+  const img = document.createElement('img'); img.src = catPawIcon(72); img.width = 58; img.height = 58; img.style.cssText = 'border-radius:12px;background:#0e1320;';
+  const txt = document.createElement('div');
+  txt.innerHTML = `<div style="font-size:11px;color:${rc};font-weight:900;text-transform:uppercase;letter-spacing:.6px;">${def.rarity} skin obtained!</div><div style="font-size:19px;font-weight:900;line-height:1.1;">${def.name} 🐾</div><div style="font-size:11px;color:#9aa4b8;margin-top:2px;">Added to your ${((identity.name || '').toLowerCase() === 'lilbugtrainer') ? 'Your' : 'Unique'} Skins</div>`;
+  card.append(img, txt);
+  document.body.appendChild(card);
+  setTimeout(() => { card.style.transition = 'opacity .5s,transform .5s'; card.style.opacity = '0'; card.style.transform = 'translateX(-24px)'; setTimeout(() => card.remove(), 520); }, 6000);
+}
+const iOwnCatpaw = () => Array.isArray(mySkins.owned) && mySkins.owned.includes('catpaw');
+// which viewmodel to actually SHOW for the held weapon (cat paw replaces the knife)
+function activeVmKey() { return (me.weapon === 'scythe' && catpawEquipped()) ? 'catpaw' : me.weapon; }
 async function loadMySkins() {
   try {
     const d = await fetch('/api/rivals/skins?name=' + encodeURIComponent(identity.name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json());
@@ -1218,13 +1318,30 @@ function renderSkins() {
   document.getElementById('sk-cubes').textContent = mySkins.cubes || 0;
   const cs = document.getElementById('sk-case'); cs.disabled = (mySkins.cubes || 0) < CASE_PRICE;
   const weps = document.getElementById('sk-weps');
-  weps.innerHTML = SKIN_WEAPONS.map((w) => {
-    const owned = (SKINS_BY_WEAPON[w] || []).filter((s) => mySkins.owned.includes(s.id));
+  let html = '';
+  // ---- unique / custom skins get their own section ----
+  const myUnique = (mySkins.owned || []).map((id) => SKIN_BY_ID[id]).filter((s) => s && s.unique);
+  const isOwner = (identity.name || '').toLowerCase() === 'lilbugtrainer';
+  if (myUnique.length) {
+    const secTitle = isOwner ? '⭐ Your Skins' : '💎 Unique Skins';
+    const chips = myUnique.map((s) => {
+      const eq = mySkins.equipped[s.weapon] === s.id;
+      return `<div class="sk-chip ${eq ? 'on' : ''}" data-w="${s.weapon}" data-s="${eq ? 'none' : s.id}" style="border-color:${RARITY_COLOR[s.rarity]};display:flex;align-items:center;gap:9px;box-shadow:0 0 14px ${RARITY_COLOR[s.rarity]}55">`
+        + `<img src="${catPawIcon(40)}" width="34" height="34" style="border-radius:7px;background:#0e1320">`
+        + `<div style="text-align:left"><small style="color:${RARITY_COLOR[s.rarity]}">${s.rarity}</small>${s.name}${eq ? ' ✓' : ''}</div></div>`;
+    }).join('');
+    html += `<div class="sk-wsec"><h3 style="color:${RARITY_COLOR.unique}">${secTitle}</h3><div class="sk-grid">${chips}</div></div>`;
+  }
+  // ---- normal per-weapon material skins ----
+  html += SKIN_WEAPONS.map((w) => {
+    const owned = (SKINS_BY_WEAPON[w] || []).filter((s) => !s.unique && mySkins.owned.includes(s.id));
     const eq = mySkins.equipped[w];
-    const chips = [`<div class="sk-chip ${!eq ? 'on' : ''}" data-w="${w}" data-s="none">Default</div>`]
+    const eqUnique = SKIN_BY_ID[eq]?.unique;   // a unique skin is equipped → "Default" isn't the active material
+    const chips = [`<div class="sk-chip ${(!eq || eqUnique) ? 'on' : ''}" data-w="${w}" data-s="none">Default</div>`]
       .concat(owned.map((s) => `<div class="sk-chip ${eq === s.id ? 'on' : ''}" data-w="${w}" data-s="${s.id}" style="border-color:${eq === s.id ? '#fff' : RARITY_COLOR[s.rarity]}"><small style="color:${RARITY_COLOR[s.rarity]}">${s.rarity}</small>${s.name}</div>`));
     return `<div class="sk-wsec"><h3>${WEAPONS[w] ? WEAPONS[w].name : w}${owned.length ? '' : ' · <span style="color:#6a7284">no skins yet</span>'}</h3><div class="sk-grid">${chips.join('')}</div></div>`;
   }).join('');
+  weps.innerHTML = html;
   weps.querySelectorAll('.sk-chip').forEach((c) => c.onclick = () => equipSkin(c.dataset.w, c.dataset.s));
 }
 async function equipSkin(weapon, skin) {
@@ -1255,6 +1372,7 @@ const VM_HIPS = {
   daggers: { x: 0.03, y: -0.22, z: -0.46 },
   jumppad: { x: 0.03, y: -0.24, z: -0.58 },
   satchel: { x: 0.02, y: -0.22, z: -0.5 },
+  catpaw: { x: 0.08, y: -0.2, z: -0.46 },
 };
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
@@ -1491,7 +1609,8 @@ function hitDummy(o, head) {
   drawPlate(o.plate);
   const p = o.ctrl.group.position;
   dmgNumber(dmg, head, p.x, p.y + 1.5, p.z);
-  (head ? sfx.headshot : sfx.hit)(); showHitmarker(head);
+  if (!catpawHitFx()) (head ? sfx.headshot : sfx.hit)();
+  showHitmarker(head);
   if (o.plate.hp <= 0) { o.dummyDown = true; o.dummyRespawnAt = clockNow() + 2; o.data.dead = true; }   // displayAnim() shows the death pose
 }
 // lobby melee: swing hits any dummy within reach (so daggers/katana test too)
@@ -2306,7 +2425,17 @@ net.on('hp', (msg) => {
 net.on('dmg', (msg) => { // I dealt damage
   showHitmarker(msg.head);
   dmgNumber(msg.amount, msg.head, msg.x, msg.y, msg.z);
-  (msg.head ? sfx.headshot : sfx.hit)();
+  if (!catpawHitFx()) (msg.head ? sfx.headshot : sfx.hit)();
+});
+// earned a unique skin (e.g. knife-killed LilBugTrainer for the Cat Paw)
+net.on('skin.unlock', async (msg) => {
+  const def = SKIN_BY_ID[msg.skin]; if (!def) return;
+  if (!Array.isArray(mySkins.owned)) mySkins.owned = [];
+  if (!mySkins.owned.includes(msg.skin)) mySkins.owned.push(msg.skin);
+  showSkinUnlockToast(def);
+  try { playOne('catscratch', 3); } catch {}
+  try { await loadMySkins(); } catch {}
+  if (document.getElementById('sk-open')) renderSkins();
 });
 net.on('hurt', (msg) => { // I took damage — directional arc
   sfx.hurt();
@@ -2372,6 +2501,33 @@ function clearPads() {
   placedPads = [];
 }
 function clearLocalNades() { for (const n of localNades) scene.remove(n.mesh); localNades = []; }
+// four white transparent claw slashes in front of you (cat-paw hit fx)
+function spawnClawTrail() {
+  const d = aimDir(0);
+  const fwd = new THREE.Vector3(d.x, d.y, d.z);
+  const base = camera.position.clone().add(fwd.clone().multiplyScalar(2.0));
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+  for (let i = 0; i < 4; i++) {
+    const geo = new THREE.PlaneGeometry(0.07, 1.5);
+    const mat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, depthTest: false });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.copy(base).add(right.clone().multiplyScalar((i - 1.5) * 0.17));
+    m.lookAt(camera.position);
+    m.rotation.z += 0.6;   // diagonal rake
+    m.renderOrder = 999;
+    scene.add(m);
+    clawTrails.push({ mesh: m, mat, age: 0, life: 0.32 });
+  }
+}
+function tickClawTrails(dt) {
+  for (let i = clawTrails.length - 1; i >= 0; i--) {
+    const t = clawTrails[i]; t.age += dt;
+    const k = t.age / t.life;
+    t.mat.opacity = Math.max(0, 0.6 * (1 - k));
+    t.mesh.scale.set(1, 1 + k * 0.5, 1);
+    if (t.age >= t.life) { scene.remove(t.mesh); clawTrails.splice(i, 1); }
+  }
+}
 // practice arena: pads/grenades are simulated CLIENT-SIDE (no server match)
 function placeLocalPad(hit) {
   const pad = buildPad(hit.point.x, hit.point.y, hit.point.z, hit.normal);
@@ -2605,7 +2761,8 @@ function frame() {
     if (cn >= o.dummyRespawnAt) { o.dummyDown = false; o.data.dead = false; o.plate.hp = 100; drawPlate(o.plate); }
   }
   // ================= viewmodel: the swingy stuff =================
-  for (const [k, g] of Object.entries(viewmodels)) g.visible = k === me.weapon;
+  const vmKey = activeVmKey();   // cat paw replaces the knife when equipped
+  for (const [k, g] of Object.entries(viewmodels)) g.visible = k === vmKey;
   const speed2d = Math.hypot(me.vel.x, me.vel.z);
   const moving = speed2d > 0.5 && me.grounded;
   const sprinting2 = moving && speed2d > MOVE.walk * 1.1 && !me.sliding;
@@ -2637,7 +2794,7 @@ function frame() {
   $('#scope').classList.toggle('hidden', !scoped);
   $('#crosshair').classList.toggle('hidden', scoped);
 
-  const vm = viewmodels[me.weapon];
+  const vm = viewmodels[vmKey];
   if (vm) {
     vm.visible = !scoped;
     const k = me.ads;
@@ -2647,7 +2804,7 @@ function frame() {
     const bobX = Math.sin(vmBob) * 0.013 * bobAmt;
     const bobY = -Math.abs(Math.cos(vmBob)) * 0.016 * bobAmt + Math.sin(now * 1.6) * 0.0038 * loose;
 
-    const HIP = VM_HIPS[me.weapon] || VM_HIP;
+    const HIP = VM_HIPS[vmKey] || VM_HIP;
     let px = HIP.x + (VM_ADS.x - HIP.x) * k + bobX + vmAnim.swayYaw * 0.16 * loose;
     let py = HIP.y + (VM_ADS.y - HIP.y) * k + bobY + vmAnim.swayPitch * 0.14 * loose
            + vmKick * 0.02 - vmAnim.landK * 0.11 + vmAnim.airK * 0.024 * loose;
@@ -2681,7 +2838,13 @@ function frame() {
       const t = vmAnim.swingT, sd = vmAnim.swingSide;
       const s = Math.sin(Math.pow(t, 0.7) * Math.PI);          // 0→1→0 arc
       const wind = sstep(0, 0.22, t);                           // quick wind-up
-      if (me.weapon === 'katana') {
+      if (vmKey === 'catpaw') {
+        // fast diagonal claw rake
+        ry2 += (wind * 0.5 - s * 1.5) * sd;
+        rz += (wind * 0.3 - s * 0.9) * sd;
+        rx += -wind * 0.2 + s * 0.35;
+        px += (wind * 0.06 - s * 0.28) * sd; pz -= s * 0.34;
+      } else if (me.weapon === 'katana') {
         // big diagonal overhead slash
         rz += (wind * 0.5 - s * 1.3) * sd;
         rx += -wind * 0.5 + s * 1.15;

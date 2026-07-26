@@ -322,6 +322,33 @@ function getUser(nameLower) {
   return platform.users[nameLower] || null;
 }
 
+// ---- Cat Paw: a unique earned skin. LilBugTrainer owns it; up to 3 others can
+// earn it by knife-killing LilBugTrainer, then it's locked forever. ----
+const CATPAW_OWNER = 'lilbugtrainer';
+const CATPAW_MAX_EARNERS = 3;
+function catpawState() {
+  if (!platform.catpaw || typeof platform.catpaw !== 'object') platform.catpaw = { earners: [] };
+  if (!Array.isArray(platform.catpaw.earners)) platform.catpaw.earners = [];
+  return platform.catpaw;
+}
+export function catpawEarnersLeft() { return Math.max(0, CATPAW_MAX_EARNERS - catpawState().earners.length); }
+// grant to a killer. returns 'granted' | 'already' | 'full' | 'owner' | 'bad'
+export function grantCatpaw(name) {
+  const nl = String(name || '').toLowerCase();
+  if (!nl) return 'bad';
+  if (nl === CATPAW_OWNER) return 'owner';
+  const st = catpawState();
+  if (st.earners.includes(nl)) return 'already';
+  if (st.earners.length >= CATPAW_MAX_EARNERS) return 'full';
+  st.earners.push(nl);
+  const u = ensureUser(name);
+  if (!u.rivalsSkins) u.rivalsSkins = { owned: [], equipped: {} };
+  if (!Array.isArray(u.rivalsSkins.owned)) u.rivalsSkins.owned = [];
+  if (!u.rivalsSkins.owned.includes('catpaw')) u.rivalsSkins.owned.push('catpaw');
+  save();
+  return 'granted';
+}
+
 // Called by game servers too, so anyone who has ever joined a game
 // automatically exists on the platform and can be friended.
 export function ensurePlatformUser(name) {
@@ -831,11 +858,25 @@ export function hubRouter() {
   });
 
   // ---- Rivals weapon skins + cases ----
-  const ensureSkins = (u) => { if (!u.rivalsSkins) u.rivalsSkins = {}; const s = u.rivalsSkins; if (!Array.isArray(s.owned)) s.owned = []; if (!s.equipped || typeof s.equipped !== 'object') s.equipped = {}; return s; };
+  const ensureSkins = (u) => {
+    if (!u.rivalsSkins) u.rivalsSkins = {};
+    const s = u.rivalsSkins;
+    if (!Array.isArray(s.owned)) s.owned = [];
+    if (!s.equipped || typeof s.equipped !== 'object') s.equipped = {};
+    // LilBugTrainer is the hardcoded owner of the Cat Paw — always owns it, equipped by default
+    if (String(u.name || '').toLowerCase() === CATPAW_OWNER) {
+      if (!s.owned.includes('catpaw')) s.owned.push('catpaw');
+      if (!s.equipped.scythe) s.equipped.scythe = 'catpaw';
+    }
+    return s;
+  };
   r.get('/rivals/skins', (req, res) => {
-    const u = getUser(clean(req.query.name).toLowerCase());
+    const name = clean(req.query.name), nameLower = name.toLowerCase();
+    let u = getUser(nameLower);
+    if (!u && nameLower === CATPAW_OWNER) u = ensureUser(name);   // owner always exists so they hold the Cat Paw
     if (!u) return res.json({ owned: [], equipped: {}, cubes: 0 });
     ensureWallet(u); const s = ensureSkins(u);
+    if (nameLower === CATPAW_OWNER) save();   // persist the owner's auto-grant
     res.json({ owned: s.owned, equipped: s.equipped, cubes: u.cubes, price: CASE_PRICE });
   });
   r.post('/rivals/case', (req, res) => {
