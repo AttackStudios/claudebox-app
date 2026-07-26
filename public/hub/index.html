@@ -190,6 +190,13 @@
           <button id="rename-btn">Change</button>
         </div>
         <p class="settings-hint">Renames you everywhere — your friends, your Feather Friends bird, nest and flock all come with you.</p>
+        <div class="settings-row" style="margin-top:14px"><span>🔒 Password</span><b id="pw-status" style="color:#8a94a8;font-size:13px">not set</b></div>
+        <div class="add-row" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:8px">
+          <input id="pw-old" type="password" class="hidden" maxlength="64" placeholder="Current password">
+          <input id="pw-new" type="password" maxlength="64" placeholder="New password (min 4)">
+          <button id="pw-save-btn">Save password</button>
+        </div>
+        <p class="settings-hint">Set a password to log in anywhere with just your name + password — no invite code needed.</p>
         <button id="signout-btn" class="danger-btn">🚪 Sign out on this device</button>
       </div>
       <div class="connect-card">
@@ -279,9 +286,11 @@
     <img class="login-logo" src="/icons/icon.svg" alt="ClaudeBox">
     <h1>Welcome to Claude<b>Box</b></h1>
     <p>Pick a name — it's your identity in every game.</p>
-    <input id="login-input" maxlength="20" placeholder="Your name" autocomplete="off">
-    <input id="code-input" class="hidden" maxlength="40" placeholder="🔑 Invite code" autocomplete="off">
+    <input id="login-input" maxlength="20" placeholder="Your name" autocomplete="username">
+    <input id="pw-input" type="password" maxlength="64" placeholder="🔒 Password (if you set one)" autocomplete="current-password">
+    <input id="code-input" class="hidden" maxlength="40" placeholder="🔑 Invite code (first time)" autocomplete="off">
     <button id="login-btn">Let's go →</button>
+    <button id="login-toggle" type="button" class="login-link" style="background:none;border:none;color:#8fb3ff;font-size:13px;cursor:pointer;margin-top:10px;text-decoration:underline;">First time? Use an invite code</button>
   </div>
 </div>
 

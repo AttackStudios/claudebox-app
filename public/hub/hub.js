@@ -138,13 +138,27 @@ async function ensureLogin() {
   }
   $('login').classList.remove('hidden');
   await new Promise((resolve) => {
+    $('login-toggle')?.addEventListener('click', () => {
+      const ci = $('code-input'); const nowHidden = ci.classList.toggle('hidden');
+      $('login-toggle').textContent = nowHidden ? 'First time? Use an invite code' : 'Hide invite code';
+      if (!nowHidden) ci.focus();
+    });
     const go = async () => {
       const name = $('login-input').value.trim().slice(0, 20);
       if (!name) return;
+      const pw = $('pw-input')?.value || '';
       const code = $('code-input')?.value.trim();
-      if (code) localStorage.setItem('claudebox.code', code);
       try {
-        const res = await api('/login', { name });
+        let res;
+        if (pw) {
+          // log in with a password — the server hands back the access code so
+          // the hub + every game keep working exactly as before
+          res = await api('/pwlogin', { name, password: pw });
+          if (res.code != null) localStorage.setItem('claudebox.code', res.code);
+        } else {
+          if (code) localStorage.setItem('claudebox.code', code);
+          res = await api('/login', { name });
+        }
         stateHub.me = res.profile;
         localStorage.setItem(USER_KEY, res.profile.name);
         sfx.welcome();
@@ -1472,6 +1486,28 @@ function initSettingsTab() {
     } catch (e) { toast(e.message, '⚠️'); }
   });
   $('rename-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('rename-btn').click(); });
+  // ---- account password ----
+  async function refreshPwStatus() {
+    if (!stateHub.me) return;
+    try {
+      const d = await api('/haspw?name=' + encodeURIComponent(stateHub.me.name));
+      const has = !!d.hasPassword;
+      $('pw-status').textContent = has ? 'set ✓' : 'not set';
+      $('pw-old').classList.toggle('hidden', !has);
+    } catch {}
+  }
+  $('pw-save-btn').addEventListener('click', async () => {
+    const pw = $('pw-new').value; const oldPw = $('pw-old').value;
+    if (pw.length < 4) { toast('Password must be at least 4 characters', '⚠️'); return; }
+    try {
+      await api('/setpassword', { name: stateHub.me.name, password: pw, oldPassword: oldPw });
+      $('pw-new').value = ''; $('pw-old').value = '';
+      sfx.success(); toast('Password saved — log in anywhere with just your name + password!', '🔒');
+      refreshPwStatus();
+    } catch (e) { toast(e.message, '⚠️'); }
+  });
+  $('pw-new').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('pw-save-btn').click(); });
+  refreshPwStatus();
   $('signout-btn').addEventListener('click', () => { localStorage.removeItem(USER_KEY); location.reload(); });
   $('update-btn').addEventListener('click', async () => {
     try {

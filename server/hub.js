@@ -4,6 +4,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { state, save as saveGame } from './state.js';
@@ -322,6 +323,14 @@ function getUser(nameLower) {
   return platform.users[nameLower] || null;
 }
 
+// ---- optional account passwords (scrypt; lets you log in without the code) ----
+function hashPw(pw, salt) { return scryptSync(String(pw), salt, 32).toString('hex'); }
+function setUserPassword(u, pw) { const salt = randomBytes(16).toString('hex'); u.pwSalt = salt; u.pwHash = hashPw(pw, salt); }
+function verifyPw(u, pw) {
+  if (!u || !u.pwHash || !u.pwSalt) return false;
+  try { return timingSafeEqual(Buffer.from(hashPw(pw, u.pwSalt), 'hex'), Buffer.from(u.pwHash, 'hex')); } catch { return false; }
+}
+
 // ---- Cat Paw: a unique earned skin. LilBugTrainer owns it; up to 3 others can
 // earn it by knife-killing LilBugTrainer, then it's locked forever. ----
 const CATPAW_OWNER = 'lilbugtrainer';
@@ -494,7 +503,7 @@ export function hubRouter() {
 
   // invite-code gate: when locked, everything personal/mutating needs the
   // code (sent as the x-cbx-code header by the hub/games, or in the body).
-  const OPEN = new Set(['/access', '/games', '/rewards/catalog']);
+  const OPEN = new Set(['/access', '/games', '/rewards/catalog', '/pwlogin', '/haspw']);
   r.use((req, res, next) => {
     if (!ACCESS_CODE) return next();
     if (OPEN.has(req.path) || (req.method === 'GET' && req.path.startsWith('/level/'))) return next();
@@ -572,6 +581,40 @@ export function hubRouter() {
     }
     lastHubSeen.set(name.toLowerCase(), Date.now());
     res.json({ profile: { name: u.name, avatar: u.avatar, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(name.toLowerCase()) } });
+  });
+
+  // does an account have a password? (client shows the right login option)
+  r.get('/haspw', (req, res) => {
+    const u = getUser(clean(req.query.name).toLowerCase());
+    res.json({ hasPassword: !!(u && u.pwHash) });
+  });
+
+  // log in with NAME + PASSWORD (no invite code needed). On success we hand back
+  // the access code so the hub and every game keep working exactly as before.
+  r.post('/pwlogin', (req, res) => {
+    const name = clean(req.body?.name);
+    const pw = String(req.body?.password || '');
+    if (!name || !pw) return res.status(400).json({ error: 'Name and password required.' });
+    if (isBanned(name)) { const b = banInfo(name); return res.status(403).json({ error: (b && b.reason) || 'You are banned from ClaudeBox.', banned: true }); }
+    const nl = name.toLowerCase();
+    const u = getUser(nl);
+    if (!u || !u.pwHash) return res.status(403).json({ error: 'No password is set for that account. Log in with the invite code once, then set a password in Settings.' });
+    if (!verifyPw(u, pw)) return res.status(403).json({ error: 'Wrong password.' });
+    lastHubSeen.set(nl, Date.now());
+    res.json({ profile: { name: u.name, avatar: u.avatar, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(nl) }, code: ACCESS_CODE });
+  });
+
+  // set / change your password (you're already logged in via code or password)
+  r.post('/setpassword', (req, res) => {
+    const name = clean(req.body?.name);
+    const pw = String(req.body?.password || '');
+    const oldPw = String(req.body?.oldPassword || '');
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (pw.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters.' });
+    const u = ensureUser(name);
+    if (u.pwHash && !verifyPw(u, oldPw)) return res.status(403).json({ error: 'Current password is wrong.' });
+    setUserPassword(u, pw); save();
+    res.json({ ok: true });
   });
 
   r.post('/avatar', (req, res) => {
