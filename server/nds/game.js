@@ -206,6 +206,12 @@ export function handleMessage(p, msg, ctx) {
     case 'join': {
       p.name = String(msg.name || 'Survivor').replace(/[^\w \-]/g, '').slice(0, 20) || 'Survivor';
       p.nameLower = p.name.toLowerCase();
+      for (const [oid, q] of state.players) {   // evict a stale ghost of the same player
+        if (q !== p && !q.bot && q.joined && q.nameLower === p.nameLower) {
+          state.players.delete(oid);
+          broadcast({ t: 'player.leave', id: oid });
+        }
+      }
       p.avatar = msg.avatar && typeof msg.avatar === 'object' ? msg.avatar : {};
       p.code = msg.code || '';
       p.joined = true; p.alive = true; p.onIsland = false;

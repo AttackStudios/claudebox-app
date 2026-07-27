@@ -287,10 +287,16 @@ function onMsg(m) {
       // you ALWAYS join into the lobby, even mid-round — then spectate the
       // active round from the deck and jump in at the next warning.
       myId = m.id; roundNum = m.round || 0; $('loading').style.display = 'none';
+      for (const id of [...others.keys()]) removeOther(id);   // reconnect: the server re-issued ids — clear ghosts
+      clearGibs();
       phase = m.phase; phaseUntil = m.until; stacks = m.stacks || 0;
       if (m.disasters && m.disasters.length) activeSpecs = m.disasters;
       if (m.map) buildMap(m.map);
-      participating = false; me.dead = false; me.hp = 100; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
+      if (m.phase === 'warning') {   // round hasn't started — jump straight back in
+        participating = true; me.dead = false; me.hp = 100; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
+      } else {
+        participating = false; me.dead = false; me.hp = 100; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
+      }
       if (m.phase === 'disaster') { spawnDisasters(activeSpecs); disasterStart = performance.now() / 1000; }
       for (const p of m.players || []) addOther(p);
       break;
@@ -332,6 +338,7 @@ function applyPhase(ph, until, disasters, stk, map) {
 
 function addOther(p) {
   if (others.has(p.id) || p.id === myId) return;
+  for (const [oid, o] of others) if (o.name === p.name) removeOther(oid);   // same player re-joined — drop the ghost
   const ctrl = makeAvatar(p.avatar || {}); scene.add(ctrl.group);
   ctrl.group.add(makeNameplate(p.name));
   const hpBar = makeHealthBar(); ctrl.group.add(hpBar.sprite);
