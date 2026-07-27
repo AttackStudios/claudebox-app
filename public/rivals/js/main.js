@@ -850,29 +850,37 @@ function buildViewmodels() {
   // ---- assault rifle: stock/body/grip/mag/handguard/barrel/sights ----
   {
     const g = new THREE.Group();
+    const arBolt = box(0.028, 0.04, 0.26, DARK, 0, 0.08, -0.02);   // charging handle / top rail (cycles on fire)
+    const arMag = box(0.065, 0.18, 0.1, DARK, 0, -0.15, -0.06, 0.12);
+    arBolt.userData.z0 = arBolt.position.z;
     rigWeapon(g, [
       box(0.07, 0.11, 0.2, DARK, 0, -0.01, 0.32),          // stock
       box(0.09, 0.12, 0.48, GOLD, 0, 0, 0),                // receiver
       box(0.06, 0.13, 0.07, DARK, 0, -0.12, 0.12, 0.3),    // pistol grip
-      box(0.065, 0.18, 0.1, DARK, 0, -0.15, -0.06, 0.12),  // magazine
+      arMag,                                               // magazine
       box(0.075, 0.085, 0.22, GOLD, 0, 0, -0.34),          // handguard
       box(0.04, 0.04, 0.3, DARK, 0, 0.02, -0.58),          // barrel
       box(0.055, 0.055, 0.06, GREY, 0, 0.02, -0.74),       // muzzle
-      box(0.028, 0.04, 0.26, DARK, 0, 0.08, -0.02),        // top rail
+      arBolt,                                              // top rail
       box(0.02, 0.05, 0.02, DARK, 0, 0.085, -0.42),        // front post
     ], [0.06, -0.16, 0.22], [0.5, -0.12, 0], [-0.08, -0.1, -0.3], [0.35, 0.35, 0.1]);
+    g.userData.fx = { bolt: arBolt, mag: arMag };
     viewmodels.ar = g;
   }
   // ---- handgun ----
   {
     const g = new THREE.Group();
+    const hgSlide = box(0.07, 0.075, 0.3, GREY, 0, 0.02, -0.02);
+    const hgSerr = box(0.074, 0.06, 0.06, STEEL, 0, 0.02, 0.1);
+    hgSlide.userData.z0 = hgSlide.position.z; hgSerr.userData.z0 = hgSerr.position.z;
     rigWeapon(g, [
-      box(0.07, 0.075, 0.3, GREY, 0, 0.02, -0.02),         // slide
-      box(0.074, 0.06, 0.06, STEEL, 0, 0.02, 0.1),         // rear serrations
+      hgSlide,                                             // slide (blows back on fire)
+      hgSerr,                                              // rear serrations
       box(0.065, 0.05, 0.26, DARK, 0, -0.03, -0.02),       // frame
       box(0.06, 0.16, 0.085, DARK, 0, -0.13, 0.09, 0.22),  // grip
       box(0.02, 0.025, 0.02, STEEL, 0, 0.068, -0.15),      // front sight
     ], [0.045, -0.17, 0.17], [0.45, 0, 0], [-0.085, -0.18, 0.13], [0.45, 0.3, 0.2]);
+    g.userData.fx = { slide: hgSlide, serr: hgSerr };
     viewmodels.handgun = g;
   }
   // ---- knife (small pocket knife in the right hand) ----
@@ -892,9 +900,10 @@ function buildViewmodels() {
     rigWeapon(g, [
       (() => { const b = new THREE.Mesh(new THREE.SphereGeometry(0.095, 18, 14), vmMat('#3f7d3f')); b.scale.y = 1.18; b.position.set(0.38, -0.14, -0.06); return b; })(),
       box(0.06, 0.05, 0.06, STEEL, 0.38, -0.03, -0.06),       // cap
-      box(0.025, 0.1, 0.05, STEEL, 0.415, -0.06, -0.02, 0.25),// lever
-      box(0.05, 0.02, 0.02, '#d8dbe0', 0.35, -0.005, -0.06),  // pin ring
+      (() => { const l = box(0.025, 0.1, 0.05, STEEL, 0.415, -0.06, -0.02, 0.25); g.__lever = l; return l; })(),   // lever
+      (() => { const pin = box(0.05, 0.02, 0.02, '#d8dbe0', 0.35, -0.005, -0.06); pin.userData.x0 = pin.position.x; pin.userData.y0 = pin.position.y; g.__pin = pin; return pin; })(),  // pin ring
     ], [0.38, -0.26, 0.08], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
+    g.userData.fx = { lever: g.__lever, pin: g.__pin };
     viewmodels.grenade = g;
   }
   // ---- sniper: long rifle + scope with objective ----
@@ -911,9 +920,10 @@ function buildViewmodels() {
       box(0.06, 0.06, 0.08, GREY, 0, 0.02, -0.92),         // brake
       box(0.06, 0.13, 0.09, DARK, 0, -0.13, 0.05, 0.25),   // grip
       box(0.055, 0.12, 0.09, DARK, 0, -0.12, -0.16),       // mag
-      box(0.09, 0.035, 0.035, STEEL, 0.08, 0.02, 0.12),    // bolt
+      (() => { const b = box(0.09, 0.035, 0.035, STEEL, 0.08, 0.02, 0.12); b.userData.z0 = b.position.z; b.userData.y0 = b.position.y; g.__bolt = b; return b; })(),   // bolt (cycles after each shot)
       tube, objective,
     ], [0.05, -0.16, 0.24], [0.5, -0.1, 0], [-0.085, -0.11, -0.32], [0.35, 0.3, 0]);
+    g.userData.fx = { bolt: g.__bolt };
     viewmodels.sniper = g;
   }
   // ---- fists: two big shirt-colour cubes ----
@@ -1438,6 +1448,7 @@ const vmAnim = {
   bfEquipT: 1,                  // butterfly: flip-open on equip
   bfStabT: 1,                   // butterfly: reverse-grip heavy stab (right-click)
   bfInspectT: 1, bfInspectPrev: 1,   // butterfly: F inspect showcase
+  boltT: 1,                     // sniper: work the bolt after every shot
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -1615,6 +1626,7 @@ function tryFire() {
   const d = aimDir(spread);
   recoil += me.weapon === 'sniper' ? 0.018 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
   vmKick = me.weapon === 'sniper' ? 1.25 : 1;
+  if (me.weapon === 'sniper') vmAnim.boltT = 0;   // cycle the bolt after the shot
   // AR fires a continuous loop (handled in the frame); other guns are one-shots.
   if (me.weapon === 'handgun') playOne('handgun', 0.75);
   else if (me.weapon === 'sniper') playOne('sniper', 1.6);   // sniper is loud
@@ -2920,6 +2932,7 @@ function frame() {
     vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
     vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
     vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 5.5);
+    vmAnim.boltT = Math.min(1, vmAnim.boltT + dt / 0.55);
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
@@ -2978,11 +2991,20 @@ function frame() {
         rx += -wind * 0.2 + s * 0.35;
         px += (wind * 0.06 - s * 0.28) * sd; pz -= s * 0.34;
       } else if (me.weapon === 'katana') {
-        // big diagonal overhead slash
-        rz += (wind * 0.5 - s * 1.3) * sd;
-        rx += -wind * 0.5 + s * 1.15;
-        ry2 += (wind * 0.3 - s * 0.7) * sd;
-        py += wind * 0.12 - s * 0.16; pz -= s * 0.28;
+        if (sd > 0) {
+          // big diagonal overhead slash
+          rz += (wind * 0.5 - s * 1.1) * sd;
+          rx += -wind * 0.5 + s * 1.0;
+          ry2 += (wind * 0.3 - s * 0.6) * sd;
+          py += wind * 0.12 - s * 0.16; pz -= s * 0.28;
+        } else {
+          // alternate: a piercing two-hand THRUST straight through
+          const drive = Math.sin(Math.pow(sstep(0.06, 0.72, t), 0.7) * Math.PI);
+          rx += -wind * 0.2 + drive * 0.12;
+          ry2 += wind * -0.25 + drive * 0.15;
+          pz -= drive * 0.55; px -= drive * 0.1; py += drive * 0.03;
+          rz += wind * 0.3 - drive * 0.25;
+        }
       } else if (me.weapon === 'bat') {
         // flat home-run swing across the body
         ry2 += (wind * 0.6 - s * 1.7) * sd;
@@ -3002,8 +3024,23 @@ function frame() {
         px += (wind * 0.05 - slash * 0.14) * sd;
         py += wind * 0.05 - slash * 0.03;
         pz -= slash * 0.24;
+      } else if (me.weapon === 'daggers') {
+        // dual daggers: alternating cross-body stabs — the active-side blade
+        // lunges forward while the rig twists into it
+        const lunge = Math.sin(Math.pow(sstep(0.04, 0.7, t), 0.75) * Math.PI);
+        ry2 += sd * (wind * 0.3 - lunge * 0.5);
+        rz += sd * (wind * 0.25 - lunge * 0.35);
+        rx += lunge * 0.3 - wind * 0.15;
+        px += sd * (wind * 0.06 - lunge * 0.16); pz -= lunge * 0.42; py += lunge * 0.04;
+      } else if (me.weapon === 'scythe') {
+        // scythe: a big reaping crescent — high windup, low sweep-through
+        const sweep = Math.sin(Math.pow(sstep(0.08, 0.8, t), 0.8) * Math.PI);
+        ry2 += sd * (wind * 0.45 - sweep * 0.9);
+        rz += sd * (wind * 0.35 - sweep * 0.65);
+        rx += -wind * 0.45 + sweep * 0.7;
+        px += sd * (wind * 0.08 - sweep * 0.22); py += wind * 0.12 - sweep * 0.1; pz -= sweep * 0.34;
       } else {
-        // scythe/knife: quick compact alternating arcs
+        // fallback: quick compact alternating arcs
         rz += sd * -0.7 * s; ry2 += sd * 0.55 * s;
         rx += 0.2 * s; px += sd * -0.1 * s; pz -= 0.2 * s;
       }
@@ -3103,6 +3140,42 @@ function frame() {
           P.lArm.position.y -= 0.08 * Math.sin(t * Math.PI);  // off-hand stays low
         }
       }
+      // ---- universal idle breathing (per class) ----
+      const wDef = WEAPONS[me.weapon] || {};
+      if (!P.isCatPaw) {
+        if (wDef.melee) { P.gun.rotation.x += Math.sin(now * 1.9) * 0.014; P.gun.rotation.z += Math.sin(now * 1.35) * 0.011; P.gun.position.y += Math.sin(now * 2.2) * 0.004; }
+        else if (wDef.mag) { P.gun.rotation.z += Math.sin(now * 1.2) * 0.008; P.gun.position.y += Math.sin(now * 1.7) * 0.003; P.lArm.rotation.z += Math.sin(now * 1.2) * 0.01; }
+        else { P.gun.rotation.z += Math.sin(now * 1.4) * 0.012; P.gun.position.y += Math.sin(now * 1.9) * 0.005; }
+      }
+      // ---- moving parts: slides/bolts kick with the shot ----
+      const FX = vm.userData.fx;
+      if (FX) {
+        if (FX.slide) { FX.slide.position.z = FX.slide.userData.z0 + vmKick * 0.11; FX.serr.position.z = FX.serr.userData.z0 + vmKick * 0.11; }
+        if (FX.bolt && vmKey === 'ar') FX.bolt.position.z = FX.bolt.userData.z0 + vmKick * 0.07;
+        // sniper: work the bolt between shots — hand comes up, bolt back + forward
+        if (FX.bolt && vmKey === 'sniper') {
+          if (vmAnim.boltT < 1 && !me.reloading) {
+            const bt = vmAnim.boltT;
+            const back = Math.sin(sstep(0.08, 0.6, bt) * Math.PI);
+            FX.bolt.position.z = FX.bolt.userData.z0 + back * 0.15;
+            FX.bolt.position.y = FX.bolt.userData.y0 + back * 0.025;
+            P.gun.rotation.z += back * 0.16;
+            P.lArm.position.z += back * 0.15; P.lArm.position.y += back * 0.09; P.lArm.rotation.x -= back * 0.55;
+          } else { FX.bolt.position.z = FX.bolt.userData.z0; FX.bolt.position.y = FX.bolt.userData.y0; }
+        }
+        // grenade: pull the PIN on the windup, lever pops off with the whip
+        if (FX.pin && me.weapon === 'grenade') {
+          if (vmAnim.throwT < 1) {
+            const tt = vmAnim.throwT;
+            const pull = sstep(0.05, 0.28, tt);
+            FX.pin.position.x = FX.pin.userData.x0 - pull * 0.16;
+            FX.pin.position.y = FX.pin.userData.y0 + pull * 0.1;
+            FX.lever.rotation.z = -sstep(0.3, 0.5, tt) * 1.4;
+            P.lArm.position.x += pull * (1 - sstep(0.28, 0.45, tt)) * 0.28;   // left hand reaches over to yank it
+            P.lArm.position.y += pull * (1 - sstep(0.28, 0.45, tt)) * 0.1;
+          } else { FX.pin.position.x = FX.pin.userData.x0; FX.pin.position.y = FX.pin.userData.y0; FX.lever.rotation.z = 0; }
+        }
+      }
       // firing: hands squeeze back with the gun
       P.gun.position.z += vmKick * 0.05;
       P.rArm.position.z += vmKick * 0.05;
@@ -3114,11 +3187,24 @@ function frame() {
         P.lArm.position.y -= late * 0.18;
         P.lArm.position.x -= late * 0.1;
         P.lArm.rotation.x -= late * 0.6;
-        const isGun = me.weapon === 'ar' || me.weapon === 'handgun' || me.weapon === 'sniper';
+        const isGun = !!WEAPONS[me.weapon]?.mag;
         if (isGun) {                                   // rack the action
           const rack = Math.sin(sstep(0.62, 0.95, t) * Math.PI);
           P.lArm.position.z += rack * 0.11;
           P.gun.rotation.z -= rack * 0.12;
+        }
+        if (me.weapon === 'scythe' || me.weapon === 'daggers') {
+          // knives spin-flourish into the grip
+          P.gun.rotation.x -= (1 - sstep(0.1, 0.8, t)) * 6.283;
+        } else if (me.weapon === 'katana') {
+          // drawn from the hip: slides forward out of an imaginary sheath
+          const draw = 1 - sstep(0.05, 0.8, t);
+          P.gun.position.z += draw * 0.34; P.gun.position.x -= draw * 0.1;
+          P.gun.rotation.z += draw * 0.5;
+        } else if (me.weapon === 'bat') {
+          // shoulder-load: comes up from behind the shoulder
+          const load = 1 - sstep(0.1, 0.85, t);
+          P.gun.rotation.x += load * 1.1; P.gun.position.y += load * 0.12; P.gun.position.z += load * 0.16;
         }
       }
       // fists: straight alternating jabs
