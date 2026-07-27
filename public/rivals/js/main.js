@@ -963,7 +963,7 @@ function buildViewmodels() {
   // handles each pivot on the tang pin, so flips/fans/twirls are real motion ----
   {
     const g = new THREE.Group();
-    const pivot = new THREE.Group(); pivot.position.set(0.4, -0.165, -0.15);
+    const pivot = new THREE.Group(); pivot.position.set(0.5, -0.135, -0.15);   // pin rides the OUTER edge of the fist — flips sweep beside the hand, not through it
     const bladeG = new THREE.Group();
     for (const m of [
       box(0.05, 0.05, 0.055, STEEL, 0, 0, 0.01),               // tang + pin boss
