@@ -46,6 +46,86 @@ function makeDisaster(id) {
   }
 }
 
+// ============================ AI PLAYERS ============================
+const BOT_NAMES = ['StormChaserMax', 'DisasterDan', 'TornadoTina', 'QuakeQuinn', 'FloodFiona', 'BlizzardBen', 'LavaLena', 'WindyWes'];
+const BOT_COLORS = ['#e05a4a', '#5a8ae0', '#e0c85a', '#7ae05a', '#a05ae0', '#e08a5a', '#5ae0c8'];
+let botSeq = 0;
+const bots = () => [...state.players.values()].filter((p) => p.bot);
+function mkBot() {
+  const name = BOT_NAMES[botSeq % BOT_NAMES.length] + (botSeq >= BOT_NAMES.length ? '_' + botSeq : '');
+  botSeq++;
+  const p = {
+    id: genId('b'), bot: true, joined: true, alive: true, onIsland: false,
+    name, nameLower: name.toLowerCase(),
+    avatar: { body: Math.random() < 0.45 ? 'girl' : 'boy',
+      shirtColor: BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)],
+      pantsColor: BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)] },
+    pos: { x: (Math.random() - 0.5) * 8, y: 0, z: -82 + (Math.random() - 0.5) * 8 },
+    ry: Math.random() * 6.28, anim: 'idle', wp: null, speed: 5 + Math.random() * 2, deathAt: 0, deathCause: '',
+  };
+  state.players.set(p.id, p);
+  broadcast({ t: 'player.join', player: pub(p) });
+  return p;
+}
+function ensureBots() {
+  const humans = [...state.players.values()].filter((p) => p.joined && !p.bot).length;
+  const want = humans >= 5 ? 2 : humans >= 3 ? 4 : 5;
+  const cur = bots();
+  for (let i = cur.length; i < want; i++) mkBot();
+  for (let i = want; i < cur.length; i++) { state.players.delete(cur[i].id); broadcast({ t: 'player.leave', id: cur[i].id }); }
+}
+// static ground height for bots (ignores destruction — close enough)
+function botGround(x, z) {
+  const M = MAPS[state.map]; if (!M) return 0;
+  let best = 0;
+  for (const p of M.pieces) {
+    if (p.ns) continue;
+    const top = p.y + p.h / 2;
+    if (top <= 3.2 && top > best && Math.abs(x - p.x) <= p.w / 2 && Math.abs(z - p.z) <= p.d / 2) best = top;
+  }
+  return best;
+}
+function botsUpdate(dt) {
+  const now = nowSec();
+  const M = MAPS[state.map];
+  for (const b of bots()) {
+    // death on schedule during the disaster
+    if (state.phase === 'disaster' && b.alive && b.deathAt && now >= b.deathAt) {
+      b.alive = false; b.anim = 'fall';
+      broadcast({ t: 'dead', id: b.id, cause: b.deathCause || 'disaster' });
+      continue;
+    }
+    if (!b.alive) continue;
+    // pick a wander area by phase
+    let cx = 0, cz = -82, r = 6, onIsland = false;
+    if (state.phase === 'warning' || state.phase === 'disaster' || state.phase === 'aftermath') {
+      const sp = M?.spawn || { x: 0, z: 0, r: 8 };
+      cx = sp.x; cz = sp.z; r = (sp.r || 6) + (state.phase === 'disaster' ? 10 : 3);
+      onIsland = true;
+    }
+    // flee the tornado if one is nearby
+    if (state.phase === 'disaster') {
+      for (const d of state.disasters) {
+        if (d.id !== 'tornado') continue;
+        const dx = b.pos.x - d.x, dz = b.pos.z - d.z, dd = Math.hypot(dx, dz);
+        if (dd < 14 && dd > 0.1) { b.wp = { x: b.pos.x + dx / dd * 16, z: b.pos.z + dz / dd * 16 }; }
+      }
+    }
+    if (!b.wp || Math.hypot(b.wp.x - b.pos.x, b.wp.z - b.pos.z) < 1.2 || Math.random() < dt * 0.15) {
+      const a = Math.random() * Math.PI * 2, rr = Math.random() * r;
+      b.wp = { x: cx + Math.cos(a) * rr, z: cz + Math.sin(a) * rr };
+    }
+    const dx = b.wp.x - b.pos.x, dz = b.wp.z - b.pos.z, dd = Math.hypot(dx, dz);
+    const sp2 = b.speed * (state.phase === 'disaster' ? 1.35 : 1);
+    if (dd > 0.4) {
+      b.pos.x += dx / dd * sp2 * dt; b.pos.z += dz / dd * sp2 * dt;
+      b.ry = Math.atan2(-dx / dd, -dz / dd);
+      b.anim = 'run';
+    } else b.anim = 'idle';
+    b.pos.y = onIsland ? botGround(b.pos.x, b.pos.z) : 0;
+  }
+}
+
 function startRound() {
   state.round++;
   rand = mulberry((state.round * 2654435761) >>> 0);
@@ -60,12 +140,25 @@ function startRound() {
   state.stacks = 0;
   // everyone in the lobby joins the round on the island
   for (const p of joined()) { p.alive = true; p.onIsland = true; }
+  const sp = MAPS[state.map]?.spawn || { x: 0, z: 0, r: 8 };
+  for (const b of bots()) {
+    const a = Math.random() * Math.PI * 2, rr = Math.random() * (sp.r || 6);
+    b.pos = { x: sp.x + Math.cos(a) * rr, y: 0, z: sp.z + Math.sin(a) * rr };
+    b.wp = null; b.deathAt = 0; b.alive = true;
+  }
   state.phase = 'warning'; state.phaseUntil = nowSec() + ROUND.warning;
   broadcast({ t: 'round', phase: 'warning', round: state.round, until: state.phaseUntil, disasters: state.disasters, map: state.map, seed: state.round });
 }
 
 function toDisaster() {
   state.phase = 'disaster'; state.phaseUntil = nowSec() + ROUND.disaster;
+  // bots are not great at surviving: roughly half get a scripted demise
+  for (const b of bots()) {
+    if (Math.random() < 0.55) {
+      b.deathAt = nowSec() + rnd(5, ROUND.disaster - 4);
+      b.deathCause = state.disasters[Math.floor(Math.random() * state.disasters.length)]?.id || 'disaster';
+    } else b.deathAt = 0;
+  }
   broadcast({ t: 'round', phase: 'disaster', round: state.round, until: state.phaseUntil, disasters: state.disasters, map: state.map });
 }
 
@@ -73,6 +166,7 @@ function endRound() {
   // survivors = joined players still alive
   const survivors = joined().filter((p) => p.alive);
   for (const p of survivors) {
+    if (p.bot) continue;
     try {
       ensurePlatformUser(p.name);
       grantReward(p.name, ROUND.reward.stars, ROUND.reward.cubes);
@@ -86,11 +180,14 @@ function toIntermission() {
   state.phase = 'intermission'; state.phaseUntil = nowSec() + ROUND.intermission;
   state.disasters = [];
   for (const p of joined()) { p.alive = true; p.onIsland = false; }
+  for (const b of bots()) { b.pos = { x: (Math.random() - 0.5) * 8, y: 0, z: -82 + (Math.random() - 0.5) * 8 }; b.wp = null; }
   broadcast({ t: 'round', phase: 'intermission', round: state.round, until: state.phaseUntil, stacks: state.stacks });
 }
 
 export function tickNds() {
   const now = nowSec();
+  ensureBots();
+  botsUpdate(0.25);
   if (now < state.phaseUntil) return;
   if (state.phase === 'intermission') return startRound();
   if (state.phase === 'warning') return toDisaster();

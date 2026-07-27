@@ -209,7 +209,7 @@ const ISLAND_SPAWN = () => {
 };
 
 // ============================ PLAYER ============================
-const me = { pos: LOBBY_SPAWN(), vel: { x: 0, y: 0, z: 0 }, ry: 0, grounded: true, dead: false, anim: 'idle', eye: 1.4 };
+const me = { pos: LOBBY_SPAWN(), vel: { x: 0, y: 0, z: 0 }, ry: 0, grounded: true, dead: false, anim: 'idle', eye: 1.4, hp: 100, lastHurt: 0 };
 me.pos.y = 0;
 let camYaw = Math.PI, camPitch = 0.32, camDist = 8;   // start looking toward the island
 const keys = new Set();
@@ -290,7 +290,7 @@ function onMsg(m) {
       phase = m.phase; phaseUntil = m.until; stacks = m.stacks || 0;
       if (m.disasters && m.disasters.length) activeSpecs = m.disasters;
       if (m.map) buildMap(m.map);
-      participating = false; me.dead = false; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
+      participating = false; me.dead = false; me.hp = 100; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
       if (m.phase === 'disaster') { spawnDisasters(activeSpecs); disasterStart = performance.now() / 1000; }
       for (const p of m.players || []) addOther(p);
       break;
@@ -312,7 +312,7 @@ function applyPhase(ph, until, disasters, stk, map) {
   if (map) buildMap(map, ph === 'warning');   // force at round start — resets last round's destruction
   if (ph === 'warning') {
     // players in the lobby now join the round on the island
-    participating = true; me.dead = false; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
+    participating = true; me.dead = false; me.hp = 100; me.pos = ISLAND_SPAWN(); me.pos.y = 6; me.vel = { x: 0, y: 0, z: 0 };
     clearGibs(); myHpBar && myHpBar.set(1);
     siren();
     const names = activeSpecs.map((d) => DISASTERS[d.id]?.name).filter(Boolean).join(' + ');
@@ -325,7 +325,7 @@ function applyPhase(ph, until, disasters, stk, map) {
     if (participating && !me.dead) chime();
     banner(!participating ? 'Round over — you join the next one!' : (me.dead ? '💀 Eliminated' : '🏆 You survived!'));
   } else if (ph === 'intermission') {
-    participating = false; me.dead = false; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
+    participating = false; me.dead = false; me.hp = 100; me.pos = LOBBY_SPAWN(); me.pos.y = 0; me.vel = { x: 0, y: 0, z: 0 };
     clearGibs(); myHpBar && myHpBar.set(1); clearDisasters(); banner('Intermission — head to the machine!');
   }
 }
@@ -470,7 +470,7 @@ function updateDisasters(dt, elapsed) {
       if (floodMesh) floodMesh.position.y = floodLevel;
       // submerged weak pieces crumble as the water rises
       if (Math.random() < dt * 10) { const sub = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130 && q.y + q.h / 2 < floodLevel); if (sub.length) damagePiece(sub[(Math.random() * sub.length) | 0], 999); }
-      if (!me.dead && me.pos.y + me.eye < floodLevel + 0.2) die('flood');
+      if (!me.dead && me.pos.y + me.eye < floodLevel + 0.2) damageMe(dt * 55, 'flood');   // drowning is fast but not instant
     } else if (s.id === 'meteors') {
       for (let i = 0; i < s.impacts.length; i++) {
         const im = s.impacts[i];
@@ -499,17 +499,17 @@ function updateDisasters(dt, elapsed) {
       d.mesh.clear();
       for (const f of d.state.fires) { const fire = new THREE.Mesh(new THREE.CircleGeometry(f.r, 20), new THREE.MeshBasicMaterial({ color: '#ff4d1a', transparent: true, opacity: 0.55 })); fire.rotation.x = -Math.PI / 2; fire.position.set(f.x, 0.09, f.z); d.mesh.add(fire); }
       for (const f of d.state.fires) damageArea(f.x, f.z, f.r, dt * 34);
-      if (!me.dead) for (const f of d.state.fires) if (Math.hypot(me.pos.x - f.x, me.pos.z - f.z) < f.r && me.pos.y < 1.5) die('wildfire');
+      if (!me.dead) for (const f of d.state.fires) if (Math.hypot(me.pos.x - f.x, me.pos.z - f.z) < f.r && me.pos.y < 1.5) damageMe(dt * 38, 'wildfire');
     } else if (s.id === 'volcano') {
       d.state.r = Math.min(R_ISLAND, Math.max(0, elapsed - (s.delay || 3)) * s.lavaRate * 2);
       damageArea(0, 0, d.state.r, dt * 42);
       d.mesh.scale.setScalar(Math.max(0.1, d.state.r));
-      if (!me.dead && Math.hypot(me.pos.x, me.pos.z) < d.state.r && me.pos.y < 1.5) die('lava');
+      if (!me.dead && Math.hypot(me.pos.x, me.pos.z) < d.state.r && me.pos.y < 1.5) damageMe(dt * 45, 'lava');
     } else if (s.id === 'blizzard') {
       const warmD = Math.hypot(me.pos.x - s.warm.x, me.pos.z - s.warm.z);
       if (participating && !me.dead && elapsed > (s.freezeIn || 5)) { if (warmD > s.warm.r) d.state.cold += dt; else d.state.cold = Math.max(0, d.state.cold - dt * 2); }
       if (participating && !me.dead) $('status').textContent = warmD > s.warm.r ? `❄️ Freezing! Get to the fire (${(6 - d.state.cold).toFixed(0)}s)` : '🔥 Warm — stay here';
-      if (!me.dead && d.state.cold > 6) die('frozen');
+      if (!me.dead && d.state.cold > 0.5) damageMe(dt * (10 + d.state.cold * 2.5), 'frozen');   // the colder you get, the faster it drains
       // deep freeze shatters glass and frail pieces under the ice load
       if (Math.random() < dt * 3.5) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 60); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 999); }
       // falling snow follows the player; recycle flakes that hit the ground
@@ -518,13 +518,13 @@ function updateDisasters(dt, elapsed) {
       if (d.state.flame) { d.state.flame.scale.y = 1 + Math.sin(elapsed * 20) * 0.14; d.state.flame2.scale.y = 1 + Math.cos(elapsed * 26) * 0.18; if (d.state.light) d.state.light.intensity = 1.2 + Math.sin(elapsed * 18) * 0.5; }
     } else if (s.id === 'acid') {
       d.mesh.clear();
-      for (const p of d.state.pools) { if (elapsed > p.growAt) p.cur = Math.min(p.r, p.cur + dt * 0.8); const pool = new THREE.Mesh(new THREE.CircleGeometry(Math.max(0.1, p.cur), 18), new THREE.MeshBasicMaterial({ color: '#7de04a', transparent: true, opacity: 0.6 })); pool.rotation.x = -Math.PI / 2; pool.position.set(p.x, 0.07, p.z); d.mesh.add(pool); damageArea(p.x, p.z, p.cur, dt * 35); if (!me.dead && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < p.cur && me.pos.y < 1.5) die('acid'); }
+      for (const p of d.state.pools) { if (elapsed > p.growAt) p.cur = Math.min(p.r, p.cur + dt * 0.8); const pool = new THREE.Mesh(new THREE.CircleGeometry(Math.max(0.1, p.cur), 18), new THREE.MeshBasicMaterial({ color: '#7de04a', transparent: true, opacity: 0.6 })); pool.rotation.x = -Math.PI / 2; pool.position.set(p.x, 0.07, p.z); d.mesh.add(pool); damageArea(p.x, p.z, p.cur, dt * 35); if (!me.dead && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < p.cur && me.pos.y < 1.5) damageMe(dt * 34, 'acid'); }
       // corrosive rain eats away at the building itself
       if (Math.random() < dt * 5) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 70); }
     } else if (s.id === 'thunderstorm') {
       for (let i = 0; i < (s.strikes || []).length; i++) { const st = s.strikes[i]; if (!d.state.fired[i] && elapsed > st.t) { d.state.fired[i] = true; lightning(st.x, st.z); damageArea(st.x, st.z, 5, 9999); if (!me.dead && Math.hypot(me.pos.x - st.x, me.pos.z - st.z) < 5) die('lightning'); } }
     } else if (s.id === 'sandstorm') {
-      if (participating && !me.dead) { me.pos.x += s.windX * dt * 4; me.pos.z += s.windZ * dt * 4; }   // spectators in the lobby don't get shoved
+      if (participating && !me.dead) { me.pos.x += s.windX * dt * 4; me.pos.z += s.windZ * dt * 4; damageMe(dt * 5, 'sandstorm'); }   // spectators in the lobby don't get shoved
       if (Math.random() < dt * 4) { const wk = pieces.filter((q) => !q.broken && q.t === 'glass'); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 26); }
       const sand = d.state.sand;
       if (sand) { const arr = sand.geometry.attributes.position.array; for (let i = 0; i < arr.length; i += 3) { arr[i] += s.windX * dt * 26; arr[i + 2] += s.windZ * dt * 26; if (Math.abs(arr[i]) > 45 || Math.abs(arr[i + 2]) > 45) { arr[i] = -s.windX * 44 + (Math.random() - 0.5) * 30; arr[i + 2] = -s.windZ * 44 + (Math.random() - 0.5) * 30; arr[i + 1] = Math.random() * 14; } } sand.geometry.attributes.position.needsUpdate = true; sand.position.set(participating ? me.pos.x : 0, 0, participating ? me.pos.z : 0); }
@@ -566,9 +566,17 @@ function tickGibs(dt) {
   }
 }
 function clearGibs() { for (const p of gibs) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); } gibs = []; }
+// slow hazards drain health; the bar above your head ticks down before you drop
+function damageMe(amt, cause) {
+  if (me.dead || !participating) return;
+  me.hp -= amt;
+  me.lastHurt = performance.now() / 1000;
+  myHpBar && myHpBar.set(Math.max(0, me.hp) / 100);
+  if (me.hp <= 0) die(cause);
+}
 function die(cause) {
   if (me.dead || !participating) return;
-  me.dead = true;
+  me.dead = true; me.hp = 0;
   send({ t: 'dead', cause });
   gib(me.pos.x, me.pos.y, me.pos.z, myAvatarData);
   myHpBar && myHpBar.set(0);
@@ -644,6 +652,11 @@ function frame() {
   }
 
   // HUD
+  // out of danger for 3s → health slowly recovers
+  if (participating && !me.dead && me.hp > 0 && me.hp < 100 && now - me.lastHurt > 3) {
+    me.hp = Math.min(100, me.hp + dt * 7);
+    myHpBar && myHpBar.set(me.hp / 100);
+  }
   const left = Math.max(0, Math.ceil(phaseUntil - Date.now() / 1000));
   $('timer').textContent = left;
   $('timer').classList.toggle('urgent', left <= 5 && (phase === 'warning' || phase === 'disaster'));
