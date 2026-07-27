@@ -1496,18 +1496,21 @@ const BF_TRK = {
   // DURING a full twirl, second fan DURING a sweep, aerial twirl INTO the side
   // pose, latch-rattle snap home. At least two channels are moving at all times.
   inspect: {
-    vx:   [{ t: 0, v: 0 }, { t: 0.08, v: -0.16, e: 'outExpo' }, { t: 0.3, v: -0.12 }, { t: 0.5, v: -0.16, e: 'inOutCubic' }, { t: 0.68, v: -0.06, e: 'inOutCubic' }, { t: 0.88, v: -0.04 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vy:   [{ t: 0, v: 0 }, { t: 0.08, v: 0.12, e: 'outExpo' }, { t: 0.26, v: 0.08 }, { t: 0.42, v: 0.18, e: 'outExpo' }, { t: 0.55, v: 0.1, e: 'outBack' }, { t: 0.72, v: 0.14, e: 'inOutCubic' }, { t: 0.88, v: 0.08 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vz:   [{ t: 0, v: 0 }, { t: 0.08, v: -0.22, e: 'outExpo' }, { t: 0.42, v: -0.16 }, { t: 0.6, v: -0.24, e: 'inOutCubic' }, { t: 0.88, v: -0.14 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vrx:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.3, e: 'outExpo' }, { t: 0.24, v: 0.1, e: 'inOutCubic' }, { t: 0.42, v: 0.22, e: 'inOutCubic' }, { t: 0.6, v: 0.08 }, { t: 0.78, v: 0.18, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vry:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.28, e: 'outExpo' }, { t: 0.3, v: 0.18 }, { t: 0.5, v: 0.32, e: 'inOutCubic' }, { t: 0.66, v: 0.45, e: 'inOutCubic' }, { t: 0.85, v: 0.38 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vrz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.15, e: 'outExpo' }, { t: 0.32, v: 0.12, e: 'inOutCubic' }, { t: 0.55, v: 0.2, e: 'inOutCubic' }, { t: 0.75, v: 0.3, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    pRx:  [{ t: 0, v: 0 }, { t: 0.16, v: 0 }, { t: 0.3, v: 6.283, e: 'outExpo' }, { t: 0.52, v: 6.283 }, { t: 0.66, v: 12.57, e: 'outExpo' }, { t: 1, v: 12.57 }],
-    pRy:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.8, e: 'outExpo' }, { t: 0.22, v: -0.6, e: 'inOutCubic' }, { t: 0.34, v: 0.2, e: 'inOutCubic' }, { t: 0.5, v: -0.3, e: 'inOutCubic' }, { t: 0.64, v: 0.35, e: 'inOutCubic' }, { t: 0.82, v: 0.15 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    bRx:  [{ t: 0, v: 0 }, { t: 0.14, v: 3.1, e: 'outExpo' }, { t: 0.24, v: -0.25, e: 'outExpo' }, { t: 0.3, v: 0, e: 'outQuad' }, { t: 0.44, v: 3.05, e: 'outExpo' }, { t: 0.54, v: -0.2, e: 'outExpo' }, { t: 0.6, v: 0, e: 'outQuad' }, { t: 1, v: 0 }],
-    hARx: [{ t: 0, v: 0 }, { t: 0.1, v: -6.283, e: 'outExpo' }, { t: 0.2, v: -9.42, e: 'outExpo' }, { t: 0.32, v: -12.57, e: 'outExpo' }, { t: 0.46, v: -15.7, e: 'outExpo' }, { t: 0.58, v: -18.85, e: 'outExpo' }, { t: 0.72, v: -18.85 }, { t: 0.8, v: -18.35, e: 'outExpo' }, { t: 0.9, v: -18.85, e: 'outBack' }, { t: 1, v: -18.85, e: 'outElastic' }],
-    hBRx: [{ t: 0, v: 0 }, { t: 0.14, v: 1.2, e: 'outExpo' }, { t: 0.26, v: -0.7, e: 'outExpo' }, { t: 0.4, v: 0.9, e: 'outExpo' }, { t: 0.52, v: -0.4, e: 'outExpo' }, { t: 0.62, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    pRz:  [{ t: 0, v: 0 }, { t: 0.12, v: -0.45, e: 'outExpo' }, { t: 0.3, v: 0.35, e: 'inOutCubic' }, { t: 0.5, v: -0.3, e: 'inOutCubic' }, { t: 0.68, v: 0.55, e: 'inOutCubic' }, { t: 0.85, v: 0.2 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    // 3.0s, zero dead time: three aerial twirls (pRx), three blade flips (bRx),
+    // and 10 chained handle spins (hARx) interleaved so something big is always
+    // mid-motion; the wrist (pRy/pRz) never stops sweeping.
+    vx:   [{ t: 0, v: 0 }, { t: 0.08, v: -0.16, e: 'outExpo' }, { t: 0.26, v: -0.1, e: 'inOutCubic' }, { t: 0.4, v: -0.15, e: 'inOutCubic' }, { t: 0.56, v: -0.08, e: 'inOutCubic' }, { t: 0.7, v: -0.12, e: 'inOutCubic' }, { t: 0.86, v: -0.06, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.08, v: 0.12, e: 'outExpo' }, { t: 0.2, v: 0.08, e: 'inOutCubic' }, { t: 0.34, v: 0.16, e: 'outExpo' }, { t: 0.46, v: 0.09, e: 'outBack' }, { t: 0.6, v: 0.15, e: 'inOutCubic' }, { t: 0.74, v: 0.08, e: 'inOutCubic' }, { t: 0.86, v: 0.12, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.08, v: -0.22, e: 'outExpo' }, { t: 0.3, v: -0.15, e: 'inOutCubic' }, { t: 0.5, v: -0.24, e: 'inOutCubic' }, { t: 0.68, v: -0.16, e: 'inOutCubic' }, { t: 0.84, v: -0.2, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.3, e: 'outExpo' }, { t: 0.22, v: 0.08, e: 'inOutCubic' }, { t: 0.38, v: 0.22, e: 'inOutCubic' }, { t: 0.54, v: 0.06, e: 'inOutCubic' }, { t: 0.68, v: 0.18, e: 'inOutCubic' }, { t: 0.82, v: 0.05, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.3, e: 'outExpo' }, { t: 0.26, v: 0.15, e: 'inOutCubic' }, { t: 0.44, v: 0.35, e: 'inOutCubic' }, { t: 0.6, v: 0.45, e: 'inOutCubic' }, { t: 0.76, v: 0.3, e: 'inOutCubic' }, { t: 0.88, v: 0.12, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.18, e: 'outExpo' }, { t: 0.28, v: 0.14, e: 'inOutCubic' }, { t: 0.46, v: -0.1, e: 'inOutCubic' }, { t: 0.62, v: 0.25, e: 'inOutCubic' }, { t: 0.78, v: -0.08, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRx:  [{ t: 0, v: 0 }, { t: 0.16, v: 0 }, { t: 0.3, v: 6.283, e: 'outExpo' }, { t: 0.44, v: 6.283 }, { t: 0.56, v: 12.57, e: 'outExpo' }, { t: 0.72, v: 12.57 }, { t: 0.82, v: 18.85, e: 'outExpo' }, { t: 1, v: 18.85 }],
+    pRy:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.8, e: 'outExpo' }, { t: 0.18, v: -0.6, e: 'inOutCubic' }, { t: 0.3, v: 0.25, e: 'inOutCubic' }, { t: 0.42, v: -0.35, e: 'inOutCubic' }, { t: 0.54, v: 0.3, e: 'inOutCubic' }, { t: 0.68, v: -0.25, e: 'inOutCubic' }, { t: 0.8, v: 0.2, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.45, e: 'outExpo' }, { t: 0.24, v: 0.35, e: 'inOutCubic' }, { t: 0.4, v: -0.3, e: 'inOutCubic' }, { t: 0.56, v: 0.4, e: 'inOutCubic' }, { t: 0.7, v: -0.35, e: 'inOutCubic' }, { t: 0.84, v: 0.25, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    bRx:  [{ t: 0, v: 0 }, { t: 0.1, v: 3.1, e: 'outExpo' }, { t: 0.18, v: -0.25, e: 'outExpo' }, { t: 0.24, v: 0, e: 'outQuad' }, { t: 0.34, v: 3.05, e: 'outExpo' }, { t: 0.42, v: -0.2, e: 'outExpo' }, { t: 0.48, v: 0, e: 'outQuad' }, { t: 0.6, v: 2.8, e: 'outExpo' }, { t: 0.68, v: -0.15, e: 'outExpo' }, { t: 0.74, v: 0, e: 'outQuad' }, { t: 1, v: 0 }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.09, v: -6.283, e: 'outExpo' }, { t: 0.2, v: -9.42, e: 'outExpo' }, { t: 0.3, v: -12.57, e: 'outExpo' }, { t: 0.42, v: -15.71, e: 'outExpo' }, { t: 0.54, v: -18.85, e: 'outExpo' }, { t: 0.66, v: -25.13, e: 'outExpo' }, { t: 0.78, v: -31.42, e: 'outExpo' }, { t: 0.88, v: -30.92, e: 'outExpo' }, { t: 1, v: -31.42, e: 'outElastic' }],
+    hBRx: [{ t: 0, v: 0 }, { t: 0.12, v: 1.2, e: 'outExpo' }, { t: 0.24, v: -0.7, e: 'outExpo' }, { t: 0.36, v: 0.9, e: 'outExpo' }, { t: 0.48, v: -0.5, e: 'outExpo' }, { t: 0.6, v: 0.7, e: 'outExpo' }, { t: 0.72, v: -0.4, e: 'outExpo' }, { t: 0.82, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
   },
 };
 
@@ -2912,7 +2915,7 @@ function frame() {
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
     vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
     vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
-    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 3.4);
+    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 3.0);
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
@@ -3021,7 +3024,7 @@ function frame() {
       const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
       px += trackVal(T.vx, t); py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
       rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
-      for (const cue of [0.1, 0.24, 0.44, 0.58, 0.66, 0.95]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
+      for (const cue of [0.1, 0.2, 0.34, 0.48, 0.6, 0.74, 0.88]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
       vmAnim.bfInspectPrev = t;
     }
 
