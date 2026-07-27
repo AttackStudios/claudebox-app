@@ -355,7 +355,7 @@ document.addEventListener('mousemove', (e) => {
 // ---------------- rebindable keybinds ----------------
 const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
-  jump: 'Space', sprint: 'ShiftLeft', crouch: 'ControlLeft', reload: 'KeyR', queue: 'KeyE',
+  jump: 'Space', sprint: 'ShiftLeft', crouch: 'ControlLeft', reload: 'KeyR', queue: 'KeyE', inspect: 'KeyF',
   weapon1: 'Digit1', weapon2: 'Digit2', weapon3: 'Digit3', weapon4: 'Digit4', weapon5: 'Digit5', weapon6: 'Digit6',
 };
 let binds = (() => {
@@ -387,6 +387,10 @@ addEventListener('keydown', (e) => {
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
   if (c === binds.sprint || c === binds.crouch) tryCrouch(true);   // Shift OR Ctrl = slide/crouch
   if (c === binds.jump) tryAirJump();                              // Daggers: mid-air double jump
+  if (c === (binds.inspect || 'KeyF') && me.weapon === 'butterfly' && !me.dead
+      && vmAnim.bfInspectT >= 1 && vmAnim.swingT >= 1 && vmAnim.bfStabT >= 1 && vmAnim.equipT >= 1) {
+    vmAnim.bfInspectT = 0; vmAnim.bfInspectPrev = 0;               // butterfly inspect showcase
+  }
 });
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
@@ -526,6 +530,19 @@ function tryCrouch(on) {
 }
 
 function onRightDown() {
+  if (me.weapon === 'butterfly') {
+    // HEAVY STAB — flip to reverse icepick grip and drive down. Same server
+    // melee (backstab from behind still one-shots); heavier animation + lockout.
+    const now = clockNow();
+    const w = WEAPONS.butterfly;
+    if (now - me.swingAt < w.rate * 1.8 || me.dead || game.phase === 'freeze' || game.phase === 'podium') return;
+    me.swingAt = now + w.rate * 0.7;             // longer lockout than a slash
+    vmAnim.bfStabT = 0; vmAnim.bfInspectT = 1;
+    playOne('knife', 0.9);
+    if (game.phase === 'live') net.send({ t: 'melee', weapon: 'butterfly' });
+    else rangeMelee();
+    return;
+  }
   if (me.weapon === 'scythe') {
     // DASH
     const now = clockNow();
@@ -930,16 +947,34 @@ function buildViewmodels() {
     ], [0.3, -0.24, 0.1], [0.5, -0.3, 0.1], [-0.32, -0.28, -0.02], [0.55, 0.4, 0.0]);
     viewmodels.bat = g;
   }
-  // ---- butterfly knife (balisong): split handle flanking a small blade ----
+  // ---- butterfly knife (balisong): fully ARTICULATED — the blade and both
+  // handles each pivot on the tang pin, so flips/fans/twirls are real motion ----
   {
     const g = new THREE.Group();
-    rigWeapon(g, [
-      box(0.028, 0.045, 0.3, '#23252c', 0.4, -0.135, 0.03),    // handle half A (raised)
-      box(0.028, 0.045, 0.3, '#33363f', 0.4, -0.195, 0.03),    // handle half B (lowered)
-      box(0.055, 0.055, 0.05, STEEL, 0.4, -0.165, -0.15),      // pivot
-      box(0.03, 0.06, 0.34, '#e2e8f2', 0.4, -0.165, -0.36),    // blade
-      box(0.016, 0.028, 0.09, '#f4f7fc', 0.4, -0.16, -0.56),   // point
-    ], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
+    const pivot = new THREE.Group(); pivot.position.set(0.4, -0.165, -0.15);
+    const bladeG = new THREE.Group();
+    for (const m of [
+      box(0.05, 0.05, 0.055, STEEL, 0, 0, 0.01),               // tang + pin boss
+      box(0.03, 0.06, 0.3, '#e2e8f2', 0, 0, -0.19),            // blade
+      box(0.018, 0.045, 0.1, '#f4f7fc', 0, 0.006, -0.38),      // clip point
+      box(0.012, 0.02, 0.26, '#aeb6c6', 0, -0.026, -0.17),     // edge grind line
+    ]) bladeG.add(m);
+    const mkHandle = (side, c1, c2, latch) => {                // two rails + spacer, like a real channel handle
+      const h = new THREE.Group();
+      for (const m of [
+        box(0.016, 0.05, 0.3, c1, side * 0.02, 0, 0.17),       // outer rail
+        box(0.016, 0.05, 0.3, c2, side * 0.045, 0, 0.17),      // inner rail
+        box(0.05, 0.044, 0.045, c1, side * 0.032, 0, 0.315),   // pommel spacer
+        box(0.044, 0.02, 0.05, STEEL, side * 0.032, 0.02, 0.05), // pin plate
+      ]) h.add(m);
+      if (latch) h.add(box(0.014, 0.03, 0.05, STEEL, side * 0.032, -0.03, 0.33));   // latch on the bite handle
+      return h;
+    };
+    const hB = mkHandle(-1, '#23252c', '#33363f', false);      // safe handle (stays in the palm)
+    const hA = mkHandle(1, '#2a2d35', '#3b3f4a', true);        // bite handle (the one that fans)
+    pivot.add(bladeG, hA, hB);
+    rigWeapon(g, [pivot], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
+    g.userData.bf = { pivot, blade: bladeG, hA, hB };
     viewmodels.butterfly = g;
   }
   // ---- daggers: a small knife in EACH hand ----
@@ -1400,10 +1435,77 @@ const vmAnim = {
   swingT: 1, swingSide: 1,      // melee arcs, alternating sides
   throwT: 1,                    // grenade / satchel overhand throw
   satchelBtnT: 1,               // satchel detonator button-press (right-click)
+  bfEquipT: 1,                  // butterfly: flip-open on equip
+  bfStabT: 1,                   // butterfly: reverse-grip heavy stab (right-click)
+  bfInspectT: 1, bfInspectPrev: 1,   // butterfly: F inspect showcase
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const easeOutBack = (t) => 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
+
+// ---- keyframe tracks with per-segment speed curves ----
+const EASES = {
+  linear: (t) => t,
+  inQuad: (t) => t * t,
+  outQuad: (t) => t * (2 - t),
+  inCubic: (t) => t * t * t,
+  outCubic: (t) => 1 - Math.pow(1 - t, 3),
+  inOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+  outExpo: (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)),
+  outBack: easeOutBack,
+  outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (Math.PI * 2 / 3)) + 1),
+};
+// keys: [{t, v, e}] — value at time t, eased INTO with curve e (each segment has its own speed curve)
+function trackVal(keys, t) {
+  if (t <= keys[0].t) return keys[0].v;
+  for (let i = 1; i < keys.length; i++) {
+    if (t <= keys[i].t) { const a = keys[i - 1], b = keys[i]; const u = (t - a.t) / (b.t - a.t); return a.v + (b.v - a.v) * (EASES[b.e || 'inOutCubic'])(u); }
+  }
+  return keys[keys.length - 1].v;
+}
+
+// ---- butterfly knife choreography (keyframed off the RIVALS showcase footage) ----
+// channels: bRx = blade fold, hARx/hBRx = handle fan, pRx/pRy/pRz = whole-knife
+// twirl/tilt, vx..vrz = viewmodel (arm) offsets. All angles in radians.
+const BF_TRK = {
+  // EQUIP (0.7s): starts folded closed → wrist cock → handle whips a full spin
+  // (outExpo = violent start, soft catch) → blade snaps open past zero and
+  // settles back (outBack overshoot) → latch tap.
+  equip: {
+    bRx:  [{ t: 0, v: Math.PI }, { t: 0.18, v: Math.PI, e: 'inQuad' }, { t: 0.55, v: -0.22, e: 'outExpo' }, { t: 0.78, v: 0.08, e: 'outBack' }, { t: 1, v: 0, e: 'outQuad' }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.14, v: -0.6, e: 'inCubic' }, { t: 0.62, v: 6.55, e: 'outExpo' }, { t: 0.85, v: 6.2, e: 'outBack' }, { t: 1, v: 6.283, e: 'outQuad' }],
+    pRz:  [{ t: 0, v: 0.55 }, { t: 0.5, v: -0.28, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    pRy:  [{ t: 0, v: -0.5 }, { t: 0.55, v: 0.18, e: 'outExpo' }, { t: 1, v: 0, e: 'outCubic' }],
+  },
+  // HEAVY STAB (right-click, 0.62s): flip to reverse icepick grip (handle spins
+  // a full turn), raise high, DRIVE down hard (inCubic accelerate → impact),
+  // recover and flip back to standard grip.
+  stab: {
+    bRx:  [{ t: 0, v: 0 }, { t: 0.2, v: -2.9, e: 'outBack' }, { t: 0.66, v: -2.9 }, { t: 0.85, v: 0.15, e: 'outExpo' }, { t: 1, v: 0, e: 'outQuad' }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.2, v: -6.283, e: 'outExpo' }, { t: 1, v: -6.283 }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.3, v: 0.2, e: 'outCubic' }, { t: 0.42, v: 0.22 }, { t: 0.56, v: -0.16, e: 'inCubic' }, { t: 0.8, v: -0.1 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.3, v: 0.12, e: 'outCubic' }, { t: 0.56, v: -0.42, e: 'inCubic' }, { t: 0.8, v: -0.3 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.3, v: 0.85, e: 'outCubic' }, { t: 0.56, v: -0.55, e: 'inCubic' }, { t: 0.8, v: -0.35 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.3, v: -0.3, e: 'outCubic' }, { t: 0.6, v: 0.12, e: 'outExpo' }, { t: 1, v: 0 }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.3, v: 0.4, e: 'outCubic' }, { t: 0.56, v: -0.2, e: 'inCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+  },
+  // INSPECT (F, 5.4s) — the full showcase: raise to center & tilt-display →
+  // fold closed → fan open/closed/open (the flashy part) → full aerial twirl →
+  // side pose hold → snap back to carry with a latch rattle.
+  inspect: {
+    vx:   [{ t: 0, v: 0 }, { t: 0.09, v: -0.14, e: 'inOutCubic' }, { t: 0.62, v: -0.14 }, { t: 0.72, v: -0.05, e: 'inOutCubic' }, { t: 0.83, v: -0.05 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.09, v: 0.1, e: 'inOutCubic' }, { t: 0.44, v: 0.1 }, { t: 0.5, v: 0.16, e: 'outCubic' }, { t: 0.56, v: 0.08, e: 'outBack' }, { t: 0.83, v: 0.06 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.09, v: -0.2, e: 'inOutCubic' }, { t: 0.62, v: -0.2 }, { t: 0.83, v: -0.12 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.09, v: 0.25, e: 'inOutCubic' }, { t: 0.28, v: 0.12 }, { t: 0.62, v: 0.12 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.09, v: 0.35, e: 'inOutCubic' }, { t: 0.62, v: 0.35 }, { t: 0.72, v: 0.85, e: 'inOutCubic' }, { t: 0.83, v: 0.85 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.09, v: -0.15, e: 'inOutCubic' }, { t: 0.72, v: 0.45, e: 'inOutCubic' }, { t: 0.83, v: 0.45 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRy:  [{ t: 0, v: 0 }, { t: 0.13, v: 0.7, e: 'inOutCubic' }, { t: 0.24, v: -0.7, e: 'inOutCubic' }, { t: 0.3, v: 0, e: 'inOutCubic' }, { t: 0.62, v: 0 }, { t: 0.72, v: 0.3 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRx:  [{ t: 0, v: 0 }, { t: 0.5, v: 0 }, { t: 0.6, v: 6.283, e: 'outExpo' }, { t: 1, v: 6.283 }],
+    bRx:  [{ t: 0, v: 0 }, { t: 0.3, v: 0 }, { t: 0.35, v: 3.05, e: 'outBack' }, { t: 0.41, v: 3.05 }, { t: 0.46, v: -0.15, e: 'outExpo' }, { t: 0.5, v: 0, e: 'outQuad' }, { t: 1, v: 0 }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.3, v: 0 }, { t: 0.36, v: -3.2, e: 'outExpo' }, { t: 0.42, v: -3.2 }, { t: 0.48, v: 3.08, e: 'outExpo' }, { t: 0.55, v: -0.12, e: 'outExpo' }, { t: 0.62, v: 0, e: 'outBack' }, { t: 0.86, v: 0 }, { t: 0.92, v: 0.5, e: 'outExpo' }, { t: 1, v: 0, e: 'outElastic' }],
+    hBRx: [{ t: 0, v: 0 }, { t: 0.34, v: 0 }, { t: 0.4, v: 1.1, e: 'outExpo' }, { t: 0.5, v: -0.5, e: 'outExpo' }, { t: 0.58, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+  },
+};
 
 function freshAmmo() {
   const a = {};
@@ -1414,6 +1516,7 @@ function switchWeapon(id) {
   if (!id || id === me.weapon || me.reloading) return;
   me.weapon = id;
   vmAnim.equipT = 0;             // raise-with-flick
+  vmAnim.bfEquipT = 0; vmAnim.bfInspectT = 1;   // butterfly flips open; cancel inspect
   net.send({ t: 'weapon', id });
   playOne('equip', 0.8);
   stopLoop('ar');   // cancel any AR fire loop when swapping off
@@ -1450,7 +1553,8 @@ function tryFire() {
     if (now - me.swingAt < w.rate) return;
     me.swingAt = now;
     vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // arcs / alternating jabs
-    playOne(me.weapon === 'scythe' ? 'knife' : 'fists', 0.8);
+    vmAnim.bfInspectT = 1;                       // slashing cancels the inspect
+    playOne(me.weapon === 'scythe' || me.weapon === 'butterfly' ? 'knife' : 'fists', 0.8);
     if (game.phase === 'live') net.send({ t: 'melee', weapon: me.weapon });
     else rangeMelee();   // lobby: swing hits practice dummies
     return;
@@ -2619,6 +2723,7 @@ function enterLobby(fromMatch) {
 const KB_ACTIONS = [
   ['forward', 'Move Forward'], ['back', 'Move Back'], ['left', 'Move Left'], ['right', 'Move Right'],
   ['jump', 'Jump'], ['sprint', 'Sprint'], ['crouch', 'Crouch / Slide'], ['reload', 'Reload'], ['queue', 'Open Queue'],
+  ['inspect', 'Inspect knife'],
   ['weapon1', 'Slot 1 · Rifle'], ['weapon2', 'Slot 2 · Handgun'], ['weapon3', 'Slot 3 · Knife'],
   ['weapon4', 'Slot 4 · Grenade'], ['weapon5', 'Slot 5 · Sniper'], ['weapon6', 'Slot 6 · Fists'],
 ];
@@ -2801,6 +2906,9 @@ function frame() {
     vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / 0.38);
     vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
+    vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.7);
+    vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.62);
+    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 5.4);
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
@@ -2870,10 +2978,17 @@ function frame() {
         rz += (wind * 0.2 - s * 0.5) * sd;
         px += (wind * 0.1 - s * 0.34) * sd; pz -= s * 0.18;
       } else if (me.weapon === 'butterfly') {
-        // flashy flip then a quick forward stab
-        rx += Math.sin(t * Math.PI * 2) * 0.5 * (1 - t);        // flip spin
-        rz += Math.sin(t * Math.PI * 2) * 0.6 * (1 - t) * sd;
-        pz -= s * 0.32; py += s * 0.05;
+        // razor slash: cocked windup opposite side → whip across the screen
+        // (outExpo attack, soft follow-through) — the handle fans a full turn
+        // in the part-level block below
+        const wind = sstep(0, 0.18, t) * (1 - sstep(0.18, 0.42, t));
+        const slash = Math.sin(Math.pow(sstep(0.12, 0.85, t), 0.8) * Math.PI);
+        ry2 += (wind * 0.55 - slash * 1.55) * sd;
+        rz += (wind * 0.5 - slash * 1.05) * sd;
+        rx += -wind * 0.4 + slash * 0.85;
+        px += (wind * 0.09 - slash * 0.3) * sd;
+        py += wind * 0.1 - slash * 0.07;
+        pz -= slash * 0.4;
       } else {
         // scythe/knife: quick compact alternating arcs
         rz += sd * -0.7 * s; ry2 += sd * 0.55 * s;
@@ -2888,6 +3003,20 @@ function frame() {
       rx += wind * 0.85 - whip * 1.9;
       py += wind * 0.1 - whip * 0.06;
       pz += wind * 0.16 - whip * 0.3;
+    }
+    // butterfly HEAVY STAB: raise in reverse grip, drive down, recover
+    if (me.weapon === 'butterfly' && vmAnim.bfStabT < 1) {
+      const t = vmAnim.bfStabT, T = BF_TRK.stab;
+      py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
+      rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
+    }
+    // butterfly INSPECT: the full keyframed showcase (arm channel)
+    if (me.weapon === 'butterfly' && vmAnim.bfInspectT < 1) {
+      const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
+      px += trackVal(T.vx, t); py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
+      rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
+      for (const cue of [0.31, 0.37, 0.47, 0.56, 0.91]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
+      vmAnim.bfInspectPrev = t;
     }
 
     vm.position.set(px, py, pz);
@@ -2910,6 +3039,38 @@ function frame() {
         P.gun.position.y += Math.sin(now * 2.3) * 0.007;      // soft breathing
         P.gun.rotation.z += Math.sin(now * 1.25) * 0.025;     // lazy tail-like sway
         P.gun.rotation.x += Math.sin(now * 0.9) * 0.02;
+      }
+      // butterfly: articulated balisong — reset the pin parts, then layer
+      // idle rattle + equip flip + slash fan + stab grip-flip + inspect
+      if (P.bf && me.weapon === 'butterfly') {
+        const B = P.bf;
+        B.pivot.rotation.set(0, 0, 0); B.blade.rotation.set(0, 0, 0);
+        B.hA.rotation.set(0, 0, 0); B.hB.rotation.set(0, 0, 0);
+        // movement/idle: gentle handle rattle + wrist shimmer + sprint tilt
+        B.hA.rotation.x += Math.sin(now * 2.1) * 0.012;
+        B.pivot.rotation.z += Math.sin(now * 1.6) * 0.018;
+        B.pivot.rotation.x += Math.sin(vmBob * 0.5) * 0.025 * vmAnim.sprintK;
+        if (vmAnim.bfEquipT < 1) {
+          const t = vmAnim.bfEquipT, T = BF_TRK.equip;
+          B.blade.rotation.x += trackVal(T.bRx, t); B.hA.rotation.x += trackVal(T.hARx, t);
+          B.pivot.rotation.z += trackVal(T.pRz, t); B.pivot.rotation.y += trackVal(T.pRy, t);
+        }
+        if (vmAnim.swingT < 1) {
+          const t = vmAnim.swingT, sd = vmAnim.swingSide;
+          B.hA.rotation.x += Math.PI * 2 * EASES.outExpo(t) * -sd;              // full handle fan per slash
+          B.blade.rotation.x += Math.sin(sstep(0.15, 0.6, t) * Math.PI) * 0.14; // blade flex at impact
+          B.pivot.rotation.z += Math.sin(t * Math.PI) * 0.3 * sd;
+        }
+        if (vmAnim.bfStabT < 1) {
+          const t = vmAnim.bfStabT, T = BF_TRK.stab;
+          B.blade.rotation.x += trackVal(T.bRx, t); B.hA.rotation.x += trackVal(T.hARx, t);
+        }
+        if (vmAnim.bfInspectT < 1) {
+          const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
+          B.blade.rotation.x += trackVal(T.bRx, t);
+          B.hA.rotation.x += trackVal(T.hARx, t); B.hB.rotation.x += trackVal(T.hBRx, t);
+          B.pivot.rotation.x += trackVal(T.pRx, t); B.pivot.rotation.y += trackVal(T.pRy, t);
+        }
       }
       // firing: hands squeeze back with the gun
       P.gun.position.z += vmKick * 0.05;
