@@ -14,10 +14,18 @@
   html, body { height: 100%; overflow: hidden; background: #0b0f16; font-family: -apple-system, system-ui, sans-serif; }
   #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #hud { position: fixed; inset: 0; pointer-events: none; color: #eef3fa; }
-  #top { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; }
-  #phase { font-size: 15px; font-weight: 800; letter-spacing: .3px; text-shadow: 0 2px 8px #000; }
-  #timer { font-size: 40px; font-weight: 900; line-height: 1; text-shadow: 0 3px 10px #000; }
-  #disasters { margin-top: 4px; font-size: 18px; font-weight: 800; text-shadow: 0 2px 8px #000; min-height: 22px; }
+  #top { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); text-align: center;
+    background: rgba(12,16,24,.72); border: 2.5px solid rgba(255,255,255,.14); border-bottom-width: 5px;
+    border-radius: 16px; padding: 8px 22px 10px; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  #phase { font-size: 14px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: #cfe0f0; text-shadow: 0 2px 8px #000; }
+  #timer { font-size: 44px; font-weight: 900; font-style: italic; line-height: 1; text-shadow: -2px 0 0 rgba(0,0,0,.5), 2px 0 0 rgba(0,0,0,.5), 0 3px 0 rgba(0,0,0,.6); }
+  #timer.urgent { color: #ff5c5c; }
+  #disasters { margin-top: 5px; font-size: 17px; font-weight: 900; text-shadow: 0 2px 8px #000; min-height: 22px; }
+  #disasters .dch { display: inline-block; background: rgba(255,255,255,.1); border: 2px solid rgba(255,255,255,.16);
+    border-radius: 999px; padding: 2px 12px; margin: 0 3px; }
+  #survivors { position: fixed; top: 62px; right: 12px; background: rgba(12,16,24,.75); border: 2.5px solid rgba(255,255,255,.14);
+    border-bottom-width: 5px; border-radius: 14px; padding: 8px 14px; font-weight: 900; font-size: 16px;
+    text-shadow: 0 2px 6px #000; }
   #banner { position: fixed; top: 34%; left: 50%; transform: translateX(-50%) scale(.6); opacity: 0; text-align: center; font-size: 40px; font-weight: 900; text-shadow: 0 4px 16px #000; transition: transform .4s cubic-bezier(.2,1.5,.4,1), opacity .35s; white-space: nowrap; }
   #banner.show { transform: translateX(-50%) scale(1); opacity: 1; }
   #wallet { position: fixed; top: 12px; right: 12px; background: rgba(14,18,28,.8); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 8px 12px; font-weight: 800; font-size: 15px; backdrop-filter: blur(6px); }
@@ -25,6 +33,7 @@
   #prompt { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); background: rgba(230,190,40,.16); border: 1px solid #e6c445; border-radius: 12px; padding: 10px 16px; font-weight: 800; font-size: 15px; display: none; }
   #hint { position: fixed; bottom: 16px; left: 16px; font-size: 12px; color: #9fb0c6; text-shadow: 0 1px 4px #000; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0f16; z-index: 10; color: #cfe0f0; font-weight: 800; font-size: 18px; }
+  .hidden { display: none !important; }
   .kbd { background: rgba(255,255,255,.14); border-radius: 5px; padding: 1px 6px; font-weight: 800; }
 </style>
 </head>
@@ -33,6 +42,7 @@
 <div id="hud">
   <div id="top"><div id="phase">Connecting…</div><div id="timer"></div><div id="disasters"></div></div>
   <div id="wallet">🔷 <b id="cubes">0</b></div>
+  <div id="survivors" class="hidden">👥 0</div>
   <div id="banner"></div>
   <div id="status"></div>
   <div id="prompt"></div>

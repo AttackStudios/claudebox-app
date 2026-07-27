@@ -239,9 +239,181 @@ function stationMap() {
   return P;
 }
 
+// ===================== HAPPY HOME (classic suburban house) =====================
+function homeMap() {
+  const P = [];
+  const brick = '#b5654a', siding = '#e8e2d0', roof = '#7a4a3a', wood = '#8a6a44', win = '#bfe0f0',
+        floor = '#c9b98a', grass = '#6faa54', drive = '#9a958a', fence = '#d8d2c4', leaf = '#4f8a45';
+  const W = 26, D = 18, FH = 5;
+  add(P, 0, -1, 0, 70, 2, 70, grass, INDEST, { t: 'lawn' });
+  add(P, -20, 0.06, 8, 10, 0.12, 26, drive, INDEST, { t: 'deco', ns: 1 });        // driveway
+  // ---- ground floor ----
+  add(P, 0, 0.3, 0, W, 0.6, D, floor, INDEST, { t: 'floor' });
+  // brick walls w/ windows + open front/back doors
+  const segN = 8, segW = W / segN;
+  for (let i = 0; i < segN; i++) {
+    const px = -W / 2 + (i + 0.5) * segW;
+    const doorF = i === 3, doorB = i === 4;
+    if (!doorF) add(P, px, FH * 0.28 + 0.3, D / 2, segW - 0.1, FH * 0.56, 0.5, brick, MED, { t: 'wall' });
+    add(P, px, FH * 0.85 + 0.3, D / 2, segW - 0.1, FH * 0.3, 0.5, brick, MED, { t: 'wall' });
+    if (i % 2 === 0 && !doorF) add(P, px, FH * 0.56 + 0.3, D / 2, segW - 1, FH * 0.3, 0.2, win, GLASS, { t: 'glass' });
+    if (!doorB) add(P, px, FH * 0.28 + 0.3, -D / 2, segW - 0.1, FH * 0.56, 0.5, brick, MED, { t: 'wall' });
+    add(P, px, FH * 0.85 + 0.3, -D / 2, segW - 0.1, FH * 0.3, 0.5, brick, MED, { t: 'wall' });
+    if (i % 2 === 1 && !doorB) add(P, px, FH * 0.56 + 0.3, -D / 2, segW - 1, FH * 0.3, 0.2, win, GLASS, { t: 'glass' });
+  }
+  for (const sx of [-W / 2, W / 2]) for (let i = 0; i < 5; i++) { const pz = -D / 2 + (i + 0.5) * (D / 5); add(P, sx, FH / 2 + 0.3, pz, 0.5, FH, D / 5 - 0.1, brick, MED, { t: 'wall' }); }
+  // interior: living room / kitchen split + furniture
+  add(P, -2, FH / 2 + 0.3, -2, 0.3, FH - 0.6, 9, siding, WEAK, { t: 'wall' });
+  add(P, -8, 1, 4, 3, 1, 1.2, '#7a5a8a', FURN, { t: 'sofa' });
+  add(P, -9, 0.9, -4, 2, 0.8, 1, wood, FURN, { t: 'table' });
+  add(P, 4, 1.1, -6.5, 4, 1.6, 1, siding, WEAK, { t: 'counter' });
+  add(P, 8, 1.3, -6.5, 1.4, 2.2, 1, '#d8dde8', WEAK, { t: 'fridge' });
+  add(P, 10, 1, 5, 1.8, 1.4, 0.5, '#20242e', FURN, { t: 'tv' });
+  switchback(P, 8, 2, 0.3, FH + 0.3, wood);
+  // ---- upper floor (bedrooms) ----
+  floorWithHole(P, FH + 0.3, W, D, 9.5, 2, 3, 6, floor);
+  const uh = FH * 0.8;
+  for (let i = 0; i < segN; i++) {
+    const px = -W / 2 + (i + 0.5) * segW;
+    add(P, px, FH + 0.3 + uh * 0.32, D / 2, segW - 0.1, uh * 0.64, 0.4, siding, WEAK, { t: 'wall' });
+    if (i % 2 === 0) add(P, px, FH + 0.3 + uh * 0.55, D / 2, segW - 1, uh * 0.3, 0.18, win, GLASS, { t: 'glass' });
+    add(P, px, FH + 0.3 + uh * 0.32, -D / 2, segW - 0.1, uh * 0.64, 0.4, siding, WEAK, { t: 'wall' });
+    if (i % 2 === 1) add(P, px, FH + 0.3 + uh * 0.55, -D / 2, segW - 1, uh * 0.3, 0.18, win, GLASS, { t: 'glass' });
+  }
+  for (const sx of [-W / 2, W / 2]) add(P, sx, FH + 0.3 + uh * 0.32, 0, 0.4, uh * 0.64, D, siding, WEAK, { t: 'wall' });
+  add(P, -6, FH + 1.3, 3, 3, 0.9, 1.6, '#9a4a5a', FURN, { t: 'bed' });
+  add(P, -10, FH + 1.3, -3, 3, 0.9, 1.6, '#4a6a9a', FURN, { t: 'bed' });
+  // ---- gabled roof: stepped breakable slabs ----
+  const ry = FH + 0.3 + uh * 0.64;
+  for (let i = 0; i < 4; i++) {
+    const inset = i * 2.4, h = ry + 0.35 + i * 0.9;
+    add(P, 0, h, -(D / 2) + inset / 2 + 0.5, W + 1.2 - i * 0.6, 0.7, 2.6, roof, WEAK, { t: 'roof' });
+    add(P, 0, h, (D / 2) - inset / 2 - 0.5, W + 1.2 - i * 0.6, 0.7, 2.6, roof, WEAK, { t: 'roof' });
+  }
+  add(P, 0, ry + 3.9, 0, W + 0.8, 0.7, 3.4, roof, WEAK, { t: 'roofcap' });
+  // ---- porch + yard ----
+  add(P, 0, 0.25, D / 2 + 2.2, 10, 0.5, 4, wood, WOOD, { t: 'porch' });
+  for (const px of [-4, 4]) add(P, px, 1.8, D / 2 + 3.8, 0.4, 3.2, 0.4, siding, WOOD, { t: 'post' });
+  add(P, 0, 3.5, D / 2 + 3, 10.5, 0.4, 4.6, roof, WEAK, { t: 'porchroof' });
+  add(P, 18, 2.2, -10, 1.2, 4.4, 1.2, '#6a4a2a', WOOD, { t: 'trunk' });
+  add(P, 18, 5.6, -10, 5, 3.4, 5, leaf, WEAK, { t: 'leaves' });
+  for (let i = 0; i < 6; i++) add(P, -14 + i * 5.6, 0.8, -16, 2.6, 1.2, 0.25, fence, WOOD, { t: 'fence' });
+  add(P, -16, 0.9, 16, 0.3, 1.4, 0.3, wood, WOOD, { t: 'mailpost' });
+  add(P, -16, 1.7, 16, 0.8, 0.5, 0.5, '#3a6ea5', WEAK, { t: 'mailbox' });
+  return P;
+}
+
+// ===================== TRAILER PARK (everything is barely bolted down) =====================
+function trailerMap() {
+  const P = [];
+  const grass = '#7aa35a', gravel = '#9a958a', cinder = '#8f8a7e', steel = '#8a8f98',
+        win = '#bfe0f0', wood = '#8a6a44', tank = '#d8dde8';
+  add(P, 0, -1, 0, 75, 2, 75, grass, INDEST, { t: 'ground' });
+  add(P, 0, 0.06, 0, 8, 0.12, 66, gravel, INDEST, { t: 'deco', ns: 1 });          // gravel lane
+  // ---- five trailers, each a fragile home on cinder blocks ----
+  const TR = [[-18, -18, '#c2d6e8', 0], [16, -20, '#e8d6c2', 0], [-20, 8, '#d6e8c2', 1], [18, 6, '#e8c2c8', 1], [-2, 22, '#e0e0d0', 0]];
+  for (const [tx, tz, col, rot] of TR) {
+    const w = rot ? 4.4 : 11, d = rot ? 11 : 4.4;
+    for (const [ox, oz] of [[-w / 2 + 0.8, -d / 2 + 0.6], [w / 2 - 0.8, -d / 2 + 0.6], [-w / 2 + 0.8, d / 2 - 0.6], [w / 2 - 0.8, d / 2 - 0.6]])
+      add(P, tx + ox, 0.35, tz + oz, 0.7, 0.7, 0.7, cinder, STRONG, { t: 'block' });
+    add(P, tx, 0.85, tz, w, 0.3, d, steel, MED, { t: 'tfloor' });
+    add(P, tx, 2.3, tz, w, 2.6, d, col, WEAK, { t: 'tbody' });                    // body — one good hit folds it
+    add(P, tx, 3.8, tz, w + 0.5, 0.4, d + 0.5, '#b8b0a2', WEAK, { t: 'troof' });
+    const wn = rot ? 3 : 4;
+    for (let i = 0; i < wn; i++) {
+      const off = -((rot ? d : w) / 2) + (i + 0.75) * ((rot ? d : w) / wn);
+      if (rot) { add(P, tx + w / 2 + 0.01, 2.4, tz + off, 0.1, 1.1, 1.6, win, GLASS, { t: 'glass' }); }
+      else { add(P, tx + off, 2.4, tz + d / 2 + 0.01, 1.6, 1.1, 0.1, win, GLASS, { t: 'glass' }); }
+    }
+    add(P, tx + (rot ? -w / 2 - 0.6 : w / 2 - 1.4), 0.45, tz + (rot ? 0 : d / 2 + 0.9), 1.6, 0.3, 1.6, wood, WOOD, { t: 'step' });
+  }
+  // ---- office shack + water tower (the flood refuge) ----
+  add(P, 2, 0.25, -6, 7, 0.5, 6, wood, INDEST, { t: 'floor' });
+  add(P, 2, 1.9, -8.8, 7, 3.2, 0.4, wood, MED, { t: 'wall' });
+  add(P, -1.4, 1.9, -6, 0.4, 3.2, 6, wood, MED, { t: 'wall' });
+  add(P, 5.4, 1.9, -6, 0.4, 3.2, 6, wood, MED, { t: 'wall' });
+  add(P, 2, 3.6, -6, 8, 0.5, 7, '#6a5a48', MED, { t: 'shackroof' });
+  add(P, 6.5, 0.75, -2.4, 1.6, 1.5, 1.6, wood, WOOD, { t: 'crate' });             // step 1 (1.5)
+  add(P, 6.9, 1.35, -5.2, 1.6, 2.7, 1.6, '#7a5a38', WOOD, { t: 'crate' });        // step 2 (2.7) -> shack roof 3.85
+  const wt = { x: -6, z: -24 };
+  for (const [ox, oz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]])
+    add(P, wt.x + ox, 3.4, wt.z + oz, 0.5, 6.8, 0.5, steel, STRONG, { t: 'leg' });
+  add(P, wt.x, 7, wt.z, 5.4, 0.5, 5.4, steel, STRONG, { t: 'platform' });         // refuge platform (7.25)
+  add(P, wt.x, 9, wt.z, 4, 3.6, 4, tank, MED, { t: 'tank' });
+  add(P, wt.x + 3.4, 0.75, wt.z + 3.2, 1.6, 1.5, 1.6, wood, WOOD, { t: 'crate' });
+  add(P, wt.x + 3.6, 1.35, wt.z + 0.6, 1.6, 2.7, 1.6, '#7a5a38', WOOD, { t: 'crate' });
+  add(P, wt.x + 3.5, 1.95, wt.z - 2.2, 1.6, 3.9, 1.6, wood, WOOD, { t: 'crate' });   // 3.9
+  add(P, wt.x + 1.8, 2.65, wt.z - 3.4, 1.6, 5.3, 1.6, '#7a5a38', WOOD, { t: 'crate' }); // 5.3
+  add(P, wt.x - 0.4, 3.35, wt.z - 3.7, 1.6, 6.7, 1.6, wood, WOOD, { t: 'crate' });       // 6.7 -> platform 7.25
+  // ---- props: propane, picnic, tires, mailboxes ----
+  add(P, 10, 1, 12, 1.4, 2, 1.4, tank, WEAK, { t: 'propane' });
+  add(P, -12, 1, -6, 1.4, 2, 1.4, tank, WEAK, { t: 'propane' });
+  for (const [px2, pz2] of [[-8, 16], [12, -8]]) { add(P, px2, 0.7, pz2, 2.6, 0.5, 1, wood, WOOD, { t: 'picnic' }); add(P, px2, 1.1, pz2, 1.8, 0.3, 2.4, wood, WOOD, { t: 'picnic' }); }
+  for (let i = 0; i < 5; i++) add(P, -26 + i * 1.4, 0.45, 26, 1.1, 0.9, 1.1, '#20242e', WEAK, { t: 'tire' });
+  for (let i = 0; i < 5; i++) add(P, 5.6, 0.9, 14 + i * 1.5, 0.5, 0.6, 0.6, steel, WEAK, { t: 'mailbox' });
+  return P;
+}
+
+// ===================== SURF CENTRAL (beach + boardwalk + lifeguard tower) =====================
+function surfMap() {
+  const P = [];
+  const sand = '#e8d8a8', wood = '#b08a5a', woodD = '#8a6a44', shack = '#5ab0c8', roof = '#e05a4a',
+        win = '#bfe0f0', palm = '#6a4a2a', leaf = '#4f9a45', tower = '#e8e2d0';
+  add(P, 0, -1, 0, 70, 2, 70, sand, INDEST, { t: 'beach' });
+  // ---- surf shack ----
+  const bx = -8, bz = 10, bw = 14, bd = 8, bh = 4;
+  add(P, bx, 0.25, bz, bw, 0.5, bd, woodD, INDEST, { t: 'floor' });
+  add(P, bx, bh / 2, bz + bd / 2, bw, bh, 0.4, shack, MED, { t: 'wall' });
+  add(P, bx - bw / 2, bh / 2, bz, 0.4, bh, bd, shack, MED, { t: 'wall' });
+  add(P, bx + bw / 2, bh / 2, bz, 0.4, bh, bd, shack, MED, { t: 'wall' });
+  add(P, bx - 4.5, bh / 2, bz - bd / 2, 5, bh, 0.4, shack, MED, { t: 'wall' });   // front, door gap mid
+  add(P, bx + 4.5, bh / 2, bz - bd / 2, 5, bh, 0.4, shack, MED, { t: 'wall' });
+  add(P, bx - 1, 2.6, bz - bd / 2, 2, 1.6, 0.15, win, GLASS, { t: 'glass' });
+  add(P, bx, bh + 0.3, bz, bw + 1.6, 0.6, bd + 1.6, roof, WEAK, { t: 'roof' });   // roof 4.6
+  add(P, bx, 1, bz + 1.5, 5, 1.1, 1, woodD, FURN, { t: 'counter' });
+  for (let i = 0; i < 4; i++) add(P, bx - bw / 2 - 1.2, 1.5, bz - 3 + i * 2, 0.3, 3, 0.5, ['#e05a4a', '#5a8ae0', '#e0c85a', '#7ae05a'][i], WEAK, { t: 'board' });   // surfboard rack
+  add(P, bx + 5, 0.75, bz - 6.5, 1.6, 1.5, 1.6, woodD, WOOD, { t: 'crate' });     // 1.5
+  add(P, bx + 6.8, 1.6, bz - 4.5, 1.6, 3.2, 1.6, wood, WOOD, { t: 'crate' });    // 3.2 -> roof 4.6
+  // ---- boardwalk on stilts along the west edge ----
+  for (let i = 0; i < 8; i++) {
+    const pz = -28 + i * 8;
+    add(P, -28, 1.9, pz, 8, 0.4, 8.0, wood, WOOD, { t: 'plank' });                // walkable 2.1, no cracks
+    add(P, -31, 0.95, pz, 0.5, 1.9, 0.5, woodD, STRONG, { t: 'stilt' });
+    add(P, -25, 0.95, pz, 0.5, 1.9, 0.5, woodD, STRONG, { t: 'stilt' });
+    if (i % 2 === 0) add(P, -31.6, 2.8, pz, 0.25, 1.4, 7.6, woodD, WEAK, { t: 'rail' });
+  }
+  for (let i = 0; i < 4; i++) { const top = 2.1 * (i + 1) / 4; add(P, -22.4 + i * 0, 0 + top / 2, 27.5 - i * 1.1, 3, top, 1.15, wood, INDEST, { t: 'stair' }); }
+  // ---- lifeguard tower (the classic flood refuge) ----
+  const lt = { x: 16, z: -12 };
+  for (const [ox, oz] of [[-1.8, -1.8], [1.8, -1.8], [-1.8, 1.8], [1.8, 1.8]])
+    add(P, lt.x + ox, 2.6, lt.z + oz, 0.45, 5.2, 0.45, tower, STRONG, { t: 'leg' });
+  add(P, lt.x, 5.4, lt.z, 5.6, 0.5, 5.6, wood, STRONG, { t: 'deck' });            // deck 5.65
+  add(P, lt.x, 6.6, lt.z + 2.6, 5.6, 2, 0.3, tower, MED, { t: 'wall' });
+  add(P, lt.x - 2.6, 6.6, lt.z, 0.3, 2, 5.6, tower, MED, { t: 'wall' });
+  add(P, lt.x + 2.6, 6.6, lt.z, 0.3, 2, 5.6, tower, MED, { t: 'wall' });
+  add(P, lt.x, 8, lt.z, 6.4, 0.5, 6.4, roof, WEAK, { t: 'towerroof' });
+  switchback(P, lt.x, lt.z - 5.5, 0, 5.65, wood);
+  // ---- palms, umbrellas, volleyball ----
+  for (const [px2, pz2] of [[6, 20], [26, 8], [-20, -8], [4, -24]]) {
+    add(P, px2, 2.4, pz2, 1, 4.8, 1, palm, WOOD, { t: 'trunk' });
+    add(P, px2, 5.4, pz2, 4.4, 1.6, 4.4, leaf, WEAK, { t: 'fronds' });
+  }
+  for (const [px2, pz2, c] of [[-2, -12, '#e05a4a'], [8, -4, '#5a8ae0'], [-14, -18, '#e0c85a']]) {
+    add(P, px2, 1.1, pz2, 0.25, 2.2, 0.25, tower, WOOD, { t: 'pole' });
+    add(P, px2, 2.4, pz2, 3, 0.4, 3, c, WEAK, { t: 'umbrella' });
+  }
+  add(P, 24, 1.4, 22, 0.3, 2.8, 0.3, tower, WOOD, { t: 'vpost' });
+  add(P, 30, 1.4, 22, 0.3, 2.8, 0.3, tower, WOOD, { t: 'vpost' });
+  add(P, 27, 2.2, 22, 6, 0.9, 0.12, '#f4f7fc', WEAK, { t: 'net', ns: 1 });
+  return P;
+}
+
 export const MAPS = {
   glass:   { id: 'glass',   name: 'Glass Office',    spawnR: 14, radius: 34, spawn: { x: 0, z: 22, r: 5 },   sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#bcd6ee', ground: 80, pieces: officeMap() },
   school:  { id: 'school',  name: 'Heights School',  spawnR: 18, radius: 40, spawn: { x: 0, z: 23, r: 5 },   sky: ['#8fc0e8', '#e0eef8'], water: '#3a86c0', fog: '#c8dcc0', ground: 92, pieces: schoolMap() },
   station: { id: 'station', name: 'Furious Station', spawnR: 18, radius: 38, spawn: { x: -8, z: -18, r: 6 }, sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#c6ddc4', ground: 90, pieces: stationMap() },
+  home:    { id: 'home',    name: 'Happy Home',      spawnR: 16, radius: 32, spawn: { x: 0, z: 16, r: 5 },   sky: ['#8fd0ec', '#eaf4f8'], water: '#2f7fd0', fog: '#cfe4c8', ground: 70, pieces: homeMap() },
+  trailer: { id: 'trailer', name: 'Trailer Park',    spawnR: 18, radius: 34, spawn: { x: 0, z: 0, r: 6 },    sky: ['#9ac4e0', '#e8f0f4'], water: '#3a86c0', fog: '#c8d4c0', ground: 75, pieces: trailerMap() },
+  surf:    { id: 'surf',    name: 'Surf Central',    spawnR: 16, radius: 32, spawn: { x: 4, z: 2, r: 6 },    sky: ['#6ec4ec', '#f0f8fc'], water: '#28a0c8', fog: '#d8e8ec', ground: 70, pieces: surfMap() },
 };
 export const MAP_IDS = Object.keys(MAPS);
