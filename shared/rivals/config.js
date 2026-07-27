@@ -165,6 +165,13 @@ export const WEAPONS = {
   },
   // ---- Satchel: infinite thrown explosives that blow up on player contact,
   // plus a right-click "red button" that slide-jumps you anywhere (even mid-air) ----
+  warper: {
+    slot: 4, name: 'The Warper', class: 'utility', auto: false, utility: true, warper: true,
+    rate: 0.22, range: 90,
+    boost: 1.12,     // exit speed multiplier — chain two facing portals to build serious speed
+    maxSpeed: 55,
+    vm: 'warper',
+  },
   satchel: {
     slot: 4, name: 'Satchel', class: 'utility', auto: false, utility: true,
     infinite: true,       // no ammo — throw explosives forever

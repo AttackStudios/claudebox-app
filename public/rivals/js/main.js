@@ -532,6 +532,13 @@ function tryCrouch(on) {
 
 function onRightDown() {
   vmAnim.bfInspectT = 1;   // aiming/alt-fire cancels an inspect
+  if (me.weapon === 'warper') {
+    const now2 = clockNow();
+    if (me.dead || now2 - me.lastFire < WEAPONS.warper.rate) return;
+    me.lastFire = now2;
+    placePortal('B');
+    return;
+  }
   if (me.weapon === 'butterfly') {
     // HEAVY STAB — flip to reverse icepick grip and drive down. Same server
     // melee (backstab from behind still one-shots); heavier animation + lockout.
@@ -792,7 +799,12 @@ function stepMe(dt) {
 // ============================ weapons ============================
 let recoil = 0;
 const viewRoot = new THREE.Group();
-camera.add(viewRoot); scene.add(camera);
+camera.add(viewRoot);
+// hands/guns render in their OWN depth-cleared pass — they can never clip into walls
+const vmScene = new THREE.Scene();
+vmScene.add(camera);   // viewRoot rides the camera; only vmScene draws it
+vmScene.add(new THREE.AmbientLight('#c4ccd8', 1.5));
+{ const vmSun = new THREE.DirectionalLight('#fff2dc', 1.3); vmSun.position.set(2, 4, 1); vmScene.add(vmSun); }
 const viewmodels = {};
 function vmMat(c) { return new THREE.MeshLambertMaterial({ color: c }); }
 
@@ -988,6 +1000,22 @@ function buildViewmodels() {
     rigWeapon(g, [pivot], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
     g.userData.bf = { pivot, blade: bladeG, hA, hB };
     viewmodels.butterfly = g;
+  }
+  // ---- The Warper: white portal gun, blue + orange prongs ----
+  {
+    const g = new THREE.Group();
+    const prongA = box(0.022, 0.05, 0.16, '#4db8ff', 0.035, 0.045, -0.42);
+    const prongB = box(0.022, 0.05, 0.16, '#ff9a3d', -0.035, 0.045, -0.42);
+    rigWeapon(g, [
+      box(0.09, 0.1, 0.34, '#eef1f6', 0, 0, -0.06),          // white shell
+      box(0.07, 0.07, 0.16, '#c9d2e0', 0, 0.01, -0.28),      // snout
+      (() => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.062, 0.016, 8, 18), vmMat('#2a2e38')); r.position.set(0, 0.01, -0.38); return r; })(),   // barrel ring
+      box(0.06, 0.14, 0.08, '#2a2e38', 0, -0.11, 0.06, 0.25),// grip
+      box(0.05, 0.04, 0.2, '#8f99ad', 0, 0.065, 0.02),       // spine
+      prongA, prongB,
+    ], [0.045, -0.17, 0.17], [0.45, 0, 0], [-0.085, -0.18, 0.13], [0.45, 0.3, 0.2]);
+    g.userData.fx = { prongA, prongB };
+    viewmodels.warper = g;
   }
   // ---- daggers: a small knife in EACH hand ----
   {
@@ -1609,6 +1637,13 @@ function finishReload() {
 
 function tryFire() {
   vmAnim.bfInspectT = 1;   // any attack intent cancels an inspect
+  if (me.weapon === 'warper') {
+    const now2 = clockNow();
+    if (me.dead || now2 - me.lastFire < WEAPONS.warper.rate) return;
+    me.lastFire = now2;
+    placePortal('A');
+    return;
+  }
   if ((!locked && !mobileOn) || me.dead) return;
   if (game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium') return;
   const now = clockNow();
@@ -2001,7 +2036,7 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨', daggers: '⚔️' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨', daggers: '⚔️', warper: '🌀' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   myLoadout().forEach((id, i) => {
@@ -2022,6 +2057,7 @@ function updateAmmoHud() {
     hud.mag.textContent = a.mag; hud.res.textContent = a.res;
   } else if (me.weapon === 'grenade') { hud.mag.textContent = me.grenades; hud.res.textContent = ''; }
   else if (me.weapon === 'satchel') { hud.mag.textContent = '∞'; hud.res.textContent = ''; }
+  else if (me.weapon === 'warper') { hud.mag.textContent = '🌀'; hud.res.textContent = ''; }
   else { hud.mag.textContent = '—'; hud.res.textContent = ''; }
   hud.wname.textContent = w.name;
   updateLoadoutHud();
@@ -2165,6 +2201,7 @@ net.on('vote.state', (msg) => {
 });
 net.on('match.map', (msg) => {
   game.phase = 'teleport';
+  clearAllPortals();
   game.mapId = msg.map;
   $('#vote').classList.add('hidden');
   $('#tp-tip').textContent = msg.tip || '';
@@ -2178,6 +2215,7 @@ net.on('round.freeze', (msg) => {
     game.builtMap = game.mapId;
   }
   game.phase = 'freeze';
+  clearAllPortals();
   game.score = msg.score;
   game.stateUntil = msg.until;
   // spawn everyone
@@ -2905,12 +2943,133 @@ function banner(text, ms) {
 
 // ============================ main loop ============================
 let last = performance.now() / 1000;
+// ============================ THE WARPER — portals ============================
+const myPortals = { A: null, B: null };     // {pos, n, mesh}
+const otherPortals = new Map();             // playerId -> {A, B}
+let portalCd = 0;
+const PORTAL_COLORS = { A: '#4db8ff', B: '#ff9a3d' };
+function mkPortalMesh(which, dim) {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.09, 10, 30),
+    new THREE.MeshBasicMaterial({ color: PORTAL_COLORS[which], transparent: true, opacity: dim ? 0.5 : 0.95 }));
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.98, 26),
+    new THREE.MeshBasicMaterial({ color: PORTAL_COLORS[which], transparent: true, opacity: dim ? 0.12 : 0.3, side: THREE.DoubleSide, depthWrite: false }));
+  g.add(ring, disc);
+  g.scale.y = 1.35;                        // tall oval
+  g.userData.spin = ring;
+  return g;
+}
+function orientPortal(mesh, pos, n) {
+  mesh.position.set(pos.x + n.x * 0.06, pos.y + n.y * 0.06, pos.z + n.z * 0.06);
+  mesh.lookAt(pos.x + n.x, pos.y + n.y, pos.z + n.z);
+}
+function setPortal(store, which, pos, n, dim) {
+  if (store[which]) scene.remove(store[which].mesh);
+  const mesh = mkPortalMesh(which, dim);
+  orientPortal(mesh, pos, n);
+  mesh.scale.set(0.2, 0.27, 0.2);          // pop-in
+  scene.add(mesh);
+  store[which] = { pos, n, mesh, born: clockNow() };
+}
+// hitscan against the map: march the aim ray, find the face we hit
+function placePortal(which) {
+  const W = WEAPONS.warper;
+  const dir = aimDir(0);
+  const o = camera.position;
+  let px = o.x, py = o.y, pz = o.z;
+  for (let d = 0.4; d < W.range; d += 0.18) {
+    const x = o.x + dir.x * d, y = o.y + dir.y * d, z = o.z + dir.z * d;
+    if (y < 0.02) {   // ground plane
+      setPortal(myPortals, which, { x, y: 0.02, z }, { x: 0, y: 1, z: 0 });
+      net.send({ t: 'portal', which, x, y: 0.02, z, nx: 0, ny: 1, nz: 0 });
+      playOne('equip', 0.6); vmKick = Math.max(vmKick, 0.5);
+      return true;
+    }
+    if (pointInMap(x, y, z)) {
+      const b = mapBoxes.find((bb) => Math.abs(x - bb.x) <= bb.w / 2 && Math.abs(y - (bb.y + bb.h / 2)) <= bb.h / 2 && Math.abs(z - bb.z) <= bb.d / 2);
+      let n = { x: 0, y: 1, z: 0 };
+      if (b) {
+        const cx = (px - b.x) / (b.w / 2), cy = (py - (b.y + b.h / 2)) / (b.h / 2), cz = (pz - b.z) / (b.d / 2);
+        const ax = Math.abs(cx), ay = Math.abs(cy), az = Math.abs(cz);
+        if (ax >= ay && ax >= az) n = { x: Math.sign(cx), y: 0, z: 0 };
+        else if (ay >= az) n = { x: 0, y: Math.sign(cy), z: 0 };
+        else n = { x: 0, y: 0, z: Math.sign(cz) };
+      }
+      const hit = { x: px, y: py, z: pz };
+      setPortal(myPortals, which, hit, n);
+      net.send({ t: 'portal', which, x: hit.x, y: hit.y, z: hit.z, nx: n.x, ny: n.y, nz: n.z });
+      playOne('equip', 0.6); vmKick = Math.max(vmKick, 0.5);
+      return true;
+    }
+    px = x; py = y; pz = z;
+  }
+  return false;
+}
+function clearAllPortals() {
+  for (const k of ['A', 'B']) { if (myPortals[k]) { scene.remove(myPortals[k].mesh); myPortals[k] = null; } }
+  for (const [, st] of otherPortals) for (const k of ['A', 'B']) if (st[k]) scene.remove(st[k].mesh);
+  otherPortals.clear();
+}
+function tickPortals(dt) {
+  const cn = clockNow();
+  // spin + pop-in
+  for (const store of [myPortals, ...otherPortals.values()]) {
+    for (const k of ['A', 'B']) {
+      const P = store[k]; if (!P) continue;
+      P.mesh.userData.spin.rotation.z += dt * 2.2;
+      const grow = Math.min(1, (cn - P.born) / 0.22);
+      const sc = 0.2 + 0.8 * (1 - Math.pow(1 - grow, 3));
+      P.mesh.scale.set(sc, sc * 1.35, sc);
+    }
+  }
+  // teleport ME through my portals, carrying momentum + a boost.
+  // SWEPT check: compares this frame's position against last frame's, so even
+  // at extreme chained speeds you can't step past the portal plane in one frame.
+  const pp = tickPortals._prev || (tickPortals._prev = { x: me.pos.x, y: me.pos.y, z: me.pos.z });
+  const prevX = pp.x, prevY = pp.y, prevZ = pp.z;
+  pp.x = me.pos.x; pp.y = me.pos.y; pp.z = me.pos.z;
+  if (!myPortals.A || !myPortals.B || me.dead || cn < portalCd) return;
+  const W = WEAPONS.warper;
+  for (const [a, bKey] of [['A', 'B'], ['B', 'A']]) {
+    const P = myPortals[a], O = myPortals[bKey];
+    const cxp = me.pos.x - P.pos.x, cyp = (me.pos.y + 0.9) - P.pos.y, czp = me.pos.z - P.pos.z;
+    const dn = cxp * P.n.x + cyp * P.n.y + czp * P.n.z;           // distance out from the surface
+    const dnPrev = (prevX - P.pos.x) * P.n.x + ((prevY + 0.9) - P.pos.y) * P.n.y + (prevZ - P.pos.z) * P.n.z;
+    const crossed = dnPrev > 0 && dn < dnPrev - 0.05 && (dn < 0.6 || dn * dnPrev < 0);   // moving in, near or through the plane
+    const lx = cxp - dn * P.n.x, ly = cyp - dn * P.n.y, lz = czp - dn * P.n.z;
+    const latV = Math.abs(P.n.y) > 0.5 ? Math.hypot(lx, lz) : Math.abs(ly);   // vertical portals: height offset
+    const latH = Math.abs(P.n.y) > 0.5 ? 0 : Math.hypot(lx * (1 - Math.abs(P.n.x)), lz * (1 - Math.abs(P.n.z)));
+    const vdotn = me.vel.x * P.n.x + me.vel.y * P.n.y + me.vel.z * P.n.z;
+    if ((Math.abs(dn) < 0.6 || crossed) && latV < 1.6 && latH < 1.15 && vdotn < -0.4) {
+      const speed = Math.min(W.maxSpeed, Math.hypot(me.vel.x, me.vel.y, me.vel.z) * W.boost + 1.2);
+      // exit: pushed out along the other portal's normal, momentum redirected
+      me.pos.x = O.pos.x + O.n.x * 1.0;
+      me.pos.z = O.pos.z + O.n.z * 1.0;
+      me.pos.y = Math.abs(O.n.y) > 0.5 ? O.pos.y + O.n.y * 0.4 : O.pos.y - 0.9 + O.n.y;
+      if (Math.abs(O.n.y) > 0.5) { me.vel.x *= 0.4; me.vel.z *= 0.4; me.vel.y = O.n.y * speed; }
+      else { me.vel.x = O.n.x * speed; me.vel.z = O.n.z * speed; me.vel.y = Math.max(2.7, me.vel.y * 0.25); me.ry = Math.atan2(-O.n.x, -O.n.z); }
+      me.grounded = false; me.sliding = false;
+      portalCd = cn + 0.07;
+      vmKick = Math.max(vmKick, 0.5);
+      sfx.dash();
+      break;
+    }
+  }
+}
+net.on('portal', (msg) => {
+  if (msg.id === net.id) return;
+  let st = otherPortals.get(msg.id);
+  if (!st) { st = { A: null, B: null }; otherPortals.set(msg.id, st); }
+  setPortal(st, msg.which, { x: msg.x, y: msg.y, z: msg.z }, { x: msg.nx, y: msg.ny, z: msg.nz }, true);
+});
+
 function frame() {
   requestAnimationFrame(frame);
   const now = performance.now() / 1000;
   const dt = Math.min(0.05, now - last);
   last = now;
   if (mobileOn) updateMobileHud();
+  tickPortals(dt);
   const cn = clockNow();
 
   stepMe(dt);
@@ -3405,7 +3564,11 @@ function frame() {
   }
   $('#crosshair').classList.toggle('ads', me.ads > 0.5);
 
+  renderer.autoClear = false;
+  renderer.clear();
   renderer.render(scene, camera);
+  renderer.clearDepth();               // viewmodel always draws over the world
+  renderer.render(vmScene, camera);
 }
 
 // ============================ go ============================

@@ -137,6 +137,12 @@ export function handleMessage(p, msg, ctx) {
       if (m) matchSend(m, { t: 'dash', id: p.id });
       return;
     }
+    case 'portal': { // Warper portal placement — cosmetic relay so others see the rings
+      const m = p.matchId && state.matches.get(p.matchId);
+      if (m) matchSend(m, { t: 'portal', id: p.id, which: msg.which === 'B' ? 'B' : 'A',
+        x: +msg.x || 0, y: +msg.y || 0, z: +msg.z || 0, nx: +msg.nx || 0, ny: +msg.ny || 0, nz: +msg.nz || 0 });
+      return;
+    }
     case 'nade': {
       const m = p.matchId && state.matches.get(p.matchId);
       const f = m?.fighters.get(p.id);
