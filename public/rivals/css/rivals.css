@@ -356,3 +356,88 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 .plat-badge { position: absolute; right: -4px; bottom: -4px; font-style: normal; font-size: 13px;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); pointer-events: none; }
 
+
+/* ================= RIVALS SKIN — skewed plates, italic 900 numbers, hard
+   outlines, flat saturated team colors, signature yellow accent ================= */
+:root { --rv-yellow: #ffd83d; --rv-blue: #3d6dff; --rv-red: #ff4d4d; --rv-ink: #10131b; }
+#hud, .overlay, #rv-toasts, #killfeed {
+  font-family: 'Arial Black', 'Avenir Next Condensed', ui-rounded, 'Arial Rounded MT Bold', sans-serif;
+}
+/* --- score plates: skewed parallelograms, flat team colors --- */
+.team-chip { transform: skewX(-8deg); border-radius: 10px; border: 3px solid var(--rv-ink);
+  border-bottom-width: 6px; background: var(--rv-blue); box-shadow: 0 5px 0 rgba(0,0,0,.35); }
+.team-chip.enemy { background: var(--rv-red); }
+.team-chip > *, #round-clock > * { transform: skewX(8deg); }
+.team-chip b { font-style: italic; font-size: 26px; -webkit-text-stroke: 1px var(--rv-ink); }
+#round-clock { transform: skewX(-8deg); border-radius: 10px; border: 3px solid var(--rv-ink);
+  border-bottom-width: 6px; background: #1c2029; font-style: italic; font-size: 22px; color: #fff; }
+#round-clock.urgent { color: var(--rv-red); animation: clockPulse .5s infinite; }
+@keyframes clockPulse { 50% { transform: skewX(-8deg) scale(1.08); } }
+/* --- ammo: giant italic counter on a skewed plate --- */
+#ammo-wrap { text-align: right; }
+#ammo-big { display: inline-block; transform: skewX(-8deg); background: rgba(16,19,27,.85);
+  border: 3px solid var(--rv-ink); border-radius: 12px; padding: 2px 16px 6px;
+  box-shadow: 0 5px 0 rgba(0,0,0,.4); }
+#ammo-big b { font-size: 58px; font-style: italic; color: #fff; -webkit-text-stroke: 1.5px var(--rv-ink); }
+#ammo-big span { font-size: 20px; font-style: italic; color: #8f99ad; }
+#weapon-name { display: inline-block; transform: skewX(-8deg); background: var(--rv-yellow); color: var(--rv-ink);
+  border: 3px solid var(--rv-ink); border-radius: 8px; padding: 3px 12px; font-style: italic;
+  font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em;
+  margin-top: 6px; text-shadow: none; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+/* --- loadout: keycap slot cards, active pops with yellow --- */
+.slot { border-radius: 10px; border: 3px solid var(--rv-ink); border-bottom-width: 6px;
+  background: #1c2029; transform: skewX(-6deg); }
+.slot > * { transform: skewX(6deg); }
+.slot.active { border-color: var(--rv-yellow); background: #2a2d1c;
+  box-shadow: 0 6px 0 rgba(0,0,0,.3), 0 0 16px rgba(255,216,61,.5); transform: skewX(-6deg) translateY(-5px); }
+.slot small { color: var(--rv-yellow); }
+/* --- health: chunky plate + trailing damage ghost --- */
+#health-wrap { height: 30px; border-radius: 10px; border: 3px solid var(--rv-ink);
+  transform: skewX(-8deg); background: #171a22; box-shadow: 0 5px 0 rgba(0,0,0,.35); overflow: hidden; }
+#hp-ghost { position: absolute; inset: 0; width: 100%; background: rgba(255,255,255,.55);
+  transition: width .9s ease .35s; border-radius: 0; }
+#health-bar { position: absolute; inset: 0; width: 100%; border-radius: 0;
+  background: linear-gradient(180deg,#4be07c,#2bb85c); transition: width .12s ease; }
+#health-bar.mid { background: linear-gradient(180deg,#ffd83d,#e0a82b); }
+#health-bar.low { background: linear-gradient(180deg,#ff6b5c,#e03a2b); }
+#health-num { transform: translateY(-50%) skewX(8deg); font-size: 16px; font-style: italic; -webkit-text-stroke: .8px var(--rv-ink); z-index: 2; }
+/* --- killfeed: skewed pills --- */
+.kf { transform: skewX(-8deg); border-radius: 8px; border: 2.5px solid var(--rv-ink);
+  border-bottom-width: 5px; background: rgba(16,19,27,.92); font-style: italic; font-weight: 900; }
+.kf .me { color: var(--rv-yellow); }
+/* --- round banner: huge skewed italic --- */
+#round-banner { font-size: 46px; font-style: italic; transform: translateX(-50%) skewX(-6deg);
+  -webkit-text-stroke: 2px var(--rv-ink);
+  text-shadow: 0 4px 0 var(--rv-ink), 0 8px 24px rgba(0,0,0,.6); }
+#freeze-count { font-style: italic; -webkit-text-stroke: 2px var(--rv-ink); text-shadow: 0 4px 0 var(--rv-ink); }
+/* --- elim banner: under the crosshair, yellow, pops --- */
+#elim-banner { position: fixed; left: 50%; top: 58%; transform: translateX(-50%) skewX(-6deg);
+  z-index: 33; text-align: center; pointer-events: none; }
+#elim-banner small { display: block; font-size: 15px; font-style: italic; font-weight: 900;
+  letter-spacing: .22em; color: #fff; -webkit-text-stroke: .8px var(--rv-ink); text-shadow: 0 2px 0 var(--rv-ink); }
+#elim-banner b { display: block; font-size: 34px; font-style: italic; color: var(--rv-yellow);
+  -webkit-text-stroke: 1.5px var(--rv-ink); text-shadow: 0 3px 0 var(--rv-ink), 0 6px 20px rgba(0,0,0,.5); }
+#elim-banner .streak { display: inline-block; margin-top: 4px; background: var(--rv-yellow); color: var(--rv-ink);
+  border: 2.5px solid var(--rv-ink); border-radius: 8px; padding: 2px 10px; font-size: 14px;
+  font-style: italic; font-weight: 900; box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+#elim-banner.pop { animation: elimPop .32s cubic-bezier(.2,1.6,.4,1); }
+@keyframes elimPop { 0% { transform: translateX(-50%) skewX(-6deg) scale(.5); opacity: 0; } 100% { transform: translateX(-50%) skewX(-6deg) scale(1); opacity: 1; } }
+/* --- low HP vignette --- */
+#low-vignette { position: fixed; inset: 0; z-index: 24; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(200,20,20,.38) 100%);
+  animation: lowPulse 1.1s ease-in-out infinite; }
+@keyframes lowPulse { 50% { opacity: .45; } }
+/* --- queue banner + toasts + reload on brand --- */
+#queue-banner { transform: translateX(-50%) skewX(-6deg); border: 3px solid var(--rv-ink); border-radius: 10px; font-style: italic; }
+#queue-banner > * { transform: skewX(6deg); }
+#queue-banner .qb-text b { color: var(--rv-yellow); }
+.rv-toast { transform: skewX(-6deg); border: 2.5px solid var(--rv-ink); border-radius: 8px; font-style: italic; }
+#reload-hint { font-style: italic; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; color: var(--rv-yellow); -webkit-text-stroke: .8px var(--rv-ink); }
+/* --- vote/podium headline accents --- */
+.vote-head, #podium-title { font-style: italic; -webkit-text-stroke: 2px var(--rv-ink); }
+#podium-title.win { color: var(--rv-yellow); }
+.vote-card.picked { border-color: var(--rv-yellow); box-shadow: 0 0 18px rgba(255,216,61,.4); }
+.vc-pct { color: var(--rv-yellow); }
+#map-card { border-color: var(--rv-yellow); border-bottom-color: #a8861e; box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 24px rgba(255,216,61,.3); }
+/* controls button clears the health bar */
+#kb-open { bottom: 64px; }

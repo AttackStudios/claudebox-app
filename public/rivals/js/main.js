@@ -2031,6 +2031,9 @@ function updateHpHud() {
   hud.hp.style.width = pct + '%';
   hud.hp.className = pct > 50 ? '' : pct > 25 ? 'mid' : 'low';
   hud.hpNum.textContent = Math.max(0, Math.round(me.hp));
+  const ghost = $('#hp-ghost');
+  if (ghost) ghost.style.width = pct + '%';   // trails via its slow CSS transition — shows the chunk you just lost
+  $('#low-vignette')?.classList.toggle('hidden', pct > 30 || me.dead);
 }
 function showHitmarker(head) {
   const el = $('#hitmarker');
@@ -2633,6 +2636,14 @@ net.on('launch', (msg) => { // your own grenade rocket-jumps you
   me.grounded = false; me.sliding = false;
   sfx.dash();
 });
+let killStreak = 0, elimTimer = 0;
+function showElimBanner(name, streak) {
+  const el = $('#elim-banner');
+  if (!el) return;
+  el.innerHTML = `<small>ELIMINATED</small><b>${name}</b>` + (streak > 1 ? `<span class="streak">${streak} STREAK</span>` : '');
+  el.classList.remove('hidden', 'pop'); void el.offsetWidth; el.classList.add('pop');
+  clearTimeout(elimTimer); elimTimer = setTimeout(() => el.classList.add('hidden'), 1900);
+}
 net.on('elim', (msg) => {
   const killer = msg.killer === net.id ? { name: identity.name } : game.roster.find((r) => r.id === msg.killer);
   const victim = msg.victim === net.id ? { name: identity.name } : game.roster.find((r) => r.id === msg.victim);
@@ -2640,9 +2651,11 @@ net.on('elim', (msg) => {
     msg.killer === net.id ? 'killer' : msg.victim === net.id ? 'victim' : null);
   // grey out chip avatar
   document.querySelectorAll(`.tc-avatars canvas[data-fid="${msg.victim}"]`).forEach((c) => c.classList.add('dead'));
-  if (msg.victim === net.id) { me.dead = true; sfx.death(); banner('💀 ELIMINATED', 1500); }
+  if (msg.victim === net.id) { me.dead = true; killStreak = 0; sfx.death(); banner('💀 ELIMINATED', 1500); }
   else if (msg.killer === net.id) {
     sfx.elim();
+    killStreak++;
+    showElimBanner(victim?.name || 'enemy', killStreak);
     if (!game.gotFirstElim) { game.gotFirstElim = true; window.ClaudeBox?.completeChallenge('rivals-elim'); }
     const o = others.get(msg.victim);
     if (o) o.data.dead = true;
