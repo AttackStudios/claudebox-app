@@ -42,6 +42,11 @@ function makeDisaster(id) {
     case 'acid': { const pools = []; for (let i = 0; i < 8; i++) pools.push({ x: rnd(-R, R), z: rnd(-R, R), r: rnd(2.5, 4), growAt: rnd(1, 10) }); return { id, pools }; }
     case 'thunderstorm': { const strikes = []; for (let i = 0; i < 15; i++) strikes.push({ x: rnd(-R, R), z: rnd(-R, R), t: rnd(1.5, ROUND.disaster - 2) }); return { id, strikes }; }
     case 'sandstorm': { const a = rnd(0, Math.PI * 2); return { id, windX: Math.cos(a), windZ: Math.sin(a) }; }
+    case 'hail': { const stones = []; for (let i = 0; i < 44; i++) stones.push({ x: rnd(-R, R), z: rnd(-R, R), t: rnd(1.5, ROUND.disaster - 2), r: rnd(1, 2) }); return { id, stones }; }
+    case 'heat': { const cool = { x: rnd(-R * 0.5, R * 0.5), z: rnd(-R * 0.5, R * 0.5), r: 5.5 }; return { id, cool, rampIn: 5 }; }
+    case 'toxic': { const a = rnd(0, Math.PI * 2), rr = rnd(0, R * 0.5); return { id, x: Math.cos(a) * rr, z: Math.sin(a) * rr, rate: R / (ROUND.disaster - 6) }; }
+    case 'avalanche': { const a = rnd(0, Math.PI * 2); const lanes = []; for (let i = 0; i < 7; i++) lanes.push({ off: rnd(-R * 0.9, R * 0.9), t: rnd(3, 12), r: rnd(2, 3.2) }); return { id, dirX: Math.cos(a), dirZ: Math.sin(a), speed: 16, lanes }; }
+    case 'ufo': { const strikes = []; for (let i = 0; i < 12; i++) strikes.push({ x: rnd(-R * 0.85, R * 0.85), z: rnd(-R * 0.85, R * 0.85), t: rnd(3, ROUND.disaster - 3) }); return { id, strikes }; }
     default: return { id };
   }
 }

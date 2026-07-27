@@ -400,7 +400,7 @@ function showSurvivors(ids) { const n = ids.length; toast(`${n} survivor${n === 
 
 // ============================ DISASTERS ============================
 let floodLevel = WATER_Y, floodMesh = null;
-function clearDisasters() { for (const d of activeDisasters) { if (d.mesh) scene.remove(d.mesh); if (d.extra) scene.remove(d.extra); } activeDisasters = []; if (floodMesh) { scene.remove(floodMesh); floodMesh = null; } floodLevel = WATER_Y; }
+function clearDisasters() { for (const d of activeDisasters) { if (d.mesh) scene.remove(d.mesh); if (d.extra) scene.remove(d.extra); for (const m of d.state?.meshes || []) if (m) scene.remove(m); for (const m of d.state?.meteors || []) if (m) scene.remove(m); } activeDisasters = []; if (floodMesh) { scene.remove(floodMesh); floodMesh = null; } floodLevel = WATER_Y; }
 function spawnDisasters(specs) {
   clearDisasters();
   for (const spec of specs) {
@@ -440,6 +440,31 @@ function spawnDisasters(specs) {
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       const sand = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#e8c67a', size: 0.4, transparent: true, opacity: 0.8, depthWrite: false }));
       sand.frustumCulled = false; scene.add(sand); d.extra = sand; d.state.sand = sand;
+    }
+    else if (spec.id === 'hail') { d.state = { fired: new Array(spec.stones.length).fill(false), meshes: [] }; }
+    else if (spec.id === 'heat') {
+      scene.fog = new THREE.FogExp2('#ffd9a0', participating ? 0.02 : 0.008);
+      const shade = new THREE.Mesh(new THREE.CircleGeometry(spec.cool.r, 28), new THREE.MeshBasicMaterial({ color: '#4db8ff', transparent: true, opacity: 0.3, depthWrite: false }));
+      shade.rotation.x = -Math.PI / 2; shade.position.set(spec.cool.x, 0.09, spec.cool.z); scene.add(shade); d.mesh = shade;
+      const brolly = new THREE.Mesh(new THREE.ConeGeometry(spec.cool.r * 0.7, 1.6, 10), new THREE.MeshLambertMaterial({ color: '#4db8ff' }));
+      brolly.position.set(spec.cool.x, 4, spec.cool.z); scene.add(brolly); d.extra = brolly;
+    }
+    else if (spec.id === 'toxic') {
+      const cloud = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#5ad04a', transparent: true, opacity: 0.32, depthWrite: false }));
+      cloud.position.set(spec.x, 0, spec.z); cloud.scale.set(0.1, 0.05, 0.1); scene.add(cloud); d.mesh = cloud; d.state = { r: 0 };
+    }
+    else if (spec.id === 'avalanche') {
+      d.mesh = new THREE.Group();
+      d.state = { boulders: spec.lanes.map((l) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(l.r, 1), new THREE.MeshLambertMaterial({ color: '#9aa2ae' })); m.visible = false; d.mesh.add(m); return { l, m, roll: 0 }; }) };
+      scene.add(d.mesh);
+    }
+    else if (spec.id === 'ufo') {
+      const g = new THREE.Group();
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(6, 8, 1.6, 20), new THREE.MeshLambertMaterial({ color: '#3a4048' }));
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(3, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#7affd0', transparent: true, opacity: 0.8 }));
+      dome.position.y = 0.8; g.add(disc, dome);
+      g.position.set(0, 34, 0); scene.add(g); d.mesh = g;
+      d.state = { fired: new Array(spec.strikes.length).fill(false), beams: [] };
     }
     activeDisasters.push(d);
   }
@@ -528,6 +553,63 @@ function updateDisasters(dt, elapsed) {
       if (Math.random() < dt * 4) { const wk = pieces.filter((q) => !q.broken && q.t === 'glass'); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 26); }
       const sand = d.state.sand;
       if (sand) { const arr = sand.geometry.attributes.position.array; for (let i = 0; i < arr.length; i += 3) { arr[i] += s.windX * dt * 26; arr[i + 2] += s.windZ * dt * 26; if (Math.abs(arr[i]) > 45 || Math.abs(arr[i + 2]) > 45) { arr[i] = -s.windX * 44 + (Math.random() - 0.5) * 30; arr[i + 2] = -s.windZ * 44 + (Math.random() - 0.5) * 30; arr[i + 1] = Math.random() * 14; } } sand.geometry.attributes.position.needsUpdate = true; sand.position.set(participating ? me.pos.x : 0, 0, participating ? me.pos.z : 0); }
+    } else if (s.id === 'hail') {
+      for (let i = 0; i < s.stones.length; i++) {
+        const st = s.stones[i];
+        if (!d.state.fired[i] && elapsed > st.t - 0.8 && !d.state.meshes[i]) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(st.r * 0.5, 0), new THREE.MeshLambertMaterial({ color: '#dff0ff' })); m.position.set(st.x, 44, st.z); scene.add(m); d.state.meshes[i] = m; }
+        const m = d.state.meshes[i];
+        if (m && !d.state.fired[i]) {
+          m.position.y = 44 - (elapsed - (st.t - 0.8)) / 0.8 * 44;
+          if (elapsed >= st.t) {
+            d.state.fired[i] = true; scene.remove(m);
+            boom(st.x, 0, st.z, st.r);
+            damageArea(st.x, st.z, st.r + 1, 130);   // shatters glass + frail bits
+            if (!me.dead && Math.hypot(me.pos.x - st.x, me.pos.z - st.z) < st.r + 0.8) damageMe(34, 'hail');
+          }
+        }
+      }
+    } else if (s.id === 'heat') {
+      const coolD = Math.hypot(me.pos.x - s.cool.x, me.pos.z - s.cool.z);
+      if (participating && !me.dead && elapsed > (s.rampIn || 5)) {
+        if (coolD > s.cool.r) damageMe(dt * 9, 'heatstroke');
+        $('status').textContent = coolD > s.cool.r ? '☀️ Heatstroke! Get to the shade!' : '⛱️ Shaded — stay cool';
+      }
+      if (Math.random() < dt * 2) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 60); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 30); }   // things scorch and crack
+      if (d.extra) d.extra.rotation.y += dt * 0.6;
+    } else if (s.id === 'toxic') {
+      d.state.r = Math.min(R_ISLAND * 1.15, Math.max(0, elapsed - 2) * s.rate);
+      d.mesh.scale.set(Math.max(0.1, d.state.r), Math.max(0.05, d.state.r * 0.45), Math.max(0.1, d.state.r));
+      const inCloud = Math.hypot(me.pos.x - s.x, me.pos.z - s.z) < d.state.r && me.pos.y < d.state.r * 0.45;
+      if (inCloud && participating && !me.dead) damageMe(dt * 22, 'toxic fog');
+      if (Math.random() < dt * 4) { const wk = pieces.filter((q) => !q.broken && q.maxHp > 0 && q.maxHp <= 130 && Math.hypot(q.x - s.x, q.z - s.z) < d.state.r); if (wk.length) damagePiece(wk[(Math.random() * wk.length) | 0], 60); }   // corrodes what it swallows
+    } else if (s.id === 'avalanche') {
+      const px2 = -s.dirZ, pz2 = s.dirX;   // perpendicular
+      for (const b of d.state.boulders) {
+        const run = (elapsed - b.l.t) * s.speed;
+        if (run < 0 || run > R_ISLAND * 2.6) { b.m.visible = false; continue; }
+        b.m.visible = true;
+        const sx2 = -s.dirX * R_ISLAND * 1.3 + px2 * b.l.off, sz2 = -s.dirZ * R_ISLAND * 1.3 + pz2 * b.l.off;
+        const bx2 = sx2 + s.dirX * run, bz2 = sz2 + s.dirZ * run;
+        b.roll += dt * s.speed / b.l.r;
+        b.m.position.set(bx2, b.l.r * 0.8, bz2); b.m.rotation.set(b.roll, 0, b.roll * 0.7);
+        damageArea(bx2, bz2, b.l.r + 1.2, dt * 900);   // grinds through everything
+        if (!me.dead && Math.hypot(me.pos.x - bx2, me.pos.z - bz2) < b.l.r + 0.9 && me.pos.y < b.l.r * 2) die('avalanche');
+      }
+    } else if (s.id === 'ufo') {
+      const a2 = elapsed * 0.5;
+      d.mesh.position.set(Math.cos(a2) * R_ISLAND * 0.5, 34, Math.sin(a2) * R_ISLAND * 0.5);
+      d.mesh.rotation.y += dt * 2;
+      for (let i = 0; i < s.strikes.length; i++) {
+        const st = s.strikes[i];
+        if (!d.state.fired[i] && elapsed >= st.t) {
+          d.state.fired[i] = true;
+          const beam = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.4, 40, 14, 1, true), new THREE.MeshBasicMaterial({ color: '#7affd0', transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
+          beam.position.set(st.x, 20, st.z); scene.add(beam);
+          setTimeout(() => scene.remove(beam), 700);
+          damageArea(st.x, st.z, 4, 9999);
+          if (!me.dead && Math.hypot(me.pos.x - st.x, me.pos.z - st.z) < 3.4) { me.vel.y = 22; setTimeout(() => die('abducted'), 350); }
+        }
+      }
     }
   }
 }

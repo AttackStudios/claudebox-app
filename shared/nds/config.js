@@ -25,6 +25,11 @@ export const DISASTERS = {
   blizzard:     { id: 'blizzard',     name: 'Blizzard',         emoji: '❄️', color: '#bfe4ff' },
   sandstorm:    { id: 'sandstorm',    name: 'Sandstorm',        emoji: '🏜️', color: '#d9b46a' },
   volcano:      { id: 'volcano',      name: 'Volcanic Eruption', emoji: '🌋', color: '#e03a10' },
+  hail:         { id: 'hail',         name: 'Hailstorm',        emoji: '🧊', color: '#bfe4ff' },
+  heat:         { id: 'heat',         name: 'Heat Wave',        emoji: '☀️', color: '#ffb03d' },
+  toxic:        { id: 'toxic',        name: 'Toxic Fog',        emoji: '☣️', color: '#7de04a' },
+  avalanche:    { id: 'avalanche',    name: 'Avalanche',        emoji: '🪨', color: '#c8d0da' },
+  ufo:          { id: 'ufo',          name: 'UFO Invasion',     emoji: '🛸', color: '#7affd0' },
 };
 export const DISASTER_IDS = Object.keys(DISASTERS);
 
