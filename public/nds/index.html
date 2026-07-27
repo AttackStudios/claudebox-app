@@ -34,6 +34,21 @@
   #hint { position: fixed; bottom: 16px; left: 16px; font-size: 12px; color: #9fb0c6; text-shadow: 0 1px 4px #000; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0f16; z-index: 10; color: #cfe0f0; font-weight: 800; font-size: 18px; }
   .hidden { display: none !important; }
+  /* mobile touch controls */
+  #mobile { position: fixed; inset: 0; z-index: 40; pointer-events: none; touch-action: none; }
+  #move-zone, #look-zone { position: absolute; top: 0; bottom: 0; pointer-events: auto; }
+  #move-zone { left: 0; width: 45%; }
+  #look-zone { right: 0; width: 55%; }
+  #joy { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%;
+    background: rgba(255,255,255,.1); border: 2px solid rgba(255,255,255,.35); pointer-events: none; }
+  #joy-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px;
+    border-radius: 50%; background: rgba(255,255,255,.55); border: 2px solid rgba(255,255,255,.85); }
+  #mobile button { position: absolute; pointer-events: auto; border: 2px solid rgba(255,255,255,.4);
+    background: rgba(20,24,34,.55); color: #fff; border-radius: 50%; width: 66px; height: 66px;
+    font-size: 28px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  #m-jump { right: 26px; bottom: 96px; }
+  #m-act { right: 108px; bottom: 56px; background: rgba(230,190,40,.3); border-color: #e6c445; }
+  @media (pointer: coarse) { #hint { display: none; } }
   .kbd { background: rgba(255,255,255,.14); border-radius: 5px; padding: 1px 6px; font-weight: 800; }
 </style>
 </head>
@@ -49,6 +64,13 @@
   <div id="hint"><span class="kbd">WASD</span> move · <span class="kbd">Space</span> jump · <span class="kbd">E</span> interact · click to look</div>
 </div>
 <div id="loading">Loading the island…</div>
+<div id="mobile" class="hidden">
+  <div id="move-zone"></div>
+  <div id="look-zone"></div>
+  <div id="joy" class="hidden"><div id="joy-knob"></div></div>
+  <button id="m-jump">⤒</button>
+  <button id="m-act">E</button>
+</div>
 <script type="module" src="/nds/js/main.js"></script>
 </body>
 </html>

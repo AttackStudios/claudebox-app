@@ -218,6 +218,29 @@ addEventListener('keyup', (e) => keys.delete(e.code));
 canvas.addEventListener('click', () => { if (!locked) canvas.requestPointerLock?.(); });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 addEventListener('mousemove', (e) => { if (!locked) return; camYaw -= e.movementX * 0.0024; camPitch = Math.max(-0.5, Math.min(1.1, camPitch + e.movementY * 0.0022)); });
+
+// ---- mobile touch controls: joystick (left half) + drag-look (right half) ----
+const mobileOn = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || location.search.includes('touch=1');
+const tJoy = { f: 0, s: 0 };
+if (mobileOn) {
+  $('mobile').classList.remove('hidden');
+  const joy = $('joy'), knob = $('joy-knob'), mz = $('move-zone'), lz = $('look-zone');
+  let joyId = null, joyCX = 0, joyCY = 0;
+  mz.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; joyId = t.identifier; joyCX = t.clientX; joyCY = t.clientY; joy.style.left = joyCX + 'px'; joy.style.top = joyCY + 'px'; joy.classList.remove('hidden'); }, { passive: true });
+  mz.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) { if (t.identifier !== joyId) continue; let dx = t.clientX - joyCX, dy = t.clientY - joyCY; const d = Math.hypot(dx, dy), m = 46; if (d > m) { dx *= m / d; dy *= m / d; } knob.style.transform = `translate(${dx}px,${dy}px)`; tJoy.s = dx / m; tJoy.f = -dy / m; } }, { passive: true });
+  const joyEnd = (e) => { for (const t of e.changedTouches) { if (t.identifier !== joyId) continue; joyId = null; tJoy.f = tJoy.s = 0; knob.style.transform = ''; joy.classList.add('hidden'); } };
+  mz.addEventListener('touchend', joyEnd); mz.addEventListener('touchcancel', joyEnd);
+  let lookId = null, lx = 0, ly = 0;
+  lz.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; lookId = t.identifier; lx = t.clientX; ly = t.clientY; }, { passive: true });
+  lz.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) { if (t.identifier !== lookId) continue; camYaw -= (t.clientX - lx) * 0.006; camPitch = Math.max(-0.5, Math.min(1.1, camPitch + (t.clientY - ly) * 0.005)); lx = t.clientX; ly = t.clientY; } }, { passive: true });
+  const lookEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null; };
+  lz.addEventListener('touchend', lookEnd); lz.addEventListener('touchcancel', lookEnd);
+  const jb = $('m-jump');
+  jb.addEventListener('touchstart', (e) => { e.preventDefault(); keys.add('Space'); }, { passive: false });
+  const jEnd = (e) => { e.preventDefault(); keys.delete('Space'); };
+  jb.addEventListener('touchend', jEnd, { passive: false }); jb.addEventListener('touchcancel', jEnd, { passive: false });
+  $('m-act').addEventListener('touchstart', (e) => { e.preventDefault(); tryInteract(); }, { passive: false });
+}
 addEventListener('wheel', (e) => { camDist = Math.max(4, Math.min(16, camDist + Math.sign(e.deltaY))); });
 
 
@@ -552,8 +575,8 @@ function frame() {
   // movement (only while alive; dead = spectate float)
   const mv = new THREE.Vector3();
   if (locked || true) {
-    const f = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
-    const s = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+    const f = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) + tJoy.f;
+    const s = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0) + tJoy.s;
     if (f || s) { const yaw = camYaw; mv.x = (-Math.sin(yaw) * f + Math.cos(yaw) * s); mv.z = (-Math.cos(yaw) * f - Math.sin(yaw) * s); mv.normalize(); }
   }
   const moving = mv.lengthSq() > 0.01;
