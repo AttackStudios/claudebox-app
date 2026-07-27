@@ -1496,29 +1496,25 @@ const BF_TRK = {
   // DURING a full twirl, second fan DURING a sweep, aerial twirl INTO the side
   // pose, latch-rattle snap home. At least two channels are moving at all times.
   inspect: {
-    // 9.0s — beat-for-beat off the RIVALS footage: raise BIG center-screen
-    // blade-up vertical → close/open flip → flat wide-V fan → 360 twirl →
-    // icepick flip w/ "bunny-ear" split handles + wiggle → snap shut → brief
-    // carry breath → relaunch: spins → side-lying horizontal → wide-V finale
-    // → snap shut + latch rattle → settle to carry.
-    vx:   [{ t: 0, v: 0 }, { t: 0.05, v: -0.1, e: 'outExpo' }, { t: 0.25, v: -0.06, e: 'inOutCubic' }, { t: 0.45, v: -0.1, e: 'inOutCubic' }, { t: 0.5, v: -0.03, e: 'outBack' }, { t: 0.62, v: -0.09, e: 'outExpo' }, { t: 0.8, v: -0.05, e: 'inOutCubic' }, { t: 0.97, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vy:   [{ t: 0, v: 0 }, { t: 0.05, v: 0.19, e: 'outExpo' }, { t: 0.2, v: 0.15, e: 'inOutCubic' }, { t: 0.28, v: 0.21, e: 'inOutCubic' }, { t: 0.36, v: 0.1, e: 'inOutCubic' }, { t: 0.44, v: 0.14, e: 'inOutCubic' }, { t: 0.5, v: 0.04, e: 'outBack' }, { t: 0.56, v: 0.05 }, { t: 0.62, v: 0.16, e: 'outExpo' }, { t: 0.74, v: 0.12, e: 'inOutCubic' }, { t: 0.82, v: 0.18, e: 'inOutCubic' }, { t: 0.9, v: 0.12, e: 'inOutCubic' }, { t: 0.97, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vz:   [{ t: 0, v: 0 }, { t: 0.05, v: -0.42, e: 'outExpo' }, { t: 0.46, v: -0.38, e: 'inOutCubic' }, { t: 0.5, v: -0.1, e: 'outBack' }, { t: 0.56, v: -0.12 }, { t: 0.62, v: -0.4, e: 'outExpo' }, { t: 0.9, v: -0.36, e: 'inOutCubic' }, { t: 0.97, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vrx:  [{ t: 0, v: 0 }, { t: 0.05, v: 0.15, e: 'outExpo' }, { t: 0.3, v: 0.05, e: 'inOutCubic' }, { t: 0.5, v: 0.02, e: 'inOutCubic' }, { t: 0.62, v: 0.12, e: 'outExpo' }, { t: 0.9, v: 0.04, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    vry:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.2, e: 'outExpo' }, { t: 0.3, v: 0.1, e: 'inOutCubic' }, { t: 0.45, v: 0.25, e: 'inOutCubic' }, { t: 0.5, v: 0.05, e: 'outBack' }, { t: 0.66, v: 0.3, e: 'inOutCubic' }, { t: 0.85, v: 0.15, e: 'inOutCubic' }, { t: 0.97, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vrz:  [{ t: 0, v: 0 }, { t: 0.08, v: -0.12, e: 'outExpo' }, { t: 0.28, v: 0.1, e: 'inOutCubic' }, { t: 0.5, v: 0, e: 'inOutCubic' }, { t: 0.68, v: 0.15, e: 'inOutCubic' }, { t: 0.85, v: -0.08, e: 'inOutCubic' }, { t: 0.97, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    // wrist ONLY rocks — the hand never lets go; all the flipping below is the
-    // blade + bite handle swinging around the pin (like a real balisong)
-    pRx:  [{ t: 0, v: 0 }, { t: 0.05, v: -0.35, e: 'outExpo' }, { t: 0.2, v: -0.2, e: 'inOutCubic' }, { t: 0.36, v: 0.3, e: 'inOutCubic' }, { t: 0.44, v: 0.15, e: 'inOutCubic' }, { t: 0.5, v: 0, e: 'outBack' }, { t: 0.56, v: 0 }, { t: 0.62, v: -0.3, e: 'outExpo' }, { t: 0.74, v: -0.15, e: 'inOutCubic' }, { t: 0.85, v: -0.25, e: 'inOutCubic' }, { t: 0.97, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    pRy:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.25, e: 'outExpo' }, { t: 0.16, v: -0.3, e: 'inOutCubic' }, { t: 0.24, v: 0.3, e: 'inOutCubic' }, { t: 0.32, v: -0.25, e: 'inOutCubic' }, { t: 0.4, v: 0.2, e: 'inOutCubic' }, { t: 0.5, v: 0, e: 'inOutCubic' }, { t: 0.6, v: 0.3, e: 'inOutCubic' }, { t: 0.7, v: -0.3, e: 'inOutCubic' }, { t: 0.8, v: 0.25, e: 'inOutCubic' }, { t: 0.9, v: -0.15, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    pRz:  [{ t: 0, v: 0 }, { t: 0.14, v: -0.25, e: 'inOutCubic' }, { t: 0.22, v: 0.85, e: 'outExpo' }, { t: 0.3, v: 0.85 }, { t: 0.34, v: 0, e: 'outBack' }, { t: 0.44, v: 0.2, e: 'inOutCubic' }, { t: 0.5, v: 0, e: 'inOutCubic' }, { t: 0.62, v: -0.2, e: 'inOutCubic' }, { t: 0.68, v: 1.2, e: 'outExpo' }, { t: 0.74, v: 1.2 }, { t: 0.8, v: -0.15, e: 'outExpo' }, { t: 0.9, v: 0.08, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    // THE STAR: the blade spins around the pin — double spin on the raise,
-    // blade-up display, rollover spin, icepick drop, spin-outs, finale spin.
-    // Always lands on an open multiple of 2pi; never folds toward the palm.
-    bRx:  [{ t: 0, v: 0 }, { t: 0.05, v: -12.57, e: 'outExpo' }, { t: 0.1, v: -14.14, e: 'outBack' }, { t: 0.14, v: -14.14 }, { t: 0.2, v: -18.85, e: 'outExpo' }, { t: 0.28, v: -18.85 }, { t: 0.31, v: -18.5, e: 'outExpo' }, { t: 0.34, v: -18.85, e: 'outBack' }, { t: 0.4, v: -20.42, e: 'outBack' }, { t: 0.44, v: -20.42 }, { t: 0.5, v: -25.13, e: 'outExpo' }, { t: 0.56, v: -25.13 }, { t: 0.62, v: -37.7, e: 'outExpo' }, { t: 0.68, v: -39.27, e: 'outBack' }, { t: 0.74, v: -39.27 }, { t: 0.8, v: -43.98, e: 'outExpo' }, { t: 0.9, v: -43.98 }, { t: 1, v: -43.98 }],
-    // bite handle chases the blade: fans, V poses, bunny-ear wiggle, latch
-    hARx: [{ t: 0, v: 0 }, { t: 0.06, v: -6.28, e: 'outExpo' }, { t: 0.1, v: -7.85, e: 'outBack' }, { t: 0.14, v: -7.85 }, { t: 0.2, v: -12.57, e: 'outExpo' }, { t: 0.24, v: -14.77, e: 'outExpo' }, { t: 0.28, v: -14.77 }, { t: 0.3, v: -12.4, e: 'outExpo' }, { t: 0.33, v: -14.9, e: 'outExpo' }, { t: 0.36, v: -12.07, e: 'outBack' }, { t: 0.4, v: -12.35, e: 'inOutCubic' }, { t: 0.44, v: -12.0, e: 'inOutCubic' }, { t: 0.5, v: -18.85, e: 'outExpo' }, { t: 0.56, v: -18.85 }, { t: 0.64, v: -31.42, e: 'outExpo' }, { t: 0.7, v: -33.62, e: 'outBack' }, { t: 0.74, v: -33.62 }, { t: 0.77, v: -31.2, e: 'outExpo' }, { t: 0.8, v: -33.8, e: 'outExpo' }, { t: 0.83, v: -31.42, e: 'outBack' }, { t: 0.88, v: -37.7, e: 'outExpo' }, { t: 0.95, v: -37.2, e: 'outExpo' }, { t: 1, v: -37.7, e: 'outElastic' }],
-    hBRx: [{ t: 0, v: 0 }, { t: 0.1, v: 0.08, e: 'inOutCubic' }, { t: 0.2, v: -0.06, e: 'inOutCubic' }, { t: 0.3, v: 0.08, e: 'inOutCubic' }, { t: 0.4, v: -0.05, e: 'inOutCubic' }, { t: 0.5, v: 0, e: 'inOutCubic' }, { t: 0.62, v: 0.08, e: 'inOutCubic' }, { t: 0.74, v: -0.06, e: 'inOutCubic' }, { t: 0.85, v: 0.05, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],   // held handle: grip never opens, just a tiny jiggle
+    // 5.5s, the exact routine: raise -> ONE clean flip -> pause at open display
+    // -> flip again, landing BLADE-DOWN -> hold it -> flip back to normal grip
+    // -> settle. Grip planted the whole time; pauses are real, spins are clean.
+    vx:   [{ t: 0, v: 0 }, { t: 0.06, v: -0.09, e: 'outExpo' }, { t: 0.86, v: -0.07, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.06, v: 0.16, e: 'outExpo' }, { t: 0.3, v: 0.14, e: 'inOutCubic' }, { t: 0.36, v: 0.17, e: 'outExpo' }, { t: 0.46, v: 0.13, e: 'inOutCubic' }, { t: 0.64, v: 0.16, e: 'inOutCubic' }, { t: 0.8, v: 0.13, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.06, v: -0.4, e: 'outExpo' }, { t: 0.86, v: -0.36, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.06, v: 0.12, e: 'outExpo' }, { t: 0.9, v: 0.05, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.2, e: 'outExpo' }, { t: 0.4, v: 0.12, e: 'inOutCubic' }, { t: 0.7, v: 0.22, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.08, v: -0.1, e: 'outExpo' }, { t: 0.5, v: 0.08, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    // wrist: gentle presentation only
+    pRx:  [{ t: 0, v: 0 }, { t: 0.06, v: -0.3, e: 'outExpo' }, { t: 0.3, v: -0.2, e: 'inOutCubic' }, { t: 0.36, v: -0.3, e: 'inOutCubic' }, { t: 0.5, v: 0.15, e: 'inOutCubic' }, { t: 0.62, v: 0.15 }, { t: 0.7, v: -0.2, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRy:  [{ t: 0, v: 0 }, { t: 0.12, v: 0.2, e: 'inOutCubic' }, { t: 0.24, v: -0.15, e: 'inOutCubic' }, { t: 0.4, v: 0.15, e: 'inOutCubic' }, { t: 0.56, v: -0.12, e: 'inOutCubic' }, { t: 0.72, v: 0.15, e: 'inOutCubic' }, { t: 0.9, v: -0.08, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    pRz:  [{ t: 0, v: 0 }, { t: 0.2, v: -0.15, e: 'inOutCubic' }, { t: 0.36, v: 0.2, e: 'inOutCubic' }, { t: 0.52, v: -0.12, e: 'inOutCubic' }, { t: 0.7, v: 0.15, e: 'inOutCubic' }, { t: 0.96, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    // blade: flip #1 lands open, flip #2 lands BLADE-DOWN (-14.13 = -1.57 mod 2pi),
+    // flip #3 returns to open grip (-18.85 = -6pi). Overshoot + settle on each land.
+    bRx:  [{ t: 0, v: 0 }, { t: 0.05, v: 0 }, { t: 0.16, v: -6.28, e: 'outExpo' }, { t: 0.19, v: -6.13, e: 'outBack' }, { t: 0.3, v: -6.28, e: 'inOutCubic' }, { t: 0.42, v: -14.35, e: 'outExpo' }, { t: 0.48, v: -14.13, e: 'outBack' }, { t: 0.62, v: -14.13 }, { t: 0.74, v: -18.6, e: 'outExpo' }, { t: 0.78, v: -18.95, e: 'outBack' }, { t: 0.84, v: -18.85, e: 'outQuad' }, { t: 1, v: -18.85 }],
+    // bite handle chases the blade a beat behind, wiggles during the blade-down hold
+    hARx: [{ t: 0, v: 0 }, { t: 0.06, v: 0 }, { t: 0.17, v: -6.28, e: 'outExpo' }, { t: 0.2, v: -6.1, e: 'outBack' }, { t: 0.3, v: -6.28, e: 'inOutCubic' }, { t: 0.43, v: -12.57, e: 'outExpo' }, { t: 0.5, v: -12.57 }, { t: 0.55, v: -12.4, e: 'inOutCubic' }, { t: 0.6, v: -12.57, e: 'inOutCubic' }, { t: 0.75, v: -18.85, e: 'outExpo' }, { t: 0.8, v: -18.55, e: 'outBack' }, { t: 0.88, v: -18.85, e: 'outQuad' }, { t: 0.96, v: -18.7, e: 'outExpo' }, { t: 1, v: -18.85, e: 'outElastic' }],
+    hBRx: [{ t: 0, v: 0 }, { t: 0.17, v: 0.06, e: 'inOutCubic' }, { t: 0.3, v: 0, e: 'inOutCubic' }, { t: 0.43, v: -0.06, e: 'inOutCubic' }, { t: 0.62, v: 0, e: 'inOutCubic' }, { t: 0.76, v: 0.06, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],   // held handle: planted
   },
 };
 
@@ -2923,7 +2919,7 @@ function frame() {
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
     vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
     vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
-    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 9.0);
+    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 5.5);
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
@@ -3032,7 +3028,7 @@ function frame() {
       const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
       px += trackVal(T.vx, t); py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
       rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
-      for (const cue of [0.05, 0.09, 0.18, 0.3, 0.36, 0.5, 0.6, 0.65, 0.76, 0.9]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
+      for (const cue of [0.06, 0.16, 0.42, 0.48, 0.74, 0.8]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
       vmAnim.bfInspectPrev = t;
     }
 
