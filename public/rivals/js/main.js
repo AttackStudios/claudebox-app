@@ -387,9 +387,10 @@ addEventListener('keydown', (e) => {
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
   if (c === binds.sprint || c === binds.crouch) tryCrouch(true);   // Shift OR Ctrl = slide/crouch
   if (c === binds.jump) tryAirJump();                              // Daggers: mid-air double jump
-  if (c === (binds.inspect || 'KeyF') && me.weapon === 'butterfly' && !me.dead
-      && vmAnim.bfInspectT >= 1 && vmAnim.swingT >= 1 && vmAnim.bfStabT >= 1 && vmAnim.equipT >= 1) {
-    vmAnim.bfInspectT = 0; vmAnim.bfInspectPrev = 0;               // butterfly inspect showcase
+  if (c === (binds.inspect || 'KeyF') && !me.dead && !me.reloading
+      && vmAnim.bfInspectT >= 1 && vmAnim.swingT >= 1 && vmAnim.bfStabT >= 1 && vmAnim.equipT >= 1 && vmAnim.throwT >= 1) {
+    vmAnim.inspectDur = INSPECT_DUR[inspectClassFor(me.weapon)];   // every weapon gets an inspect
+    vmAnim.bfInspectT = 0; vmAnim.bfInspectPrev = 0;
   }
 });
 addEventListener('keyup', (e) => {
@@ -530,6 +531,7 @@ function tryCrouch(on) {
 }
 
 function onRightDown() {
+  vmAnim.bfInspectT = 1;   // aiming/alt-fire cancels an inspect
   if (me.weapon === 'butterfly') {
     // HEAVY STAB — flip to reverse icepick grip and drive down. Same server
     // melee (backstab from behind still one-shots); heavier animation + lockout.
@@ -1449,6 +1451,7 @@ const vmAnim = {
   bfStabT: 1,                   // butterfly: reverse-grip heavy stab (right-click)
   bfInspectT: 1, bfInspectPrev: 1,   // butterfly: F inspect showcase
   boltT: 1,                     // sniper: work the bolt after every shot
+  inspectDur: 5.5,              // duration of the running inspect (per weapon class)
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -1529,6 +1532,44 @@ const BF_TRK = {
   },
 };
 
+// ---- generic inspects (F) for every other weapon class ----
+const GEN_INSPECT = {
+  gun: {   // 2.6s: raise, show the left face, roll to the right face, tip up, back
+    vx:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.12, e: 'outExpo' }, { t: 0.85, v: -0.1, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vy:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.1, e: 'outExpo' }, { t: 0.75, v: 0.08, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.18, e: 'outExpo' }, { t: 0.75, v: -0.16, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vrx: [{ t: 0, v: 0 }, { t: 0.1, v: 0.15, e: 'outExpo' }, { t: 0.35, v: 0.1, e: 'inOutCubic' }, { t: 0.6, v: 0.35, e: 'inOutCubic' }, { t: 0.8, v: 0.15, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vry: [{ t: 0, v: 0 }, { t: 0.12, v: 0.55, e: 'outExpo' }, { t: 0.35, v: 0.55 }, { t: 0.5, v: -0.75, e: 'inOutCubic' }, { t: 0.68, v: -0.75 }, { t: 0.85, v: -0.2, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vrz: [{ t: 0, v: 0 }, { t: 0.12, v: 0.35, e: 'outExpo' }, { t: 0.35, v: 0.3, e: 'inOutCubic' }, { t: 0.5, v: -0.3, e: 'inOutCubic' }, { t: 0.68, v: -0.35 }, { t: 1, v: 0, e: 'outBack' }],
+  },
+  melee: {   // 2.6s: raise, edge-on admire both sides, spin-flourish (part-level), back
+    vx:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.1, e: 'outExpo' }, { t: 0.85, v: -0.08, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vy:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.14, e: 'outExpo' }, { t: 0.8, v: 0.11, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.3, e: 'outExpo' }, { t: 0.8, v: -0.26, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vrx: [{ t: 0, v: 0 }, { t: 0.1, v: 0.2, e: 'outExpo' }, { t: 0.3, v: 0.1, e: 'inOutCubic' }, { t: 0.75, v: 0.15, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vry: [{ t: 0, v: 0 }, { t: 0.12, v: 0.5, e: 'outExpo' }, { t: 0.4, v: 0.5 }, { t: 0.55, v: -0.4, e: 'inOutCubic' }, { t: 0.75, v: -0.4 }, { t: 1, v: 0, e: 'outBack' }],
+    vrz: [{ t: 0, v: 0 }, { t: 0.12, v: -0.25, e: 'outExpo' }, { t: 0.55, v: 0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+  },
+  util: {   // 2.2s: hold it up + (part-level turntable), small toss-catch, back
+    vx:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.12, e: 'outExpo' }, { t: 0.85, v: -0.1, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vy:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.16, e: 'outExpo' }, { t: 0.8, v: 0.13, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.28, e: 'outExpo' }, { t: 0.8, v: -0.24, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vrx: [{ t: 0, v: 0 }, { t: 0.1, v: 0.2, e: 'outExpo' }, { t: 0.8, v: 0.1, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vry: [{ t: 0, v: 0 }, { t: 0.15, v: 0.3, e: 'outExpo' }, { t: 0.7, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vrz: [{ t: 0, v: 0 }, { t: 0.12, v: -0.12, e: 'outExpo' }, { t: 0.6, v: 0.12, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+  },
+  fists: {   // 1.8s: raise the fists, knuckle-flex (part-level does the work)
+    vx:  [{ t: 0, v: 0 }, { t: 1, v: 0 }],
+    vy:  [{ t: 0, v: 0 }, { t: 0.15, v: 0.05, e: 'outExpo' }, { t: 0.85, v: 0.04 }, { t: 1, v: 0, e: 'outBack' }],
+    vz:  [{ t: 0, v: 0 }, { t: 0.15, v: -0.06, e: 'outExpo' }, { t: 0.85, v: -0.05 }, { t: 1, v: 0, e: 'outBack' }],
+    vrx: [{ t: 0, v: 0 }, { t: 0.15, v: 0.1, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    vry: [{ t: 0, v: 0 }, { t: 1, v: 0 }],
+    vrz: [{ t: 0, v: 0 }, { t: 1, v: 0 }],
+  },
+};
+const inspectClassFor = (w) => (w === 'butterfly' ? 'butterfly' : WEAPONS[w]?.mag ? 'gun' : w === 'fists' ? 'fists' : WEAPONS[w]?.melee ? 'melee' : 'util');
+const INSPECT_DUR = { butterfly: 5.5, gun: 2.6, melee: 2.6, fists: 1.8, util: 2.2 };
+
 function freshAmmo() {
   const a = {};
   for (const [k, w] of Object.entries(WEAPONS)) if (w.mag) a[k] = { mag: w.mag, res: w.reserve };
@@ -1567,6 +1608,7 @@ function finishReload() {
 }
 
 function tryFire() {
+  vmAnim.bfInspectT = 1;   // any attack intent cancels an inspect
   if ((!locked && !mobileOn) || me.dead) return;
   if (game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium') return;
   const now = clockNow();
@@ -2746,7 +2788,7 @@ function enterLobby(fromMatch) {
 const KB_ACTIONS = [
   ['forward', 'Move Forward'], ['back', 'Move Back'], ['left', 'Move Left'], ['right', 'Move Right'],
   ['jump', 'Jump'], ['sprint', 'Sprint'], ['crouch', 'Crouch / Slide'], ['reload', 'Reload'], ['queue', 'Open Queue'],
-  ['inspect', 'Inspect knife'],
+  ['inspect', 'Inspect weapon'],
   ['weapon1', 'Slot 1 · Rifle'], ['weapon2', 'Slot 2 · Handgun'], ['weapon3', 'Slot 3 · Knife'],
   ['weapon4', 'Slot 4 · Grenade'], ['weapon5', 'Slot 5 · Sniper'], ['weapon6', 'Slot 6 · Fists'],
 ];
@@ -2931,7 +2973,7 @@ function frame() {
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
     vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
     vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
-    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 5.5);
+    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / (vmAnim.inspectDur || 5.5));
     vmAnim.boltT = Math.min(1, vmAnim.boltT + dt / 0.55);
   }
 
@@ -3060,12 +3102,16 @@ function frame() {
       py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
       rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
     }
-    // butterfly INSPECT: the full keyframed showcase (arm channel)
-    if (me.weapon === 'butterfly' && vmAnim.bfInspectT < 1) {
-      const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
+    // INSPECT (every weapon): butterfly runs its balisong routine, the rest
+    // run their class routine (gun examine / melee admire / util turntable / fists)
+    if (vmAnim.bfInspectT < 1) {
+      const t = vmAnim.bfInspectT;
+      const cls = inspectClassFor(me.weapon);
+      const T = cls === 'butterfly' ? BF_TRK.inspect : GEN_INSPECT[cls];
       px += trackVal(T.vx, t); py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
       rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
-      for (const cue of [0.06, 0.16, 0.42, 0.48, 0.74, 0.8]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
+      const cues = cls === 'butterfly' ? [0.06, 0.16, 0.42, 0.48, 0.74, 0.8] : [0.08];
+      for (const cue of cues) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne(cls === 'butterfly' || cls === 'melee' ? 'knife' : 'equip', 0.35);
       vmAnim.bfInspectPrev = t;
     }
 
@@ -3140,6 +3186,31 @@ function frame() {
           P.lArm.position.y -= 0.08 * Math.sin(t * Math.PI);  // off-hand stays low
         }
       }
+      // ---- generic inspect part-flavor (non-butterfly) ----
+      if (vmAnim.bfInspectT < 1 && me.weapon !== 'butterfly') {
+        const t = vmAnim.bfInspectT;
+        const cls = inspectClassFor(me.weapon);
+        if (cls === 'gun') {
+          // glance at the mag: left hand drops to it mid-inspect; AR's mag wiggles
+          const check = Math.sin(sstep(0.55, 0.85, t) * Math.PI);
+          P.lArm.position.y -= check * 0.1; P.lArm.rotation.x -= check * 0.35;
+          const FXi = vm.userData.fx;
+          if (FXi?.mag) { FXi.mag.position.y = -0.15 - check * 0.05; FXi.mag.rotation.z = check * 0.15; }
+        } else if (cls === 'melee') {
+          // one clean spin-flourish at the halfway mark
+          P.gun.rotation.x += EASES.outExpo(sstep(0.45, 0.75, t)) * -6.283;
+        } else if (cls === 'util') {
+          // turntable the gadget + a tiny toss-catch at the end
+          P.gun.rotation.y += EASES.inOutCubic(sstep(0.12, 0.75, t)) * 6.283;
+          P.gun.position.y += Math.sin(sstep(0.78, 0.96, t) * Math.PI) * 0.09;
+        } else if (cls === 'fists') {
+          // raise both fists and roll the knuckles out
+          const raise = sstep(0, 0.2, t) * (1 - sstep(0.8, 1, t));
+          const knuck = Math.sin(sstep(0.25, 0.7, t) * Math.PI);
+          for (const arm of [P.rArm, P.lArm]) { arm.position.y += raise * 0.16; arm.position.z -= raise * 0.2; arm.rotation.x -= raise * 0.55; }
+          P.rArm.rotation.z += knuck * 0.85; P.lArm.rotation.z -= knuck * 0.85;
+        }
+      }
       // ---- universal idle breathing (per class) ----
       const wDef = WEAPONS[me.weapon] || {};
       if (!P.isCatPaw) {
@@ -3152,6 +3223,7 @@ function frame() {
       if (FX) {
         if (FX.slide) { FX.slide.position.z = FX.slide.userData.z0 + vmKick * 0.11; FX.serr.position.z = FX.serr.userData.z0 + vmKick * 0.11; }
         if (FX.bolt && vmKey === 'ar') FX.bolt.position.z = FX.bolt.userData.z0 + vmKick * 0.07;
+        if (FX.mag && vmAnim.bfInspectT >= 1) { FX.mag.position.y = -0.15; FX.mag.rotation.z = 0; }   // reset after mag-check inspect
         // sniper: work the bolt between shots — hand comes up, bolt back + forward
         if (FX.bolt && vmKey === 'sniper') {
           if (vmAnim.boltT < 1 && !me.reloading) {
