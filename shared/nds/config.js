@@ -413,6 +413,167 @@ function surfMap() {
   return P;
 }
 
+// ===================== SUNNY RANCH (barn, silo, farmhouse) =====================
+function ranchMap() {
+  const P = [];
+  const grass = '#7aae54', barnR = '#b5372a', barnT = '#e8e2d0', roof = '#6a4a3a', wood = '#8a6a44',
+        hay = '#d8b84a', silo = '#c8ccd4', fence = '#c9b98a', win = '#bfe0f0';
+  add(P, 0, -1, 0, 75, 2, 75, grass, INDEST, { t: 'field' });
+  add(P, 18, 0.05, 0, 10, 0.1, 60, '#a89a7a', INDEST, { t: 'deco', ns: 1 });      // dirt track
+  // ---- the big red barn ----
+  const bx = -10, bz = 0, bw = 16, bd = 12, wh = 5;
+  add(P, bx, 0.25, bz, bw, 0.5, bd, wood, INDEST, { t: 'floor' });
+  add(P, bx, wh / 2, bz + bd / 2, bw, wh, 0.5, barnR, MED, { t: 'wall' });        // back
+  add(P, bx - bw / 2, wh / 2, bz, 0.5, wh, bd, barnR, MED, { t: 'wall' });
+  add(P, bx + bw / 2, wh / 2, bz, 0.5, wh, bd, barnR, MED, { t: 'wall' });
+  add(P, bx - 5.5, wh / 2, bz - bd / 2, 5, wh, 0.5, barnR, MED, { t: 'wall' });   // front — big open door mid
+  add(P, bx + 5.5, wh / 2, bz - bd / 2, 5, wh, 0.5, barnR, MED, { t: 'wall' });
+  add(P, bx, wh + 0.9, bz - bd / 2, bw, 1.8, 0.5, barnT, MED, { t: 'gable' });
+  add(P, bx, wh + 0.9, bz + bd / 2, bw, 1.8, 0.5, barnT, MED, { t: 'gable' });
+  // hayloft (half-depth upper floor) + crate ladder
+  add(P, bx, 3.9, bz + 3, bw - 1, 0.4, bd / 2 - 1, wood, WOOD, { t: 'loft' });    // loft 4.1
+  add(P, bx - 6.4, 0.75, bz - 2.5, 1.6, 1.5, 1.6, hay, WOOD, { t: 'hay' });
+  add(P, bx - 6.5, 1.35, bz + 0.4, 1.6, 2.7, 1.6, hay, WOOD, { t: 'hay' });
+  add(P, bx - 6.4, 1.95, bz + 3.2, 1.6, 3.9, 1.6, hay, WOOD, { t: 'hay' });       // -> loft
+  // gambrel-ish roof: stepped WEAK slabs, ridge = flood refuge
+  for (let i = 0; i < 3; i++) {
+    const inset = i * 2.6, h = wh + 1.6 + i * 1.15;
+    add(P, bx - (bw / 2) + inset / 2 + 0.6, h, bz, 3, 0.6, bd + 1, roof, WEAK, { t: 'roof' });
+    add(P, bx + (bw / 2) - inset / 2 - 0.6, h, bz, 3, 0.6, bd + 1, roof, WEAK, { t: 'roof' });
+  }
+  add(P, bx, wh + 4.6, bz, 4.4, 0.6, bd + 1, roof, WEAK, { t: 'ridge' });         // 9.9? wh5+4.6=9.6 top 9.9
+  // loft -> roof crate
+  add(P, bx + 6.6, 2.7, bz + 4, 1.5, 5.4, 1.5, hay, WOOD, { t: 'hay' });          // 5.4 from loft reach roof lower 7.0? loft 4.1 -> 5.4 crate ✓ -> roof slab 6.9
+  // ---- silo ----
+  add(P, 4, 5, -14, 3.4, 10, 3.4, silo, STRONG, { t: 'silo' });
+  add(P, 4, 10.6, -14, 2.6, 1.2, 2.6, '#9aa2ae', MED, { t: 'silocap' });
+  // ---- farmhouse ----
+  const fx = 10, fz = 14, fw = 12, fd = 9, fh = 4.4;
+  add(P, fx, 0.25, fz, fw, 0.5, fd, wood, INDEST, { t: 'floor' });
+  add(P, fx, fh / 2, fz + fd / 2, fw, fh, 0.4, barnT, MED, { t: 'wall' });
+  add(P, fx - fw / 2, fh / 2, fz, 0.4, fh, fd, barnT, MED, { t: 'wall' });
+  add(P, fx + fw / 2, fh / 2, fz, 0.4, fh, fd, barnT, MED, { t: 'wall' });
+  add(P, fx - 3.5, fh / 2, fz - fd / 2, 5, fh, 0.4, barnT, MED, { t: 'wall' });
+  add(P, fx + 4.5, fh / 2, fz - fd / 2, 3, fh, 0.4, barnT, MED, { t: 'wall' });
+  add(P, fx - 2, 2.5, fz - fd / 2, 1.8, 1.2, 0.15, win, GLASS, { t: 'glass' });
+  add(P, fx, fh + 0.6, fz, fw + 1, 1.2, fd + 1, roof, WEAK, { t: 'roof' });
+  add(P, fx - 2, 1, fz + 1, 2.4, 0.9, 1.2, wood, FURN, { t: 'table' });
+  // ---- windmill (deco blades) + fences + trough + tractor ----
+  for (const [ox, oz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]]) add(P, 22 + ox, 3, -20 + oz, 0.4, 6, 0.4, wood, WOOD, { t: 'leg' });
+  add(P, 22, 6.4, -20, 2, 1.6, 2, wood, MED, { t: 'millhead' });
+  add(P, 22, 6.4, -18.8, 0.3, 7, 1, barnT, WEAK, { t: 'blade', ns: 1 });
+  add(P, 22, 6.4, -18.8, 7, 0.3, 1, barnT, WEAK, { t: 'blade', ns: 1 });
+  for (let i = 0; i < 8; i++) add(P, -24 + i * 6.5, 0.8, 22, 3, 1.2, 0.25, fence, WOOD, { t: 'fence' });
+  for (let i = 0; i < 6; i++) add(P, -28, 0.8, -18 + i * 6.5, 0.25, 1.2, 3, fence, WOOD, { t: 'fence' });
+  add(P, -2, 0.6, 20, 3, 0.9, 1.2, '#8a8f98', WEAK, { t: 'trough' });
+  add(P, 14, 1.1, -6, 3.6, 1.8, 2.2, '#3a7a3a', MED, { t: 'tractor' });
+  add(P, 12.4, 1.5, -6, 1.2, 2.6, 2.2, '#2a5a2a', WEAK, { t: 'cab' });
+  for (const [hx2, hz2] of [[-20, -12], [-16, -15], [24, 12]]) add(P, hx2, 0.8, hz2, 1.7, 1.6, 1.7, hay, WOOD, { t: 'hay' });
+  return P;
+}
+
+// ===================== FAMILY MALL (two floors of shopping) =====================
+function mallMap() {
+  const P = [];
+  const lot = '#9a958a', wall2 = '#d8d2c8', glass = '#a9d6ef', floor = '#e0dcd2', store1 = '#e05a4a',
+        store2 = '#5a8ae0', store3 = '#5ab06a', store4 = '#c85ac0', kiosk = '#e0c85a', plant = '#4f8a45';
+  const W = 44, D = 28, FH = 5.5;
+  add(P, 0, -1, 0, 84, 2, 60, lot, INDEST, { t: 'lot' });
+  for (let i = 0; i < 5; i++) add(P, -30 + i * 4, 0.05, 22, 3, 0.1, 6, '#8a857a', INDEST, { t: 'deco', ns: 1 });   // parking stripes
+  add(P, -22, 0.9, 20, 4.4, 1.2, 2.2, '#b5372a', MED, { t: 'car' });
+  add(P, -14, 0.9, 20, 4.4, 1.2, 2.2, '#3a6aa0', MED, { t: 'car' });
+  add(P, 12, 0.75, 20, 1.4, 1.5, 3, '#8a8f98', WEAK, { t: 'carts' });
+  // ---- ground floor ----
+  add(P, 0, 0.3, 0, W, 0.6, D, floor, INDEST, { t: 'floor' });
+  // perimeter: back/side walls solid, front = glass entrance
+  add(P, 0, FH / 2 + 0.3, -D / 2, W, FH, 0.5, wall2, STRONG, { t: 'wall' });
+  add(P, -W / 2, FH / 2 + 0.3, 0, 0.5, FH, D, wall2, STRONG, { t: 'wall' });
+  add(P, W / 2, FH / 2 + 0.3, 0, 0.5, FH, D, wall2, STRONG, { t: 'wall' });
+  for (let i = 0; i < 10; i++) { const px = -W / 2 + (i + 0.5) * (W / 10); const door = i === 4 || i === 5; if (!door) add(P, px, FH / 2 + 0.3, D / 2, W / 10 - 0.15, FH - 0.8, 0.25, glass, GLASS, { t: 'glass' }); }
+  add(P, 0, FH + 0.1, D / 2, W, 0.9, 0.4, store1, MED, { t: 'fascia', ns: 1 });
+  // storefronts along the back (both floors get them)
+  for (const f of [0, 1]) {
+    const y = 0.3 + f * FH;
+    const shops = [[-16, store1, 'wall'], [-5.5, store2, 'wall'], [5.5, store3, 'wall'], [16, store4, 'wall']];
+    for (const [sx2, col] of shops) {
+      add(P, sx2, y + 2.1, -D / 2 + 4.5, 8.5, 3.6, 0.3, col, WEAK, { t: 'shopfront' });   // colored fronts (breakable)
+      add(P, sx2, y + 1.2, -D / 2 + 2.2, 3, 1.6, 1.6, kiosk, FURN, { t: 'shopgoods' });
+    }
+    // kiosks + planters down the middle
+    add(P, -8, y + 1, 6, 2.2, 1.5, 2.2, kiosk, FURN, { t: 'kiosk' });
+    add(P, 8, y + 1, 6, 2.2, 1.5, 2.2, kiosk, FURN, { t: 'kiosk' });
+    for (const px2 of [-14, 0, 14]) { add(P, px2, y + 0.6, 9, 1.4, 0.9, 1.4, '#8f8a7e', STRONG, { t: 'planter' }); add(P, px2, y + 1.5, 9, 1.1, 1.1, 1.1, plant, WEAK, { t: 'shrub' }); }
+  }
+  // food court tables (ground, west end)
+  for (const [tx2, tz2] of [[-17, 6], [-13, 9], [-17, 11], [-11, 5]]) add(P, tx2, 1, tz2, 1.6, 0.9, 1.6, wall2, FURN, { t: 'table' });
+  // ---- upper floor: ring around an open atrium ----
+  floorWithHole(P, FH + 0.3, W, D, 0, 3, 16, 10, floor);   // big atrium hole (center-front)
+  // atrium railing
+  for (const rx of [-8.6, 8.6]) add(P, rx, FH + 1.1, 3, 0.2, 1, 10.4, '#6a7280', WEAK, { t: 'rail' });
+  add(P, 0, FH + 1.1, -2.2, 17.4, 1, 0.2, '#6a7280', WEAK, { t: 'rail' });
+  add(P, 0, FH + 1.1, 8.2, 17.4, 1, 0.2, '#6a7280', WEAK, { t: 'rail' });
+  // upper perimeter glass
+  for (let i = 0; i < 10; i++) { const px = -W / 2 + (i + 0.5) * (W / 10); add(P, px, FH + 0.3 + (FH - 0.8) / 2, D / 2, W / 10 - 0.15, FH - 0.8, 0.2, glass, GLASS, { t: 'glass' }); }
+  add(P, 0, FH + 0.3 + FH / 2, -D / 2, W, FH, 0.4, wall2, STRONG, { t: 'wall' });
+  add(P, -W / 2, FH + 0.3 + FH / 2, 0, 0.4, FH, D, wall2, STRONG, { t: 'wall' });
+  add(P, W / 2, FH + 0.3 + FH / 2, 0, 0.4, FH, D, wall2, STRONG, { t: 'wall' });
+  // two switchback stairs (east + west)
+  switchback(P, -19, 8, 0.3, FH + 0.3, floor);
+  switchback(P, 19, 8, 0.3, FH + 0.3, floor);
+  // roof (breakable — it should peel in a tornado) + skylight
+  const ry = 2 * FH + 0.6;
+  add(P, 0, ry + 0.3, 0, W + 1, 0.6, D + 1, '#b8b2a6', MED, { t: 'roof' });
+  add(P, 0, ry + 0.75, 3, 14, 0.3, 8, glass, GLASS, { t: 'skylight' });
+  return P;
+}
+
+// ===================== PRISON (cell block + yard + towers) =====================
+function prisonMap() {
+  const P = [];
+  const conc = '#9aa0a8', dark = '#5a616b', bar = '#3a4048', fenceC = '#b8bec8', yard = '#8f9a84',
+        orange = '#e08a3a', tower = '#c8ccd4', wood = '#8a6a44';
+  add(P, 0, -1, 0, 75, 2, 75, yard, INDEST, { t: 'yard' });
+  add(P, 12, 0.05, 8, 18, 0.1, 12, '#7a8570', INDEST, { t: 'deco', ns: 1 });      // basketball court
+  // ---- cell block ----
+  const W = 30, D = 16, FH = 5.2, bx = -8, bz = -8;
+  add(P, bx, 0.3, bz, W, 0.6, D, conc, INDEST, { t: 'floor' });
+  add(P, bx, FH / 2 + 0.3, bz - D / 2, W, FH, 0.6, conc, STRONG, { t: 'wall' });
+  add(P, bx - W / 2, FH / 2 + 0.3, bz, 0.6, FH, D, conc, STRONG, { t: 'wall' });
+  add(P, bx + W / 2, FH / 2 + 0.3, bz, 0.6, FH, D, conc, STRONG, { t: 'wall' });
+  add(P, bx - 9, FH / 2 + 0.3, bz + D / 2, 11, FH, 0.6, conc, STRONG, { t: 'wall' });   // front — gate gap mid
+  add(P, bx + 9, FH / 2 + 0.3, bz + D / 2, 11, FH, 0.6, conc, STRONG, { t: 'wall' });
+  // cells along the back: barred fronts + bunks
+  for (let i = 0; i < 5; i++) {
+    const cx2 = bx - W / 2 + 3.2 + i * 5.6;
+    add(P, cx2 + 2.6, 2.2 + 0.3, bz - 2, 0.25, 3.8, 5, dark, MED, { t: 'cellwall' });
+    for (let j = 0; j < 4; j++) add(P, cx2 - 1.8 + j * 1.2, 2.2 + 0.3, bz - 0.5, 0.18, 3.8, 0.18, bar, WEAK, { t: 'bars' });
+    add(P, cx2, 1, bz - 5.5, 2.2, 0.7, 1.1, orange, FURN, { t: 'bunk' });
+  }
+  add(P, bx, FH + 0.9, bz, W + 1, 0.7, D + 1, dark, MED, { t: 'roof' });          // roof 6.25 = refuge
+  switchback(P, bx + 11, bz + 3, 0.3, FH + 0.6 + 0.3, conc);                       // stairs to roof... exits at 6.1 onto roof
+  // ---- perimeter fence + gate ----
+  const FR = 30;
+  for (let i = 0; i < 14; i++) { const px2 = -FR + i * (FR * 2 / 14); if (Math.abs(px2 - 8) > 3) add(P, px2 + FR / 14, 1.5, FR, FR * 2 / 14 - 0.3, 3, 0.15, fenceC, WEAK, { t: 'fence', ns: 0 }); }
+  for (let i = 0; i < 14; i++) { const pz2 = -FR + i * (FR * 2 / 14); add(P, FR, 1.5, pz2 + FR / 14, 0.15, 3, FR * 2 / 14 - 0.3, fenceC, WEAK, { t: 'fence' }); add(P, -FR, 1.5, pz2 + FR / 14, 0.15, 3, FR * 2 / 14 - 0.3, fenceC, WEAK, { t: 'fence' }); }
+  for (let i = 0; i < 14; i++) { const px2 = -FR + i * (FR * 2 / 14); add(P, px2 + FR / 14, 1.5, -FR, FR * 2 / 14 - 0.3, 3, 0.15, fenceC, WEAK, { t: 'fence' }); }
+  // ---- watchtowers (climbable refuges) ----
+  for (const [tx2, tz2] of [[24, 24], [-24, -24]]) {
+    for (const [ox, oz] of [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]]) add(P, tx2 + ox, 2.9, tz2 + oz, 0.4, 5.8, 0.4, tower, STRONG, { t: 'leg' });
+    add(P, tx2, 6, tz2, 4.6, 0.5, 4.6, tower, STRONG, { t: 'deck' });             // 6.25
+    add(P, tx2, 7.3, tz2, 4.6, 0.4, 4.6, dark, WEAK, { t: 'towerroof' });
+    add(P, tx2 - 3.4, 0.75, tz2 + 2.6, 1.5, 1.5, 1.5, wood, WOOD, { t: 'crate' });
+    add(P, tx2 - 3.5, 1.35, tz2 + 0.2, 1.5, 2.7, 1.5, wood, WOOD, { t: 'crate' });
+    add(P, tx2 - 3.4, 1.95, tz2 - 2.2, 1.5, 3.9, 1.5, wood, WOOD, { t: 'crate' });
+    add(P, tx2 - 1.6, 2.65, tz2 - 3.3, 1.5, 5.3, 1.5, wood, WOOD, { t: 'crate' }); // 5.3 -> deck 6.25
+  }
+  // yard props: hoop, benches, weights
+  add(P, 12, 2.2, 2.6, 0.3, 4.4, 0.3, tower, WOOD, { t: 'pole' });
+  add(P, 12, 4.2, 3.3, 1.8, 1.4, 0.15, '#f4f7fc', WEAK, { t: 'backboard' });
+  for (const [bx2, bz2] of [[6, 16], [18, 16]]) add(P, bx2, 0.6, bz2, 2.6, 0.5, 1, wood, WOOD, { t: 'bench' });
+  add(P, -20, 0.6, 14, 2, 0.6, 1.4, dark, WEAK, { t: 'weights' });
+  return P;
+}
+
 export const MAPS = {
   glass:   { id: 'glass',   name: 'Glass Office',    spawnR: 14, radius: 34, spawn: { x: 0, z: 22, r: 5 },   sky: ['#7db9ec', '#dcecf8'], water: '#2f7fd0', fog: '#bcd6ee', ground: 80, pieces: officeMap() },
   school:  { id: 'school',  name: 'Heights School',  spawnR: 18, radius: 40, spawn: { x: 0, z: 23, r: 5 },   sky: ['#8fc0e8', '#e0eef8'], water: '#3a86c0', fog: '#c8dcc0', ground: 92, pieces: schoolMap() },
@@ -420,5 +581,8 @@ export const MAPS = {
   home:    { id: 'home',    name: 'Happy Home',      spawnR: 16, radius: 32, spawn: { x: 0, z: 16, r: 5 },   sky: ['#8fd0ec', '#eaf4f8'], water: '#2f7fd0', fog: '#cfe4c8', ground: 70, pieces: homeMap() },
   trailer: { id: 'trailer', name: 'Trailer Park',    spawnR: 18, radius: 34, spawn: { x: 0, z: 0, r: 6 },    sky: ['#9ac4e0', '#e8f0f4'], water: '#3a86c0', fog: '#c8d4c0', ground: 75, pieces: trailerMap() },
   surf:    { id: 'surf',    name: 'Surf Central',    spawnR: 16, radius: 32, spawn: { x: 4, z: 2, r: 6 },    sky: ['#6ec4ec', '#f0f8fc'], water: '#28a0c8', fog: '#d8e8ec', ground: 70, pieces: surfMap() },
+  ranch:   { id: 'ranch',   name: 'Sunny Ranch',     spawnR: 18, radius: 34, spawn: { x: 4, z: 8, r: 6 },    sky: ['#8fd0ec', '#f4f0d8'], water: '#3a86c0', fog: '#d4e0c0', ground: 75, pieces: ranchMap() },
+  mall:    { id: 'mall',    name: 'Family Mall',     spawnR: 18, radius: 38, spawn: { x: 0, z: 19, r: 6 },   sky: ['#9ac4e0', '#eef2f6'], water: '#2f7fd0', fog: '#ccd4dc', ground: 84, pieces: mallMap() },
+  prison:  { id: 'prison',  name: 'Prison',          spawnR: 18, radius: 34, spawn: { x: 8, z: 12, r: 6 },   sky: ['#8a9ab0', '#dce4ec'], water: '#3a4450', fog: '#b8c0c8', ground: 75, pieces: prisonMap() },
 };
 export const MAP_IDS = Object.keys(MAPS);
