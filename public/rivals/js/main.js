@@ -1468,42 +1468,46 @@ function trackVal(keys, t) {
 // channels: bRx = blade fold, hARx/hBRx = handle fan, pRx/pRy/pRz = whole-knife
 // twirl/tilt, vx..vrz = viewmodel (arm) offsets. All angles in radians.
 const BF_TRK = {
-  // EQUIP (0.7s): starts folded closed → wrist cock → handle whips a full spin
-  // (outExpo = violent start, soft catch) → blade snaps open past zero and
-  // settles back (outBack overshoot) → latch tap.
+  // EQUIP (0.5s): everything moves from frame one — handle whips a full spin
+  // WHILE the blade snaps open WHILE the wrist untwists on all three axes.
   equip: {
-    bRx:  [{ t: 0, v: Math.PI }, { t: 0.18, v: Math.PI, e: 'inQuad' }, { t: 0.55, v: -0.22, e: 'outExpo' }, { t: 0.78, v: 0.08, e: 'outBack' }, { t: 1, v: 0, e: 'outQuad' }],
-    hARx: [{ t: 0, v: 0 }, { t: 0.14, v: -0.6, e: 'inCubic' }, { t: 0.62, v: 6.55, e: 'outExpo' }, { t: 0.85, v: 6.2, e: 'outBack' }, { t: 1, v: 6.283, e: 'outQuad' }],
-    pRz:  [{ t: 0, v: 0.55 }, { t: 0.5, v: -0.28, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
-    pRy:  [{ t: 0, v: -0.5 }, { t: 0.55, v: 0.18, e: 'outExpo' }, { t: 1, v: 0, e: 'outCubic' }],
+    bRx:  [{ t: 0, v: Math.PI }, { t: 0.45, v: -0.3, e: 'outExpo' }, { t: 0.7, v: 0.1, e: 'outBack' }, { t: 1, v: 0, e: 'outQuad' }],
+    hARx: [{ t: 0, v: -0.8 }, { t: 0.55, v: 6.6, e: 'outExpo' }, { t: 0.8, v: 6.15, e: 'outBack' }, { t: 1, v: 6.283, e: 'outElastic' }],
+    pRx:  [{ t: 0, v: -0.5 }, { t: 0.4, v: 0.25, e: 'outExpo' }, { t: 0.75, v: -0.06, e: 'outBack' }, { t: 1, v: 0 }],
+    pRz:  [{ t: 0, v: 0.7 }, { t: 0.35, v: -0.35, e: 'outExpo' }, { t: 0.7, v: 0.08, e: 'outBack' }, { t: 1, v: 0 }],
+    pRy:  [{ t: 0, v: -0.6 }, { t: 0.45, v: 0.22, e: 'outExpo' }, { t: 1, v: 0, e: 'outCubic' }],
   },
-  // HEAVY STAB (right-click, 0.62s): flip to reverse icepick grip (handle spins
-  // a full turn), raise high, DRIVE down hard (inCubic accelerate → impact),
-  // recover and flip back to standard grip.
+  // HEAVY STAB (right-click, 0.5s): grip-flip + raise happen TOGETHER, then an
+  // accelerating drive down with a wrist twist, recover while flipping back.
   stab: {
-    bRx:  [{ t: 0, v: 0 }, { t: 0.2, v: -2.9, e: 'outBack' }, { t: 0.66, v: -2.9 }, { t: 0.85, v: 0.15, e: 'outExpo' }, { t: 1, v: 0, e: 'outQuad' }],
-    hARx: [{ t: 0, v: 0 }, { t: 0.2, v: -6.283, e: 'outExpo' }, { t: 1, v: -6.283 }],
-    vy:   [{ t: 0, v: 0 }, { t: 0.3, v: 0.2, e: 'outCubic' }, { t: 0.42, v: 0.22 }, { t: 0.56, v: -0.16, e: 'inCubic' }, { t: 0.8, v: -0.1 }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vz:   [{ t: 0, v: 0 }, { t: 0.3, v: 0.12, e: 'outCubic' }, { t: 0.56, v: -0.42, e: 'inCubic' }, { t: 0.8, v: -0.3 }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vrx:  [{ t: 0, v: 0 }, { t: 0.3, v: 0.85, e: 'outCubic' }, { t: 0.56, v: -0.55, e: 'inCubic' }, { t: 0.8, v: -0.35 }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vry:  [{ t: 0, v: 0 }, { t: 0.3, v: -0.3, e: 'outCubic' }, { t: 0.6, v: 0.12, e: 'outExpo' }, { t: 1, v: 0 }],
-    vrz:  [{ t: 0, v: 0 }, { t: 0.3, v: 0.4, e: 'outCubic' }, { t: 0.56, v: -0.2, e: 'inCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    bRx:  [{ t: 0, v: 0 }, { t: 0.24, v: -2.9, e: 'outExpo' }, { t: 0.58, v: -2.9 }, { t: 0.82, v: 0.18, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.26, v: -6.283, e: 'outExpo' }, { t: 0.6, v: -6.283 }, { t: 0.88, v: -12.57, e: 'outExpo' }, { t: 1, v: -12.57 }],
+    // group motion stays small so the blade stays framed — the plunge is the
+    // HAND driving down in part-space (gPy/gPz below)
+    vy:   [{ t: 0, v: 0 }, { t: 0.26, v: 0.15, e: 'outExpo' }, { t: 0.38, v: 0.16 }, { t: 0.52, v: -0.03, e: 'inCubic' }, { t: 0.72, v: -0.02 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.26, v: 0.08, e: 'outExpo' }, { t: 0.52, v: -0.16, e: 'inCubic' }, { t: 0.72, v: -0.11 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.26, v: 0.45, e: 'outExpo' }, { t: 0.52, v: -0.18, e: 'inCubic' }, { t: 0.72, v: -0.12 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.26, v: -0.2, e: 'outExpo' }, { t: 0.55, v: 0.08, e: 'outExpo' }, { t: 1, v: 0 }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.26, v: 0.25, e: 'outExpo' }, { t: 0.52, v: -0.12, e: 'inCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    gPy:  [{ t: 0, v: 0 }, { t: 0.26, v: 0.17, e: 'outExpo' }, { t: 0.38, v: 0.18 }, { t: 0.52, v: -0.13, e: 'inCubic' }, { t: 0.72, v: -0.09 }, { t: 1, v: 0, e: 'inOutCubic' }],
+    gPz:  [{ t: 0, v: 0 }, { t: 0.26, v: 0.06, e: 'outExpo' }, { t: 0.52, v: -0.2, e: 'inCubic' }, { t: 0.72, v: -0.14 }, { t: 1, v: 0, e: 'inOutCubic' }],
   },
-  // INSPECT (F, 5.4s) — the full showcase: raise to center & tilt-display →
-  // fold closed → fan open/closed/open (the flashy part) → full aerial twirl →
-  // side pose hold → snap back to carry with a latch rattle.
+  // INSPECT (F, 3.4s): non-stop combo — snap up + instant fan, double-flip
+  // DURING a full twirl, second fan DURING a sweep, aerial twirl INTO the side
+  // pose, latch-rattle snap home. At least two channels are moving at all times.
   inspect: {
-    vx:   [{ t: 0, v: 0 }, { t: 0.09, v: -0.14, e: 'inOutCubic' }, { t: 0.62, v: -0.14 }, { t: 0.72, v: -0.05, e: 'inOutCubic' }, { t: 0.83, v: -0.05 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vy:   [{ t: 0, v: 0 }, { t: 0.09, v: 0.1, e: 'inOutCubic' }, { t: 0.44, v: 0.1 }, { t: 0.5, v: 0.16, e: 'outCubic' }, { t: 0.56, v: 0.08, e: 'outBack' }, { t: 0.83, v: 0.06 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vz:   [{ t: 0, v: 0 }, { t: 0.09, v: -0.2, e: 'inOutCubic' }, { t: 0.62, v: -0.2 }, { t: 0.83, v: -0.12 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vrx:  [{ t: 0, v: 0 }, { t: 0.09, v: 0.25, e: 'inOutCubic' }, { t: 0.28, v: 0.12 }, { t: 0.62, v: 0.12 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vry:  [{ t: 0, v: 0 }, { t: 0.09, v: 0.35, e: 'inOutCubic' }, { t: 0.62, v: 0.35 }, { t: 0.72, v: 0.85, e: 'inOutCubic' }, { t: 0.83, v: 0.85 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    vrz:  [{ t: 0, v: 0 }, { t: 0.09, v: -0.15, e: 'inOutCubic' }, { t: 0.72, v: 0.45, e: 'inOutCubic' }, { t: 0.83, v: 0.45 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    pRy:  [{ t: 0, v: 0 }, { t: 0.13, v: 0.7, e: 'inOutCubic' }, { t: 0.24, v: -0.7, e: 'inOutCubic' }, { t: 0.3, v: 0, e: 'inOutCubic' }, { t: 0.62, v: 0 }, { t: 0.72, v: 0.3 }, { t: 0.9, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
-    pRx:  [{ t: 0, v: 0 }, { t: 0.5, v: 0 }, { t: 0.6, v: 6.283, e: 'outExpo' }, { t: 1, v: 6.283 }],
-    bRx:  [{ t: 0, v: 0 }, { t: 0.3, v: 0 }, { t: 0.35, v: 3.05, e: 'outBack' }, { t: 0.41, v: 3.05 }, { t: 0.46, v: -0.15, e: 'outExpo' }, { t: 0.5, v: 0, e: 'outQuad' }, { t: 1, v: 0 }],
-    hARx: [{ t: 0, v: 0 }, { t: 0.3, v: 0 }, { t: 0.36, v: -3.2, e: 'outExpo' }, { t: 0.42, v: -3.2 }, { t: 0.48, v: 3.08, e: 'outExpo' }, { t: 0.55, v: -0.12, e: 'outExpo' }, { t: 0.62, v: 0, e: 'outBack' }, { t: 0.86, v: 0 }, { t: 0.92, v: 0.5, e: 'outExpo' }, { t: 1, v: 0, e: 'outElastic' }],
-    hBRx: [{ t: 0, v: 0 }, { t: 0.34, v: 0 }, { t: 0.4, v: 1.1, e: 'outExpo' }, { t: 0.5, v: -0.5, e: 'outExpo' }, { t: 0.58, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vx:   [{ t: 0, v: 0 }, { t: 0.08, v: -0.16, e: 'outExpo' }, { t: 0.3, v: -0.12 }, { t: 0.5, v: -0.16, e: 'inOutCubic' }, { t: 0.68, v: -0.06, e: 'inOutCubic' }, { t: 0.88, v: -0.04 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.08, v: 0.12, e: 'outExpo' }, { t: 0.26, v: 0.08 }, { t: 0.42, v: 0.18, e: 'outExpo' }, { t: 0.55, v: 0.1, e: 'outBack' }, { t: 0.72, v: 0.14, e: 'inOutCubic' }, { t: 0.88, v: 0.08 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.08, v: -0.22, e: 'outExpo' }, { t: 0.42, v: -0.16 }, { t: 0.6, v: -0.24, e: 'inOutCubic' }, { t: 0.88, v: -0.14 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.08, v: 0.3, e: 'outExpo' }, { t: 0.24, v: 0.1, e: 'inOutCubic' }, { t: 0.42, v: 0.22, e: 'inOutCubic' }, { t: 0.6, v: 0.08 }, { t: 0.78, v: 0.18, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.28, e: 'outExpo' }, { t: 0.3, v: 0.18 }, { t: 0.5, v: 0.32, e: 'inOutCubic' }, { t: 0.66, v: 0.45, e: 'inOutCubic' }, { t: 0.85, v: 0.38 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.1, v: -0.15, e: 'outExpo' }, { t: 0.32, v: 0.12, e: 'inOutCubic' }, { t: 0.55, v: 0.2, e: 'inOutCubic' }, { t: 0.75, v: 0.3, e: 'inOutCubic' }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRx:  [{ t: 0, v: 0 }, { t: 0.16, v: 0 }, { t: 0.3, v: 6.283, e: 'outExpo' }, { t: 0.52, v: 6.283 }, { t: 0.66, v: 12.57, e: 'outExpo' }, { t: 1, v: 12.57 }],
+    pRy:  [{ t: 0, v: 0 }, { t: 0.1, v: 0.8, e: 'outExpo' }, { t: 0.22, v: -0.6, e: 'inOutCubic' }, { t: 0.34, v: 0.2, e: 'inOutCubic' }, { t: 0.5, v: -0.3, e: 'inOutCubic' }, { t: 0.64, v: 0.35, e: 'inOutCubic' }, { t: 0.82, v: 0.15 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    bRx:  [{ t: 0, v: 0 }, { t: 0.14, v: 3.1, e: 'outExpo' }, { t: 0.24, v: -0.25, e: 'outExpo' }, { t: 0.3, v: 0, e: 'outQuad' }, { t: 0.44, v: 3.05, e: 'outExpo' }, { t: 0.54, v: -0.2, e: 'outExpo' }, { t: 0.6, v: 0, e: 'outQuad' }, { t: 1, v: 0 }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.1, v: -6.283, e: 'outExpo' }, { t: 0.2, v: -9.42, e: 'outExpo' }, { t: 0.32, v: -12.57, e: 'outExpo' }, { t: 0.46, v: -15.7, e: 'outExpo' }, { t: 0.58, v: -18.85, e: 'outExpo' }, { t: 0.72, v: -18.85 }, { t: 0.8, v: -18.35, e: 'outExpo' }, { t: 0.9, v: -18.85, e: 'outBack' }, { t: 1, v: -18.85, e: 'outElastic' }],
+    hBRx: [{ t: 0, v: 0 }, { t: 0.14, v: 1.2, e: 'outExpo' }, { t: 0.26, v: -0.7, e: 'outExpo' }, { t: 0.4, v: 0.9, e: 'outExpo' }, { t: 0.52, v: -0.4, e: 'outExpo' }, { t: 0.62, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
+    pRz:  [{ t: 0, v: 0 }, { t: 0.12, v: -0.45, e: 'outExpo' }, { t: 0.3, v: 0.35, e: 'inOutCubic' }, { t: 0.5, v: -0.3, e: 'inOutCubic' }, { t: 0.68, v: 0.55, e: 'inOutCubic' }, { t: 0.85, v: 0.2 }, { t: 0.95, v: 0, e: 'outBack' }, { t: 1, v: 0 }],
   },
 };
 
@@ -2906,9 +2910,9 @@ function frame() {
     vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / 0.38);
     vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
-    vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.7);
-    vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.62);
-    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 5.4);
+    vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
+    vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
+    vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / 3.4);
   }
 
   // sniper scope: overlay + hide the rifle while fully scoped
@@ -2981,14 +2985,16 @@ function frame() {
         // razor slash: cocked windup opposite side → whip across the screen
         // (outExpo attack, soft follow-through) — the handle fans a full turn
         // in the part-level block below
-        const wind = sstep(0, 0.18, t) * (1 - sstep(0.18, 0.42, t));
-        const slash = Math.sin(Math.pow(sstep(0.12, 0.85, t), 0.8) * Math.PI);
-        ry2 += (wind * 0.55 - slash * 1.55) * sd;
-        rz += (wind * 0.5 - slash * 1.05) * sd;
-        rx += -wind * 0.4 + slash * 0.85;
-        px += (wind * 0.09 - slash * 0.3) * sd;
-        py += wind * 0.1 - slash * 0.07;
-        pz -= slash * 0.4;
+        // small group tilt only — the sweep itself happens at the HAND in
+        // part-space (below), so the arms stay planted at the screen edge
+        const wind = sstep(0, 0.12, t) * (1 - sstep(0.12, 0.3, t));
+        const slash = Math.sin(Math.pow(sstep(0.06, 0.68, t), 0.75) * Math.PI);
+        ry2 += (wind * 0.28 - slash * 0.55) * sd;
+        rz += (wind * 0.22 - slash * 0.4) * sd;
+        rx += -wind * 0.25 + slash * 0.5;
+        px += (wind * 0.05 - slash * 0.14) * sd;
+        py += wind * 0.05 - slash * 0.03;
+        pz -= slash * 0.24;
       } else {
         // scythe/knife: quick compact alternating arcs
         rz += sd * -0.7 * s; ry2 += sd * 0.55 * s;
@@ -3015,7 +3021,7 @@ function frame() {
       const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
       px += trackVal(T.vx, t); py += trackVal(T.vy, t); pz += trackVal(T.vz, t);
       rx += trackVal(T.vrx, t); ry2 += trackVal(T.vry, t); rz += trackVal(T.vrz, t);
-      for (const cue of [0.31, 0.37, 0.47, 0.56, 0.91]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
+      for (const cue of [0.1, 0.24, 0.44, 0.58, 0.66, 0.95]) if (vmAnim.bfInspectPrev < cue && t >= cue) playOne('knife', 0.35);
       vmAnim.bfInspectPrev = t;
     }
 
@@ -3053,23 +3059,41 @@ function frame() {
         if (vmAnim.bfEquipT < 1) {
           const t = vmAnim.bfEquipT, T = BF_TRK.equip;
           B.blade.rotation.x += trackVal(T.bRx, t); B.hA.rotation.x += trackVal(T.hARx, t);
+          B.pivot.rotation.x += trackVal(T.pRx, t);
           B.pivot.rotation.z += trackVal(T.pRz, t); B.pivot.rotation.y += trackVal(T.pRy, t);
         }
         if (vmAnim.swingT < 1) {
           const t = vmAnim.swingT, sd = vmAnim.swingSide;
+          const w2 = sstep(0, 0.12, t) * (1 - sstep(0.12, 0.3, t));
+          const s2 = Math.sin(Math.pow(sstep(0.06, 0.68, t), 0.75) * Math.PI);
           B.hA.rotation.x += Math.PI * 2 * EASES.outExpo(t) * -sd;              // full handle fan per slash
           B.blade.rotation.x += Math.sin(sstep(0.15, 0.6, t) * Math.PI) * 0.14; // blade flex at impact
-          B.pivot.rotation.z += Math.sin(t * Math.PI) * 0.3 * sd;
+          B.pivot.rotation.z += Math.sin(t * Math.PI) * 0.35 * sd;
+          // the actual sweep: hand + knife arc across the view, arm stays rooted
+          P.gun.position.x += (w2 * 0.1 - s2 * 0.34) * sd;
+          P.gun.position.z += -s2 * 0.24; P.gun.position.y += s2 * 0.05;
+          P.rArm.position.x += (w2 * 0.08 - s2 * 0.26) * sd;
+          P.rArm.position.z += -s2 * 0.18;
+          P.rArm.rotation.z += s2 * 0.35 * sd;
+          P.lArm.position.y -= s2 * 0.28; P.lArm.position.x -= s2 * 0.1;        // keep the off-hand tucked out of frame
         }
         if (vmAnim.bfStabT < 1) {
           const t = vmAnim.bfStabT, T = BF_TRK.stab;
           B.blade.rotation.x += trackVal(T.bRx, t); B.hA.rotation.x += trackVal(T.hARx, t);
+          // the plunge: hand + knife drive down in part-space, blade stays framed
+          const gy = trackVal(T.gPy, t), gz = trackVal(T.gPz, t);
+          P.gun.position.y += gy; P.gun.position.z += gz;
+          P.rArm.position.y += gy * 0.8; P.rArm.position.z += gz * 0.8;
+          P.rArm.rotation.x += trackVal(T.vrx, t) * 0.5;
         }
         if (vmAnim.bfInspectT < 1) {
           const t = vmAnim.bfInspectT, T = BF_TRK.inspect;
           B.blade.rotation.x += trackVal(T.bRx, t);
           B.hA.rotation.x += trackVal(T.hARx, t); B.hB.rotation.x += trackVal(T.hBRx, t);
           B.pivot.rotation.x += trackVal(T.pRx, t); B.pivot.rotation.y += trackVal(T.pRy, t);
+          B.pivot.rotation.z += trackVal(T.pRz, t);
+          P.gun.position.y += 0.06 * Math.sin(t * Math.PI);   // gentle lift keeps it center-frame
+          P.lArm.position.y -= 0.08 * Math.sin(t * Math.PI);  // off-hand stays low
         }
       }
       // firing: hands squeeze back with the gun
