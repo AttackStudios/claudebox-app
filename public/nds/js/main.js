@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { WORLD, DISASTERS, MAPS } from '/shared/nds/config.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { fpFade } from '/js/fpzoom.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game-canvas');
@@ -233,15 +234,25 @@ if (mobileOn) {
   let lookId = null, lx = 0, ly = 0;
   lz.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; lookId = t.identifier; lx = t.clientX; ly = t.clientY; }, { passive: true });
   lz.addEventListener('touchmove', (e) => { for (const t of e.changedTouches) { if (t.identifier !== lookId) continue; camYaw -= (t.clientX - lx) * 0.006; camPitch = Math.max(-0.5, Math.min(1.1, camPitch + (t.clientY - ly) * 0.005)); lx = t.clientX; ly = t.clientY; } }, { passive: true });
-  const lookEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null; };
+  const lookEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null; pinchD = 0; };
   lz.addEventListener('touchend', lookEnd); lz.addEventListener('touchcancel', lookEnd);
+  // pinch-to-zoom: two fingers on the look half — pinch in all the way for first person
+  let pinchD = 0;
+  lz.addEventListener('touchmove', (e) => {
+    if (e.touches.length < 2) { pinchD = 0; return; }
+    const [a, b] = e.touches;
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (pinchD) { camDist = Math.max(0, Math.min(16, camDist - (d - pinchD) * 0.045)); if (camDist < 0.6) camDist = 0; }
+    pinchD = d;
+    lookId = null;   // two fingers = zooming, not looking
+  }, { passive: true });
   const jb = $('m-jump');
   jb.addEventListener('touchstart', (e) => { e.preventDefault(); keys.add('Space'); }, { passive: false });
   const jEnd = (e) => { e.preventDefault(); keys.delete('Space'); };
   jb.addEventListener('touchend', jEnd, { passive: false }); jb.addEventListener('touchcancel', jEnd, { passive: false });
   $('m-act').addEventListener('touchstart', (e) => { e.preventDefault(); tryInteract(); }, { passive: false });
 }
-addEventListener('wheel', (e) => { camDist = Math.max(4, Math.min(16, camDist + Math.sign(e.deltaY))); });
+addEventListener('wheel', (e) => { camDist = Math.max(0, Math.min(16, camDist + Math.sign(e.deltaY) * (camDist <= 4 ? 0.6 : 1))); if (camDist < 0.6) camDist = 0; });   // zoom all the way in = first person
 
 
 
@@ -619,11 +630,18 @@ function frame() {
   const p = $('prompt');
   if (phase === 'intermission' && nearMachine() && !me.dead) { p.style.display = 'block'; p.innerHTML = `Press <b>E</b> · Multi-Disaster Machine · 5 🔷 → +1 disaster next round (now ${1 + stacks})`; } else p.style.display = 'none';
 
-  // camera (third-person orbit)
+  // camera (third-person orbit → first person when fully zoomed in)
   const tgt = new THREE.Vector3(me.pos.x, me.pos.y + 1.4, me.pos.z);
-  const cx = Math.sin(camYaw) * Math.cos(camPitch) * camDist, cy = Math.sin(camPitch) * camDist + 0.5, cz = Math.cos(camYaw) * Math.cos(camPitch) * camDist;
-  camera.position.set(tgt.x + cx + (Math.random() - 0.5) * shake, tgt.y + cy + (Math.random() - 0.5) * shake, tgt.z + cz);
-  camera.lookAt(tgt);
+  if (myAvatar && !me.dead) fpFade(myAvatar.group, camDist);   // fade own body out near first person
+  if (camDist < 0.45) {
+    const ox = Math.sin(camYaw) * Math.cos(camPitch), oy = Math.sin(camPitch), oz = Math.cos(camYaw) * Math.cos(camPitch);
+    camera.position.set(tgt.x + (Math.random() - 0.5) * shake, tgt.y + 0.12 + (Math.random() - 0.5) * shake, tgt.z);
+    camera.lookAt(tgt.x - ox, tgt.y + 0.12 - oy, tgt.z - oz);
+  } else {
+    const cx = Math.sin(camYaw) * Math.cos(camPitch) * camDist, cy = Math.sin(camPitch) * camDist + 0.5, cz = Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+    camera.position.set(tgt.x + cx + (Math.random() - 0.5) * shake, tgt.y + cy + (Math.random() - 0.5) * shake, tgt.z + cz);
+    camera.lookAt(tgt);
+  }
 
   // HUD
   const left = Math.max(0, Math.ceil(phaseUntil - Date.now() / 1000));
