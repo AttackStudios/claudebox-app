@@ -879,12 +879,15 @@ function stepMe(dt) {
     const fx = Math.sin(lobbyCam.yaw) * cy, fz = Math.cos(lobbyCam.yaw) * cy;
     const tx = me.pos.x, ty = me.pos.y + 1.35, tz = me.pos.z;
     let dWant = lobbyCam.dist;
-    for (let step = 0.7; step <= lobbyCam.dist; step += 0.2) {
+    for (let step = 0.6; step <= lobbyCam.dist; step += 0.1) {
       if (pointInMap(tx + fx * step, ty + sy * step + 0.3, tz + fz * step)) { dWant = Math.max(1.1, step - 0.45); break; }
     }
-    // smooth: snap IN fast (never clip a wall), ease back OUT gently
+    // smooth with HYSTERESIS: ignore sub-15cm flicker at wall boundaries,
+    // ease in when a wall intrudes, drift back out slowly
     if (lobbyCam.curD == null) lobbyCam.curD = dWant;
-    lobbyCam.curD += (dWant - lobbyCam.curD) * Math.min(1, dt * (dWant < lobbyCam.curD ? 30 : 5));
+    const dDiff = dWant - lobbyCam.curD;
+    if (dDiff < -0.02) lobbyCam.curD += dDiff * Math.min(1, dt * 14);
+    else if (dDiff > 0.15) lobbyCam.curD += dDiff * Math.min(1, dt * 3);
     const d = lobbyCam.curD;
     camera.position.set(tx + fx * d, ty + sy * d + 0.4, tz + fz * d);
     camera.lookAt(tx, ty, tz);
