@@ -326,6 +326,17 @@ function sanitizeAvatar(a = {}) {
     suit: pick(a.suit, ['none', 'swim'], 'none'),
     suitColor: cleanColor(a.suitColor, DEFAULT_AVATAR.suitColor),
     face: pick(a.face, ['happy', 'cool', 'surprised', 'sleepy'], 'happy'),
+    // R6 mode: the blocky six-part look (saved separately; Rivals always uses it)
+    r6: a.r6 && typeof a.r6 === 'object' ? {
+      head: cleanColor(a.r6.head, '#f5cd30'),
+      torso: cleanColor(a.r6.torso, '#0f6cbd'),
+      armL: cleanColor(a.r6.armL, '#f5cd30'),
+      armR: cleanColor(a.r6.armR, '#f5cd30'),
+      legL: cleanColor(a.r6.legL, '#3aa03a'),
+      legR: cleanColor(a.r6.legR, '#3aa03a'),
+      accessory: pick(a.r6.accessory, ['none', 'cap', 'tophat', 'headphones', 'halo', 'horns', 'crown'], 'none'),
+      face: pick(a.r6.face, ['smile', 'grin', 'serious', 'wink', 'shades'], 'smile'),
+    } : undefined,
   };
 }
 

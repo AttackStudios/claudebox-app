@@ -1106,6 +1106,36 @@ const avatarEditor = (() => {
       }
       group.appendChild(row); host.appendChild(group);
     }
+    // ---- R6 mode: a separate blocky look, saved alongside your avatar ----
+    // (Rivals always uses this model; other games keep the normal avatar)
+    {
+      const r6 = stateHub.me.avatar.r6 = { head: '#f5cd30', torso: '#0f6cbd', armL: '#f5cd30', armR: '#f5cd30', legL: '#3aa03a', legR: '#3aa03a', accessory: 'none', face: 'smile', ...(stateHub.me.avatar.r6 || {}) };
+      const group = document.createElement('div'); group.className = 'opt-group';
+      group.innerHTML = `<h3>🟨 R6 Mode <small style="font-weight:600;color:#9aa3b5;font-size:11px;">— blocky model · used by Rivals · saved separately</small></h3>`;
+      const partRow = document.createElement('div'); partRow.className = 'opt-row'; partRow.style.flexWrap = 'wrap';
+      const PARTS = [['head', 'Head'], ['torso', 'Torso'], ['armL', 'L Arm'], ['armR', 'R Arm'], ['legL', 'L Leg'], ['legR', 'R Leg']];
+      for (const [k, label] of PARTS) {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:#c9d2e0;';
+        const ci = document.createElement('input'); ci.type = 'color'; ci.value = r6[k];
+        ci.addEventListener('input', () => { r6[k] = ci.value; });
+        wrap.appendChild(ci); wrap.appendChild(document.createTextNode(label));
+        partRow.appendChild(wrap);
+      }
+      group.appendChild(partRow);
+      const selRow = document.createElement('div'); selRow.className = 'opt-row'; selRow.style.marginTop = '8px';
+      const mkSel = (key, opts) => {
+        const sel = document.createElement('select');
+        sel.style.cssText = 'background:#1c2029;color:#fff;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-weight:700;';
+        for (const o of opts) { const op = document.createElement('option'); op.value = o; op.textContent = o[0].toUpperCase() + o.slice(1); if (r6[key] === o) op.selected = true; sel.appendChild(op); }
+        sel.addEventListener('change', () => { r6[key] = sel.value; });
+        return sel;
+      };
+      selRow.appendChild(mkSel('accessory', ['none', 'cap', 'tophat', 'headphones', 'halo', 'horns', 'crown']));
+      selRow.appendChild(mkSel('face', ['smile', 'grin', 'serious', 'wink', 'shades']));
+      group.appendChild(selRow);
+      host.appendChild(group);
+    }
     const saveBtn = document.createElement('button');
     saveBtn.id = 'avatar-save'; saveBtn.textContent = '💾 Save avatar';
     saveBtn.addEventListener('click', async () => {

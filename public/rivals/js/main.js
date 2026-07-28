@@ -6,10 +6,11 @@ import * as THREE from 'three';
 import { Net } from './net.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { makeR6, R6_DEFAULT } from '/shared/r6.js';
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
 import { SKINS, SKIN_BY_ID, SKINS_BY_WEAPON, SKIN_WEAPONS, RARITY_COLOR, CASE_PRICE } from '/shared/rivals/skins.js';
-import { MAPS, LOBBY } from '/shared/rivals/maps.js';
+import { MAPS, LOBBY, RANGE } from '/shared/rivals/maps.js';
 import { loadAudio, resumeAudio, playOne, playLoop, stopLoop } from './audio.js';
 
 const $ = (s) => document.querySelector(s);
@@ -395,10 +396,28 @@ const keys = new Set();
 let locked = false;
 let lobbyPads = [];
 let padQueueCd = 0;
+// zone: 'lobby' = third-person social space (no guns), 'range' = FPS practice
+game.zone = 'lobby';
+const lobbyCam = { yaw: Math.PI, pitch: 0.25, dist: 6.5, dragging: false };
+let myR6 = null;
+function ensureMyR6() {
+  if (myR6) return myR6;
+  myR6 = makeR6(myR6Profile);
+  scene.add(myR6.group);
+  return myR6;
+}
+const inLobbyMode = () => game.phase === 'lobby' && game.zone === 'lobby';
 
-canvas.addEventListener('click', () => { if (!locked && !isTouch) canvas.requestPointerLock(); });
+canvas.addEventListener('click', () => { if (!locked && !isTouch && !inLobbyMode()) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
+  if (inLobbyMode()) {
+    if (lobbyCam.dragging) {
+      lobbyCam.yaw -= e.movementX * 0.007;
+      lobbyCam.pitch = Math.max(-0.15, Math.min(1.1, lobbyCam.pitch + e.movementY * 0.006));
+    }
+    return;
+  }
   if (!locked) return;
   // scoped/ADS look speed is nerfed in proportion to the zoom — the more
   // zoomed in you are, the slower the camera turns (sniper slows the most)
@@ -458,11 +477,13 @@ addEventListener('keyup', (e) => {
 
 let mouseDown = false, rightDown = false;
 addEventListener('mousedown', (e) => {
+  if (inLobbyMode()) { if (e.button === 2) lobbyCam.dragging = true; return; }
   if (!locked) return;
   if (e.button === 0) { mouseDown = true; tryFire(); }
   if (e.button === 2) { rightDown = true; onRightDown(); }
 });
 addEventListener('mouseup', (e) => {
+  if (e.button === 2) lobbyCam.dragging = false;
   if (e.button === 0) mouseDown = false;
   if (e.button === 2) rightDown = false;
 });
@@ -844,13 +865,32 @@ function stepMe(dt) {
   const eyeTarget = me.crouch || me.sliding ? MOVE.eyeCrouch : MOVE.eyeStand;
   if (me.eye == null) me.eye = eyeTarget;
   me.eye += (eyeTarget - me.eye) * Math.min(1, dt * 14);
-  camera.position.set(me.pos.x, me.pos.y + me.eye, me.pos.z);
-  camera.rotation.set(0, 0, 0);
-  camera.rotateY(me.ry);
-  camera.rotateX(me.pitch);
-  camera.rotateZ(vmAnim.roll * 0.4);   // subtle strafe lean, like the original
-  // recoil kick decay
-  camera.rotateX(recoil); recoil *= Math.pow(0.0001, dt);
+  if (inLobbyMode()) {
+    // third-person social camera: orbit the character, cursor free, RMB to look
+    const cy = Math.cos(lobbyCam.pitch), sy = Math.sin(lobbyCam.pitch);
+    const fx = Math.sin(lobbyCam.yaw) * cy, fz = Math.cos(lobbyCam.yaw) * cy;
+    const tx = me.pos.x, ty = me.pos.y + 1.35, tz = me.pos.z;
+    camera.position.set(tx + fx * lobbyCam.dist, ty + sy * lobbyCam.dist + 0.4, tz + fz * lobbyCam.dist);
+    camera.lookAt(tx, ty, tz);
+  } else {
+    camera.position.set(me.pos.x, me.pos.y + me.eye, me.pos.z);
+    camera.rotation.set(0, 0, 0);
+    camera.rotateY(me.ry);
+    camera.rotateX(me.pitch);
+    camera.rotateZ(vmAnim.roll * 0.4);   // subtle strafe lean, like the original
+    // recoil kick decay
+    camera.rotateX(recoil); recoil *= Math.pow(0.0001, dt);
+  }
+  // my own R6 body: visible only in the third-person lobby
+  const r6 = ensureMyR6();
+  r6.group.visible = inLobbyMode();
+  if (r6.group.visible) {
+    r6.group.position.set(me.pos.x, me.pos.y, me.pos.z);
+    r6.group.rotation.y = me.ry + Math.PI;
+    const sp2d = Math.hypot(me.vel.x, me.vel.z);
+    r6.setAnim(!me.grounded ? (me.vel.y > 1 ? 'jump' : 'fall') : sp2d > 8 ? 'run' : sp2d > 0.5 ? 'walk' : 'idle');
+    r6.update(dt);
+  }
 }
 
 // ============================ weapons ============================
@@ -866,7 +906,8 @@ const viewmodels = {};
 function vmMat(c) { return new THREE.MeshLambertMaterial({ color: c }); }
 
 // your avatar's colours on YOUR hands — like the original's viewmodels
-const VM_SHIRT = identity.avatar?.shirtColor || '#2f5fd0';
+const myR6Profile = identity.avatar?.r6 || R6_DEFAULT;
+const VM_SHIRT = myR6Profile.armR || identity.avatar?.shirtColor || '#2f5fd0';
 const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 
 // arms are single chunky CUBES in your shirt colour — just like the original
@@ -1410,6 +1451,18 @@ function buildLoadoutUI() {
     </div>`;
   document.body.appendChild(panel);
 
+  let ldPrev = null, ldDragOn = false;
+  const clearPrev = () => { if (ldPrev) { camera.remove(ldPrev); ldPrev.traverse((n) => { n.geometry?.dispose(); n.material?.dispose?.(); }); ldPrev = null; } };
+  const showPrev = (id) => {
+    clearPrev();
+    if (!inLobbyMode()) return;             // in the range/freeze you see it in-hand instead
+    ldPrev = makeHeldWeapon(id);
+    ldPrev.scale.setScalar(2.4);
+    ldPrev.position.set(0, -0.12, -1.35);
+    ldPrev.rotation.y = 0.7;
+    camera.add(ldPrev);                     // camera lives in vmScene → draws over the world
+  };
+  window.__ldPrevTick = (dt) => { if (ldPrev && !ldDragOn) ldPrev.rotation.y += dt * 0.5; };
   const DESC = {
     primary: 'A dependable main weapon, useful in all situations.',
     secondary: 'A quick sidearm for when the fight gets close.',
@@ -1426,6 +1479,7 @@ function buildLoadoutUI() {
   const showCard = (id) => {
     const w = WEAPONS[id]; if (!w) return;
     selId = id;
+    showPrev(id);
     panel.querySelector('#ldc-cls').textContent = 'Standard ' + (CLASS_LABEL[w.class] || w.class);
     panel.querySelector('#ldc-name').textContent = w.name;
     panel.querySelector('#ldc-desc').textContent = DESC[w.class] || '';
@@ -1479,7 +1533,12 @@ function buildLoadoutUI() {
     if (b.dataset.a === 'skin') { panel.classList.remove('open'); document.getElementById('sk-open')?.click(); }
     else toast?.(b.querySelector('small').textContent + 's — coming soon');
   }));
-  const close = () => panel.classList.remove('open');
+  const shade = panel.querySelector('#ld-shade');
+  shade.style.pointerEvents = 'auto';
+  shade.addEventListener('mousedown', () => { ldDragOn = true; });
+  addEventListener('mouseup', () => { ldDragOn = false; });
+  addEventListener('mousemove', (e) => { if (ldDragOn && ldPrev) ldPrev.rotation.y += e.movementX * 0.013; });
+  const close = () => { panel.classList.remove('open'); clearPrev(); };
   panel.querySelector('#ld-leave').addEventListener('click', close);
   btn.addEventListener('click', () => { render(); showCard(myPickedLoadout[0] || 'ar'); panel.classList.add('open'); });
   window.__ldAuto = { open: () => { render(); showCard(myPickedLoadout[0] || 'ar'); panel.classList.add('open'); }, close };
@@ -1774,9 +1833,9 @@ function finishReload() {
 
 function tryFire() {
   vmAnim.bfInspectT = 1;   // any attack intent cancels an inspect
-  if (game.phase === 'lobby' && !inRangeZone() && me.weapon !== 'warper') {
+  if (inLobbyMode()) {
     const now2 = clockNow();
-    if (now2 > rangeHintAt) { toast('Weapons live in the SHOOTING RANGE →  (east door)'); rangeHintAt = now2 + 3; }
+    if (now2 > rangeHintAt) { toast('Weapons live in the SHOOTING RANGE — through the east door'); rangeHintAt = now2 + 3; }
     return;
   }
   if (me.weapon === 'warper') {
@@ -2129,7 +2188,8 @@ function setHeld(o, id) {
 
 function addOther(f) {
   if (others.has(f.id) || f.id === net.id) return;
-  const ctrl = makeAvatar(f.avatar || {});
+  // Rivals forces the R6 model: use the player's saved R6 look, else default
+  const ctrl = makeR6(f.avatar?.r6 || R6_DEFAULT);
   ctrl.setAnim(f.anim || 'idle');
   scene.add(ctrl.group);
   const plate = plateFor(f.name, f.team || 'A');
@@ -2961,6 +3021,7 @@ function enterLobby(fromMatch) {
   for (const g of dropMeshes.values()) scene.remove(g);
   dropMeshes.clear();
   // the FACILITY lobby: red-carpet hallway, duel pads, shooting-range wing
+  game.zone = 'lobby';
   game.mapId = 'lobby'; game.builtMap = 'lobby';
   buildMap(LOBBY);
   clearOthers();
@@ -3247,6 +3308,13 @@ function wireLobbyUi() {
 // ---- lobby zones: stand on a duel pad to queue; loadout station in the range ----
 const inRangeZone = () => me.pos.x > 7 && me.pos.z > -10 && me.pos.z < 16;
 let rangeHintAt = 0;
+function lobbyMoveAdjust() {
+  // in the lobby your character faces where it's walking (movement is camera-relative)
+  if (!inLobbyMode()) return;
+  const f = (keys.has(binds.forward) ? 1 : 0) - (keys.has(binds.back) ? 1 : 0);
+  const st = (keys.has(binds.right) ? 1 : 0) - (keys.has(binds.left) ? 1 : 0);
+  if (f || st) me.ry = lobbyCam.yaw + Math.atan2(-st, f) + Math.PI;
+}
 function tickLobbyZones(dt) {
   const now = clockNow();
   // spin pad rims gently
@@ -3266,12 +3334,38 @@ function tickLobbyZones(dt) {
       }
     } else { pd.holdT = 0; if (pd.rim) pd.rim.scale.setScalar(1); }
   }
-  // loadout button only lives at the range station (like the original's bins)
+  // loadout button only lives in the Shooting Range (like the original's bins)
   const ld = document.getElementById('ld-open');
-  if (ld) ld.style.display = inRangeZone() ? '' : 'none';
+  if (ld && game.phase === 'lobby') ld.style.display = game.zone === 'range' ? '' : 'none';
+  // walking through the east door takes you to the Shooting Range map
+  if (game.phase === 'lobby' && game.zone === 'lobby' && me.pos.x > 6.9 && me.pos.z > -10 && me.pos.z < 16) enterRange();
+  else if (game.phase === 'lobby' && game.zone === 'range') {
+    const xp = RANGE.exitPad;
+    if (Math.hypot(me.pos.x - xp.x, me.pos.z - xp.z) < 1.6) exitRange();
+  }
 }
-function tickLobbyUi() {
-  const inLobby = game.phase === 'lobby';
+function enterRange() {
+  game.zone = 'range';
+  game.mapId = 'range'; game.builtMap = 'range';
+  buildMap(RANGE);
+  const sp = RANGE.spawnsA[0];
+  me.pos = { x: sp.x, y: 0, z: sp.z }; me.vel = { x: 0, y: 0, z: 0 };
+  me.ry = sp.ry; me.pitch = 0;
+  me.ammo = freshAmmo(); me.hp = 100;
+  toast('Shooting Range — click to aim · step on the glowing pad to leave');
+}
+function exitRange() {
+  game.zone = 'lobby';
+  game.mapId = 'lobby'; game.builtMap = 'lobby';
+  buildMap(LOBBY);
+  me.pos = { x: 4.5, y: 0, z: 3 }; me.vel = { x: 0, y: 0, z: 0 };
+  me.ry = Math.PI / 2;
+  document.exitPointerLock?.();
+}
+function tickLobbyUi(dt) {
+  window.__ldPrevTick?.(dt || 0.016);
+  $('#ammo-wrap')?.classList.toggle('hidden', inLobbyMode());   // no guns in the social lobby
+  const inLobby = game.phase === 'lobby' && game.zone === 'lobby';
   const pickerOpen = document.getElementById('ld-panel')?.classList.contains('open');
   $('#lobby-ui')?.classList.toggle('hidden', !inLobby || !!pickerOpen);
   if (inLobby) $('#lobby-tip')?.classList.add('hidden');   // the lobby UI replaces the tip bar
@@ -3286,8 +3380,9 @@ function frame() {
   last = now;
   if (mobileOn) updateMobileHud();
   tickPortals(dt);
+  lobbyMoveAdjust();
   tickLobbyZones(dt);
-  tickLobbyUi();
+  tickLobbyUi(dt);
   const cn = clockNow();
 
   stepMe(dt);
@@ -3370,11 +3465,11 @@ function frame() {
   // sniper scope: overlay + hide the rifle while fully scoped
   const scoped = WEAPONS[me.weapon]?.scoped && me.ads > 0.78;
   $('#scope').classList.toggle('hidden', !scoped);
-  $('#crosshair').classList.toggle('hidden', scoped);
+  $('#crosshair').classList.toggle('hidden', scoped || inLobbyMode());
 
   const vm = viewmodels[vmKey];
   if (vm) {
-    vm.visible = !scoped;
+    vm.visible = !scoped && !inLobbyMode();   // no guns out in the social lobby
     const k = me.ads;
     const loose = 1 - k * 0.85;                 // ADS tightens everything
     const bobAmt = (moving ? (sprinting2 ? 1.5 : 1) : 0) * loose;

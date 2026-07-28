@@ -123,6 +123,58 @@ export const BATTLEGROUND = {
 // wood event hall at the far end.
 const LB_W = '#59606e', LB_W2 = '#4a515c', LB_D = '#343a44', LB_DK = '#23272f';
 const WD = '#8a6a48', WD2 = '#6b5138', CARPET = '#c81f2e', PIPE = '#4ae06a';
+// ============ SHOOTING RANGE — standalone practice map ============
+// Firing lanes with counters, a target backstop, a colourful dummy field,
+// and a pink/green practice corner. Enter from the lobby's east door;
+// the glowing pad by the spawn takes you back.
+const RG_W = '#4d5462', RG_W2 = '#3d434f', RG_D = '#23272f';
+export const RANGE = {
+  id: 'range', name: 'Shooting Range', sky: '#161a22', fog: 0.008,
+  ground: { color: '#31363f', sizeX: 100, sizeZ: 76 },
+  exitPad: { x: -27, z: 8 },
+  boxes: [
+    // room shell 66 x 48
+    B(0, 4.5, -24.6, 68, 9, 1.2, RG_W), B(0, 4.5, 24.6, 68, 9, 1.2, RG_W),
+    B(-33.6, 4.5, 0, 1.2, 9, 50, RG_W2), B(33.6, 4.5, 0, 1.2, 9, 50, RG_W2),
+    B(0, 9.2, 0, 68, 0.5, 50, RG_D),                       // ceiling
+    // firing counters (west side, shooting east)
+    B(-14, 0.65, -14, 3, 1.3, 2.4, RG_D), B(-14, 0.65, -6, 3, 1.3, 2.4, RG_D),
+    B(-14, 0.65, 2, 3, 1.3, 2.4, RG_D), B(-14, 0.65, 10, 3, 1.3, 2.4, RG_D),
+    // lane dividers
+    B(-3, 1.5, -10, 20, 3, 0.4, RG_W2), B(-3, 1.5, -2, 20, 3, 0.4, RG_W2), B(-3, 1.5, 6, 20, 3, 0.4, RG_W2),
+    // target backstop
+    B(22, 3, -2, 1, 6, 34, RG_D),
+    // colourful dummy field (north-east): rainbow tiles
+    B(12, 0.031, -19, 16, 0.06, 8, '#e05a4a', { glow: true }),
+    B(4, 0.031, -19, 4, 0.06, 8, '#e8c83a', { glow: true }),
+    B(18, 0.031, -14.8, 8, 0.06, 2, '#5abd6a', { glow: true }),
+    B(6, 0.031, -14.8, 8, 0.06, 2, '#3d8bff', { glow: true }),
+    // pink/green practice corner (south-east)
+    B(24, 2.2, 20, 18, 4.4, 1, '#ff7eb6', { plain: true }),
+    B(32.6, 2.2, 14, 1, 4.4, 12, '#6ee7a0', { plain: true }),
+    B(24, 0.031, 17, 17, 0.06, 13, '#ff9ac8', { glow: true }),
+    B(28, 0.031, 10, 9, 0.06, 6, '#8af0b8', { glow: true }),
+    // loadout bins by the spawn (the original's trash-can stations)
+    B(-27, 1, -6, 1.6, 2, 1.6, '#2a2e38'), B(-27, 1, -2.5, 1.6, 2, 1.6, '#2a2e38'),
+    // EXIT pad
+    B(-27, 0.031, 8, 3.4, 0.06, 3.4, '#38b6e8', { glow: true }),
+    // scatter cover blocks mid-range
+    B(4, 1, 12, 2.6, 2, 2.6, RG_W2), B(8, 1.3, -6, 2.6, 2.6, 2.6, RG_W2),
+  ],
+  targets: [
+    // backstop row (varied heights)
+    { x: 20.8, y: 1.1, z: -14 }, { x: 20.8, y: 2.4, z: -9 }, { x: 20.8, y: 1.4, z: -4 },
+    { x: 20.8, y: 2.8, z: 1 }, { x: 20.8, y: 1.1, z: 6 }, { x: 20.8, y: 1.9, z: 11 },
+    // colourful field cluster — MANY dummies
+    { x: 8, y: 1.1, z: -18 }, { x: 12, y: 1.1, z: -20 }, { x: 15, y: 1.1, z: -17 },
+    { x: 10, y: 1.1, z: -15 }, { x: 17, y: 1.1, z: -21 }, { x: 6, y: 1.1, z: -21 },
+    // pink/green corner pair
+    { x: 26, y: 1.1, z: 16 }, { x: 30, y: 1.1, z: 13 },
+  ],
+  spawnsA: [{ x: -26, z: 2, ry: -Math.PI / 2 }],
+  spawnsB: [{ x: -26, z: 2, ry: -Math.PI / 2 }],
+};
+
 export const LOBBY = {
   id: 'lobby', name: 'Lobby', sky: '#12141c', fog: 0.012,
   ground: { color: '#2e333c', sizeX: 100, sizeZ: 140 },
