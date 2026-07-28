@@ -378,6 +378,18 @@ function catpawState() {
   return platform.catpaw;
 }
 export function catpawEarnersLeft() { return Math.max(0, CATPAW_MAX_EARNERS - catpawState().earners.length); }
+// the Owner Charm: earned by sniping AttackFace15. One-per-player, forever.
+export function grantOwnerCharm(name) {
+  const u = ensureUser(name);
+  if (u.ownerCharm) return 'already';
+  u.ownerCharm = true;
+  save();
+  return 'granted';
+}
+export function hasOwnerCharm(name) {
+  const u = getUser(String(name || '').toLowerCase());
+  return !!u?.ownerCharm;
+}
 // grant to a killer. returns 'granted' | 'already' | 'full' | 'owner' | 'bad'
 export function grantCatpaw(name) {
   const nl = String(name || '').toLowerCase();
@@ -957,7 +969,7 @@ export function hubRouter() {
     if (!u) return res.json({ owned: [], equipped: {}, cubes: 0 });
     ensureWallet(u); const s = ensureSkins(u);
     if (nameLower === CATPAW_OWNER) save();   // persist the owner's auto-grant
-    res.json({ owned: s.owned, equipped: s.equipped, cubes: u.cubes, price: CASE_PRICE });
+    res.json({ owned: s.owned, equipped: s.equipped, cubes: u.cubes, price: CASE_PRICE, ownerCharm: !!u.ownerCharm });
   });
   r.post('/rivals/case', (req, res) => {
     const name = clean(req.body?.name); if (!name) return res.json({ ok: false });

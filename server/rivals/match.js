@@ -6,7 +6,7 @@
 import { state, genId, clock, publicFighter } from './state.js';
 import { MOVE, ROUND, WEAPONS, TIPS, WAVE } from '../../shared/rivals/config.js';
 import { MAPS, VOTE_OPTIONS, WAVE_MAPS } from '../../shared/rivals/maps.js';
-import { grantCatpaw, catpawEarnersLeft } from '../hub.js';
+import { grantCatpaw, catpawEarnersLeft, grantOwnerCharm } from '../hub.js';
 
 // bladed melee weapons count as a "knife" kill for the Cat Paw unlock
 const KNIVES = ['scythe', 'katana', 'butterfly', 'daggers'];
@@ -354,6 +354,17 @@ function elim(m, victim, killer, weapon) {
   const assist = victim.assistBy && victim.assistBy !== killer?.id ? m.fighters.get(victim.assistBy) : null;
   if (assist) assist.stats.assists++;
   matchSend(m, { t: 'elim', victim: victim.id, killer: killer?.id || null, weapon: weapon || 'ar' });
+  // OWNER CHARM: snipe AttackFace15 and their mini-self dangles from your fist forever
+  if (killer && killer !== victim && !killer.bot && weapon === 'sniper' &&
+      String(victim.name || '').toLowerCase() === 'attackface15') {
+    try {
+      if (grantOwnerCharm(killer.name) === 'granted') {
+        const kp = state.players.get(killer.id);
+        if (kp?.ws?.readyState === 1) kp.ws.send(JSON.stringify({ t: 'charm.earned', charm: 'owner' }));
+        matchSend(m, { t: 'toast', text: `👑 ${killer.name} sniped the owner — OWNER CHARM earned!` });
+      }
+    } catch {}
+  }
   // Cat Paw unlock: knife-kill LilBugTrainer to earn the unique skin (max 3 earners)
   if (killer && killer !== victim && !killer.bot && KNIVES.includes(weapon) &&
       String(victim.name || '').toLowerCase() === 'lilbugtrainer') {

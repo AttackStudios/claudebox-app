@@ -149,7 +149,7 @@ export function makeR6(profile = {}) {
 
     let anim = 'idle', t = 0;
     const q = new THREE.Quaternion(), e = new THREE.Euler();
-    const target = { armL: { x: 0, z: 0 }, armR: { x: 0, z: 0 }, legL: { x: 0 }, legR: { x: 0 } };
+    const target = { armL: { x: 0, z: 0 }, armR: { x: 0, z: 0 }, legL: { x: 0 }, legR: { x: 0 }, torso: { x: 0 } };
     const POSES = buildPoses(target);
     const setPart = (part, rx, rz) => {
       const b = bones[part]; if (!b) return;
@@ -165,6 +165,7 @@ export function makeR6(profile = {}) {
       setPart('armR', target.armR.x, -target.armR.z);
       setPart('legL', target.legL.x, 0);
       setPart('legR', target.legR.x, 0);
+      setPart('torso', target.torso.x, 0);
       const bobA = anim === 'run' ? 0.05 : anim === 'walk' ? 0.032 : 0;
       inner.position.y = -hqTpl.groundY * hqTpl.scale + Math.abs(Math.sin(t * (anim === 'run' ? 10.5 : 7))) * bobA;
     }
@@ -207,13 +208,14 @@ export function makeR6(profile = {}) {
   const R_Elbow = new THREE.Group(); R_Elbow.position.y = -0.9 * S; armR.add(R_Elbow);
 
   let anim = 'idle', t = 0;
-  const target = { armL: { x: 0, z: 0 }, armR: { x: 0, z: 0 }, legL: { x: 0 }, legR: { x: 0 } };
+  const target = { armL: { x: 0, z: 0 }, armR: { x: 0, z: 0 }, legL: { x: 0 }, legR: { x: 0 }, torso: { x: 0 } };
   const POSES = buildPoses(target);
   function setAnim(name) { if (!POSES[name]) name = 'idle'; if (anim !== name) anim = name; }
   function update(dt) {
     t += dt;
     (POSES[anim] || POSES.idle)(t);
     const k = Math.min(1, dt * 12);
+    torso.rotation.x += (target.torso.x - torso.rotation.x) * k;
     armL.rotation.x += (target.armL.x - armL.rotation.x) * k;
     armR.rotation.x += (target.armR.x - armR.rotation.x) * k;
     armL.rotation.z += (target.armL.z - armL.rotation.z) * k;
@@ -246,12 +248,14 @@ export function makeR6(profile = {}) {
 // stiff pendulum limbs, straight-arm tool hold, arms-up freefall ----
 function buildPoses(target) {
   const POSES = {
-    idle: (tt) => { target.armL.x = Math.sin(tt * 1.6) * 0.045; target.armR.x = -Math.sin(tt * 1.6) * 0.045; target.armL.z = 0.05; target.armR.z = 0.05; target.legL.x = 0; target.legR.x = 0; },
+    idle: (tt) => { target.armL.x = Math.sin(tt * 1.6) * 0.045; target.armR.x = -Math.sin(tt * 1.6) * 0.045; target.armL.z = 0.05; target.armR.z = 0.05; target.legL.x = 0; target.legR.x = 0; if (target.torso) target.torso.x = 0; },
     walk: (tt) => { const sw = Math.sin(tt * 7) * 0.75; target.armL.x = sw; target.armR.x = -sw; target.legL.x = -sw; target.legR.x = sw; target.armL.z = 0.06; target.armR.z = 0.06; },
     run: (tt) => { const sw = Math.sin(tt * 10.5) * 1.0; target.armL.x = sw; target.armR.x = -sw; target.legL.x = -sw; target.legR.x = sw; target.armL.z = 0.08; target.armR.z = 0.08; },
     jump: () => { target.armL.x = -0.35; target.armR.x = -0.35; target.legL.x = 0.25; target.legR.x = -0.15; },
     fall: () => { target.armL.x = Math.PI; target.armR.x = Math.PI; target.armL.z = 0.25; target.armR.z = 0.25; target.legL.x = 0.12; target.legR.x = -0.12; },
     death: () => { target.armL.x = 0.4; target.armR.x = 0.4; target.legL.x = 0.1; target.legR.x = 0.1; },
+    // the powerslide: lean back, legs kicked forward, arms trailing
+    slide: (tt) => { if (target.torso) target.torso.x = -0.5; target.legL.x = 1.15; target.legR.x = 0.95; target.armL.x = -0.55; target.armR.x = -0.35; target.armL.z = 0.25; target.armR.z = 0.25; },
     toolhold: (tt) => { POSES.idle(tt); target.armR.x = Math.PI / 2; target.armR.z = 0; },
     knifeidle: (tt) => { POSES.idle(tt); target.armR.x = Math.PI * 0.32; },
     pistolidle: (tt) => { POSES.idle(tt); target.armR.x = Math.PI / 2; },

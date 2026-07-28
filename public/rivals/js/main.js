@@ -907,7 +907,7 @@ function stepMe(dt) {
     r6.group.position.set(me.pos.x, me.pos.y, me.pos.z);
     r6.group.rotation.y = me.ry + Math.PI;
     const sp2d = Math.hypot(me.vel.x, me.vel.z);
-    r6.setAnim(!me.grounded ? (me.vel.y > 1 ? 'jump' : 'fall') : sp2d > 8 ? 'run' : sp2d > 0.5 ? 'walk' : 'idle');
+    r6.setAnim(me.sliding ? 'slide' : !me.grounded ? (me.vel.y > 1 ? 'jump' : 'fall') : sp2d > 8 ? 'run' : sp2d > 0.5 ? 'walk' : 'idle');
     r6.update(dt);
   }
 }
@@ -1378,9 +1378,79 @@ function activeVmKey() { return (me.weapon === 'scythe' && catpawEquipped()) ? '
 async function loadMySkins() {
   try {
     const d = await fetch('/api/rivals/skins?name=' + encodeURIComponent(identity.name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json());
-    if (d) { mySkins.owned = d.owned || []; mySkins.equipped = d.equipped || {}; mySkins.cubes = d.cubes || 0; }
+    if (d) { mySkins.owned = d.owned || []; mySkins.equipped = d.equipped || {}; mySkins.cubes = d.cubes || 0; iHaveOwnerCharm = !!d.ownerCharm; syncCharm(); }
   } catch {}
 }
+
+// ============ OWNER CHARM: a mini-you keychain dangling off the fist. ============
+// ============ Earned forever by sniping AttackFace15. Live-updates outfit. ============
+let iHaveOwnerCharm = false;
+let charmRoot = null, charmSwing = null, charmMini = null, charmProfileJson = '';
+const charmPhys = { ax: 0, az: 0, vax: 0, vaz: 0, pvx: 0, pvy: 0, pvz: 0, pry: 0 };
+function rebuildCharmMini(prof) {
+  if (charmMini) { try { charmSwing.remove(charmMini.group); charmMini.dispose(); } catch {} charmMini = null; }
+  charmProfileJson = JSON.stringify(prof || {});
+  charmMini = makeR6(prof || R6_DEFAULT);
+  charmMini.group.scale.setScalar(0.055);            // keychain-sized you
+  charmMini.group.position.y = -0.19;                // feet-origin rig hangs below the last link
+  charmMini.group.rotation.y = 0.18;                 // slight angle so you see the face
+  charmMini.setAnim('idle');
+  charmSwing.add(charmMini.group);
+}
+function syncCharm() {
+  if (!iHaveOwnerCharm) { if (charmRoot) charmRoot.visible = false; return; }
+  if (charmRoot) { charmRoot.visible = true; return; }
+  charmRoot = new THREE.Group();
+  charmRoot.position.set(0.47, -0.21, -0.62);        // just OUTSIDE the right fist — never crosses a weapon
+  const gold = new THREE.MeshStandardMaterial({ color: '#e8b64c', metalness: 0.75, roughness: 0.35 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.005, 8, 20), gold);
+  charmRoot.add(ring);
+  charmSwing = new THREE.Group();                    // everything below the ring swings as a pendulum
+  charmRoot.add(charmSwing);
+  for (let i = 0; i < 3; i++) {
+    const link = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0038, 6, 14), gold);
+    link.position.y = -0.026 - i * 0.021;
+    link.rotation.y = (i % 2) * Math.PI / 2;
+    charmSwing.add(link);
+  }
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.015, 5), gold);
+  crown.position.y = -0.083; crown.rotation.x = 0.1;
+  charmSwing.add(crown);                             // tiny crown atop the mini's head — it IS the owner charm
+  rebuildCharmMini(myR6Profile);
+  viewRoot.add(charmRoot);
+}
+function tickCharm(dt) {
+  if (!charmRoot) return;
+  const show = iHaveOwnerCharm && (window.__charmForce || (!inLobbyMode() && !me.dead));
+  charmRoot.visible = show;
+  if (!show) return;
+  charmMini?.update(dt);
+  // pendulum: your acceleration (walk/jump/turn) whips the charm around, spring pulls it back
+  const P = charmPhys, idt = 1 / Math.max(dt, 0.001);
+  const axw = (me.vel.x - P.pvx) * idt, ayw = (me.vel.y - P.pvy) * idt, azw = (me.vel.z - P.pvz) * idt;
+  P.pvx = me.vel.x; P.pvy = me.vel.y; P.pvz = me.vel.z;
+  const sn = Math.sin(-me.ry), cs = Math.cos(-me.ry);
+  const lx = axw * cs - azw * sn;                    // view-space sideways accel
+  const lz = axw * sn + azw * cs;                    // view-space forward accel
+  const yawVel = (me.ry - P.pry) * idt; P.pry = me.ry;
+  P.vax += (-16 * P.ax - 5.5 * P.vax - lz * 0.05 - ayw * 0.035) * dt;
+  P.vaz += (-16 * P.az - 5.5 * P.vaz - lx * 0.05 - yawVel * 0.3) * dt;
+  P.ax = Math.max(-0.85, Math.min(0.85, P.ax + P.vax * dt));
+  P.az = Math.max(-0.85, Math.min(0.85, P.az + P.vaz * dt));
+  charmSwing.rotation.x = P.ax;
+  charmSwing.rotation.z = P.az;
+}
+window.__charmTest = () => { iHaveOwnerCharm = true; syncCharm(); };   // debug: preview the charm
+// live-update: if you change your outfit in the hub, the charm follows
+setInterval(async () => {
+  if (!iHaveOwnerCharm || !charmRoot) return;
+  try {
+    const res = await fetch('/api/avatar/' + encodeURIComponent(identity.name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } });
+    const d = await res.json();
+    const prof = d?.avatar?.r6 || R6_DEFAULT;
+    if (JSON.stringify(prof) !== charmProfileJson) rebuildCharmMini(prof);
+  } catch {}
+}, 15000);
 
 // ---- loadout picker: choose one weapon per class (all unlocked) ----
 const CLASS_ORDER = ['primary', 'secondary', 'melee', 'utility'];
@@ -1495,6 +1565,7 @@ function buildLoadoutUI() {
       updateLoadoutHud(); updateAmmoHud();
     }
   };
+  window.__applyInHand = applyInHand;
   const showCard = (id) => {
     const w = WEAPONS[id]; if (!w) return;
     selId = id;
@@ -2228,6 +2299,7 @@ function displayAnim(o) {
   const d = o.data;
   if (d.dead) return 'death';
   if (d.actionUntil && clockNow() < d.actionUntil) return d.actionAnim;
+  if (d.crouch && (d.anim === 'run' || d.anim === 'walk')) return 'slide';   // powersliding
   const base = d.anim || 'idle';
   const w = o.heldId;
   if (w === 'ar' || w === 'sniper') { if (base === 'idle') return 'rifleidle'; if (base === 'run' || base === 'walk') return 'riflerun'; }
@@ -2257,6 +2329,57 @@ function toast(t) {
   $('#rv-toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
+// ============ QUICK-PICK GRID: compact tile picker at round start + in the range ============
+// (distinct from the full career-style panel used in the lobby)
+function buildQuickPick() {
+  if (document.getElementById('qp-panel')) return;
+  const st = document.createElement('style'); st.textContent = `
+  #qp-panel{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:55;display:none;flex-direction:column;align-items:center;gap:7px;font-family:inherit;}
+  #qp-panel.open{display:flex;animation:qpIn .18s ease-out;}
+  @keyframes qpIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+  #qp-tip{background:rgba(12,14,18,.94);color:#eef1f7;font-weight:800;font-size:12.5px;padding:7px 15px;border-radius:9px;box-shadow:0 4px 16px rgba(0,0,0,.45);}
+  #qp-grid{background:rgba(16,18,24,.93);border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:9px;display:flex;flex-direction:column;gap:6px;box-shadow:0 12px 36px rgba(0,0,0,.55);backdrop-filter:blur(7px);}
+  .qp-row{display:flex;gap:6px;justify-content:center;}
+  .qp-tile{width:54px;height:54px;border-radius:9px;background:#262a34;border:2px solid rgba(255,255,255,.07);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;transition:transform .07s,background .07s;}
+  .qp-tile i{font-style:normal;font-size:20px;line-height:1;}
+  .qp-tile small{font-size:8px;font-weight:800;color:#8d95a8;letter-spacing:.02em;max-width:50px;overflow:hidden;white-space:nowrap;}
+  .qp-tile:hover{transform:translateY(-2px);background:#333a4a;}
+  .qp-tile.eq{background:#f2f4f8;border-color:#fff;}
+  .qp-tile.eq small{color:#1c2028;}
+  `; document.head.appendChild(st);
+  const panel = document.createElement('div'); panel.id = 'qp-panel';
+  panel.innerHTML = '<div id="qp-tip"></div><div id="qp-grid"></div>';
+  document.body.appendChild(panel);
+  const render = () => {
+    const grid = panel.querySelector('#qp-grid'); grid.innerHTML = '';
+    for (const cls of CLASS_ORDER) {
+      const row = document.createElement('div'); row.className = 'qp-row';
+      for (const { id, w } of weaponsOfClass(cls)) {
+        const t = document.createElement('div');
+        t.className = 'qp-tile' + (myPickedLoadout.includes(id) ? ' eq' : '');
+        t.innerHTML = `<i>${WEAPON_ICONS[id] || '🔫'}</i><small>${w.name}</small>`;
+        t.addEventListener('click', () => {
+          myPickedLoadout[CLASS_ORDER.indexOf(cls)] = id;
+          sendLoadout();
+          window.__applyInHand?.(id);
+          render(); sfx.click?.();
+        });
+        row.appendChild(t);
+      }
+      grid.appendChild(row);
+    }
+  };
+  window.__qpAuto = {
+    open(mode) {
+      panel.querySelector('#qp-tip').textContent = mode === 'range'
+        ? 'Try out any weapon here for free!'
+        : 'Pick your loadout — locks when the round starts!';
+      render(); panel.classList.add('open');
+    },
+    close: () => panel.classList.remove('open'),
+  };
+}
+
 const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨', daggers: '⚔️', warper: '🌀' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
@@ -2438,7 +2561,7 @@ net.on('round.freeze', (msg) => {
   game.phase = 'freeze';
   clearAllPortals();
   taskState.duels++; saveTasks();
-  window.__ldAuto?.open();   // pick your loadout while frozen — the only time it changes
+  window.__qpAuto?.open('match');   // compact grid picker while frozen — the only time it changes
   game.score = msg.score;
   game.stateUntil = msg.until;
   // spawn everyone
@@ -2477,11 +2600,13 @@ net.on('round.freeze', (msg) => {
     setTimeout(() => card.classList.add('hidden'), 2000);
   } else banner(`ROUND ${msg.round}`, 900);
   sfx.roundStart();
-  try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
+  document.exitPointerLock?.();   // free cursor to click the picker during freeze
 });
 net.on('round.live', (msg) => {
   game.phase = 'live';
   window.__ldAuto?.close();
+  window.__qpAuto?.close();
+  try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
   game.stateUntil = msg.until;
   $('#freeze-count').classList.add('hidden');
   banner('GO!', 600);
@@ -2887,6 +3012,13 @@ net.on('skin.unlock', async (msg) => {
   try { await loadMySkins(); } catch {}
   if (document.getElementById('sk-open')) renderSkins();
 });
+net.on('charm.earned', () => {
+  iHaveOwnerCharm = true; syncCharm();
+  banner('👑 OWNER CHARM EARNED!', 2600);
+  toast('You sniped the owner — a mini-them now hangs off your fist. Forever.');
+  try { sfx.win?.(); } catch {}
+});
+net.on('toast', (msg) => { if (msg.text) toast(msg.text); });
 net.on('hurt', (msg) => { // I took damage — directional arc
   sfx.hurt();
   const ang = Math.atan2(msg.fx - me.pos.x, msg.fz - me.pos.z); // world dir to attacker
@@ -3365,9 +3497,11 @@ function enterRange() {
   me.ry = sp.ry; me.pitch = 0;
   me.ammo = freshAmmo(); me.hp = 100;
   toast('Shooting Range — click to aim · step on the glowing pad to leave');
+  window.__qpAuto?.open('range');
 }
 function exitRange() {
   game.zone = 'lobby';
+  window.__qpAuto?.close();
   game.mapId = 'lobby'; game.builtMap = 'lobby';
   buildMap(LOBBY);
   me.pos = { x: 4.5, y: 0, z: 3 }; me.vel = { x: 0, y: 0, z: 0 };
@@ -3397,6 +3531,7 @@ function frame() {
   const cn = clockNow();
 
   stepMe(dt);
+  tickCharm(dt);
 
   // auto fire
   if (mouseDown && WEAPONS[me.weapon]?.auto) tryFire();
@@ -3900,7 +4035,7 @@ status('Connecting…');
 buildMap(LOBBY);
 setupMobile(); updateMobileHud();
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
-await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI(); buildLoadoutUI();
+await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI(); buildLoadoutUI(); buildQuickPick();
 net.connect();
 net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '', skins: mySkins.equipped, platform: platformKind() });
 net.startMovementStream(() => ({
