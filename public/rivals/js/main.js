@@ -6,7 +6,10 @@ import * as THREE from 'three';
 import { Net } from './net.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
-import { makeR6, R6_DEFAULT } from '/shared/r6.js';
+import { makeR6, R6_DEFAULT, preloadR6 } from '/shared/r6.js';
+preloadR6().then((hq) => {   // upgrade to the high-quality mesh once it loads
+  if (hq && myR6) { scene.remove(myR6.group); myR6.dispose?.(); myR6 = null; }
+});
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
 import { SKINS, SKIN_BY_ID, SKINS_BY_WEAPON, SKIN_WEAPONS, RARITY_COLOR, CASE_PRICE } from '/shared/rivals/skins.js';
@@ -398,7 +401,7 @@ let lobbyPads = [];
 let padQueueCd = 0;
 // zone: 'lobby' = third-person social space (no guns), 'range' = FPS practice
 game.zone = 'lobby';
-const lobbyCam = { yaw: Math.PI, pitch: 0.25, dist: 6.5, dragging: false };
+const lobbyCam = { yaw: 0, pitch: 0.25, dist: 6.5, dragging: false };   // camera starts BEHIND the spawn, looking down the carpet
 let myR6 = null;
 function ensureMyR6() {
   if (myR6) return myR6;

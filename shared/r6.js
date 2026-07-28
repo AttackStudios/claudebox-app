@@ -9,6 +9,84 @@
 //   ctrl.setAnim('walk'); ctrl.update(dt);
 //   ctrl.bones.R_Wrist                   // attachment for held items (charms/weapons)
 import * as THREE from 'three';
+import { GLTFLoader } from '/vendor/GLTFLoader.js';
+
+// ---- optional high-quality mesh: a rigged R6 model (user-supplied asset at
+// /models/r6.glb). We split its skinned mesh into six RIGID parts by dominant
+// bone, so the same pivots/poses/tinting drive it. Boxes remain the fallback.
+let hqParts = null, hqTried = false;
+const HQ_BONE_PART = { Torso_00: 'torso', Head_01: 'head', 'Left Arm_02': 'armL', 'Right Arm_03': 'armR', 'Left Leg_04': 'legL', 'Right Leg_05': 'legR' };
+function splitSkinnedToParts(gltf) {
+  const out = {};   // part -> { geo, tex }
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((mesh) => {
+    if (!mesh.isSkinnedMesh) return;
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv;
+    const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+    const index = geo.index ? Array.from(geo.index.array) : [...Array(pos.count).keys()];
+    const jointName = (vi) => {
+      // dominant joint of a vertex
+      let best = 0, bw = -1;
+      for (let k = 0; k < 4; k++) { const w = sw.getComponent(vi, k); if (w > bw) { bw = w; best = si.getComponent(vi, k); } }
+      return mesh.skeleton.bones[best]?.name || '';
+    };
+    const buckets = {};
+    for (let t = 0; t < index.length; t += 3) {
+      const part = HQ_BONE_PART[jointName(index[t])] || HQ_BONE_PART[jointName(index[t + 1])];
+      if (!part) continue;
+      (buckets[part] = buckets[part] || []).push(index[t], index[t + 1], index[t + 2]);
+    }
+    // rest-pose bone origins so each part is centred on its pivot
+    const boneOrigin = {};
+    for (const b of mesh.skeleton.bones) {
+      const part = HQ_BONE_PART[b.name]; if (!part) continue;
+      const v = new THREE.Vector3(); b.getWorldPosition(v); boneOrigin[part] = v;
+    }
+    const tex = mesh.material?.map || null;
+    for (const [part, tris] of Object.entries(buckets)) {
+      const g2 = new THREE.BufferGeometry();
+      const remap = new Map(); const P = [], N = [], U = [], I = [];
+      const o = boneOrigin[part] || new THREE.Vector3();
+      const v3 = new THREE.Vector3();
+      for (const vi of tris) {
+        if (!remap.has(vi)) {
+          remap.set(vi, P.length / 3);
+          v3.fromBufferAttribute(pos, vi).applyMatrix4(mesh.matrixWorld).sub(o);
+          P.push(v3.x, v3.y, v3.z);
+          N.push(nor.getX(vi), nor.getY(vi), nor.getZ(vi));
+          if (uv) U.push(uv.getX(vi), uv.getY(vi));
+        }
+        I.push(remap.get(vi));
+      }
+      g2.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+      g2.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+      if (U.length) g2.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+      g2.setIndex(I);
+      if (!out[part]) out[part] = { geo: g2, tex };
+    }
+  });
+  return Object.keys(out).length >= 6 ? out : null;
+}
+export function preloadR6() {
+  if (hqTried) return Promise.resolve(hqParts);
+  hqTried = true;
+  return new Promise((resolve) => {
+    try {
+      new GLTFLoader().load('/models/r6.glb', (g) => {
+        try {
+          hqParts = splitSkinnedToParts(g);
+          if (hqParts) {
+            hqParts.torso.geo.computeBoundingBox();
+            const bb = hqParts.torso.geo.boundingBox;
+            hqParts.scale = (2 * S) / Math.max(0.001, bb.max.y - bb.min.y);   // torso = 2 studs tall
+          }
+        } catch { hqParts = null; }
+        resolve(hqParts);
+      }, undefined, () => resolve(null));
+    } catch { resolve(null); }
+  });
+}
 
 export const R6_DEFAULT = {
   head: '#f5cd30', torso: '#0f6cbd', armL: '#f5cd30', armR: '#f5cd30',
@@ -67,28 +145,46 @@ function buildAccessory(kind, headColor) {
 export function makeR6(profile = {}) {
   const p = { ...R6_DEFAULT, ...(profile || {}) };
   const group = new THREE.Group();
+  const hq = hqParts;
+  const partMesh = (part, color, fb) => {
+    if (hq && hq[part]) {
+      const m = new THREE.Mesh(hq[part].geo, new THREE.MeshLambertMaterial({ color, map: part === 'head' ? hq[part].tex : null }));
+      m.scale.setScalar(hq.scale || 1);
+      return m;
+    }
+    return fb();
+  };
 
   // torso: 2x2x1, pivot at its base sitting on the legs (legs are 2 tall)
-  const torso = box(2, 2, 1, p.torso); torso.position.y = 3 * S; group.add(torso);
-  // head: 1.2 cube on top, with a face decal on -z
+  const torso = partMesh('torso', p.torso, () => box(2, 2, 1, p.torso));
+  if (hq) { torso.geometry.computeBoundingBox(); const bb = torso.geometry.boundingBox; torso.position.y = 3 * S - (bb.max.y + bb.min.y) / 2 * (hq.scale || 1); }
+  else torso.position.y = 3 * S;
+  group.add(torso);
+  // head on top (HQ head brings its own textured face)
   const headG = new THREE.Group(); headG.position.y = 4.6 * S; group.add(headG);
-  const head = box(1.2, 1.2, 1.2, p.head); headG.add(head);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(1.05 * S, 1.05 * S),
-    new THREE.MeshBasicMaterial({ map: faceTexture(p.face), transparent: true }));
-  face.position.z = -0.62 * S; face.rotation.y = Math.PI; headG.add(face);
+  const head = partMesh('head', p.head, () => box(1.2, 1.2, 1.2, p.head));
+  if (hq) head.position.y = -0.6 * S;
+  headG.add(head);
+  if (!hq) {
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(1.05 * S, 1.05 * S),
+      new THREE.MeshBasicMaterial({ map: faceTexture(p.face), transparent: true }));
+    face.position.z = -0.62 * S; face.rotation.y = Math.PI; headG.add(face);
+  }
   headG.add(buildAccessory(p.accessory, p.head));
 
   // limbs pivot at their TOP (shoulder / hip)
-  const mkLimb = (w, h, d, color, px, py) => {
+  const mkLimb = (part, color, px, py) => {
     const pivot = new THREE.Group(); pivot.position.set(px, py, 0);
-    const m = box(w, h, d, color); m.position.y = -h / 2 * S; pivot.add(m);
+    const m = partMesh(part, color, () => box(1, 2, 1, color));
+    if (!hq) m.position.y = -1 * S;
+    pivot.add(m);
     group.add(pivot);
     return pivot;
   };
-  const armL = mkLimb(1, 2, 1, p.armL, 1.5 * S, 4 * S);
-  const armR = mkLimb(1, 2, 1, p.armR, -1.5 * S, 4 * S);
-  const legL = mkLimb(1, 2, 1, p.legL, 0.5 * S, 2 * S);
-  const legR = mkLimb(1, 2, 1, p.legR, -0.5 * S, 2 * S);
+  const armL = mkLimb('armL', p.armL, 1.5 * S, 4 * S);
+  const armR = mkLimb('armR', p.armR, -1.5 * S, 4 * S);
+  const legL = mkLimb('legL', p.legL, 0.5 * S, 2 * S);
+  const legR = mkLimb('legR', p.legR, -0.5 * S, 2 * S);
 
   // attachment points the weapon-mounting code expects
   const R_Wrist = new THREE.Group(); R_Wrist.position.y = -1.8 * S; armR.add(R_Wrist);
