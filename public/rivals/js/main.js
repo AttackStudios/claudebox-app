@@ -746,14 +746,18 @@ function stepMe(dt) {
   camera.updateProjectionMatrix();
 
   let mx = 0, mz = 0;
-  if (!frozen && (locked || mobileOn)) {
+  if (!frozen && (locked || mobileOn || inLobbyMode())) {   // lobby: keyboard works with a free cursor
     mx = (keys.has(binds.right) ? 1 : 0) - (keys.has(binds.left) ? 1 : 0);
     mz = (keys.has(binds.forward) ? 1 : 0) - (keys.has(binds.back) ? 1 : 0);
     if (mobileMove.x || mobileMove.z) { mx = mobileMove.x; mz = mobileMove.z; }   // joystick overrides
   }
-  const fx = -Math.sin(me.ry), fz = -Math.cos(me.ry);
-  const rx = Math.cos(me.ry), rz = -Math.sin(me.ry);
+  // in the third-person lobby, movement is CAMERA-relative and the character
+  // turns to face where it's walking; everywhere else it's aim-relative
+  const baseYaw = inLobbyMode() ? lobbyCam.yaw : me.ry;
+  const fx = -Math.sin(baseYaw), fz = -Math.cos(baseYaw);
+  const rx = Math.cos(baseYaw), rz = -Math.sin(baseYaw);
   let wishX = fx * mz + rx * mx, wishZ = fz * mz + rz * mx;
+  if (inLobbyMode() && (mx || mz)) me.ry = Math.atan2(-wishX, -wishZ);
   const wl = Math.hypot(wishX, wishZ) || 1; wishX /= wl; wishZ /= wl;
   const speed = me.crouch && !me.sliding ? MOVE.crouch : MOVE.walk;   // no sprint
 
@@ -3308,13 +3312,6 @@ function wireLobbyUi() {
 // ---- lobby zones: stand on a duel pad to queue; loadout station in the range ----
 const inRangeZone = () => me.pos.x > 7 && me.pos.z > -10 && me.pos.z < 16;
 let rangeHintAt = 0;
-function lobbyMoveAdjust() {
-  // in the lobby your character faces where it's walking (movement is camera-relative)
-  if (!inLobbyMode()) return;
-  const f = (keys.has(binds.forward) ? 1 : 0) - (keys.has(binds.back) ? 1 : 0);
-  const st = (keys.has(binds.right) ? 1 : 0) - (keys.has(binds.left) ? 1 : 0);
-  if (f || st) me.ry = lobbyCam.yaw + Math.atan2(-st, f) + Math.PI;
-}
 function tickLobbyZones(dt) {
   const now = clockNow();
   // spin pad rims gently
@@ -3380,7 +3377,6 @@ function frame() {
   last = now;
   if (mobileOn) updateMobileHud();
   tickPortals(dt);
-  lobbyMoveAdjust();
   tickLobbyZones(dt);
   tickLobbyUi(dt);
   const cn = clockNow();
