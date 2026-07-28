@@ -147,9 +147,16 @@ export function makeR6(profile = {}) {
   const p = { ...R6_DEFAULT, ...(profile || {}) };
   const group = new THREE.Group();
   const hq = hqParts;
+  // an untouched profile keeps the model's OWN textured look; any custom
+  // colour switches that part to a flat tint
+  const isDefaultColor = (part, c) => (R6_DEFAULT[part] || '').toLowerCase() === String(c || '').toLowerCase();
   const partMesh = (part, color, fb) => {
     if (hq && hq[part]) {
-      const m = new THREE.Mesh(hq[part].geo, new THREE.MeshLambertMaterial({ color, map: part === 'head' ? hq[part].tex : null }));
+      const useTex = hq[part].tex && (part === 'head' || isDefaultColor(part, color));
+      const m = new THREE.Mesh(hq[part].geo, new THREE.MeshLambertMaterial({
+        color: useTex && isDefaultColor(part, color) ? '#ffffff' : color,
+        map: useTex ? hq[part].tex : null,
+      }));
       m.scale.setScalar(hq.scale || 1);
       return m;
     }

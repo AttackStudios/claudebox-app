@@ -480,13 +480,16 @@ addEventListener('keyup', (e) => {
 
 let mouseDown = false, rightDown = false;
 addEventListener('mousedown', (e) => {
-  if (inLobbyMode()) { if (e.button === 2) lobbyCam.dragging = true; return; }
+  if (inLobbyMode()) {
+    if (e.button === 2) { lobbyCam.dragging = true; try { canvas.requestPointerLock?.(); } catch {} }
+    return;
+  }
   if (!locked) return;
   if (e.button === 0) { mouseDown = true; tryFire(); }
   if (e.button === 2) { rightDown = true; onRightDown(); }
 });
 addEventListener('mouseup', (e) => {
-  if (e.button === 2) lobbyCam.dragging = false;
+  if (e.button === 2) { if (inLobbyMode() && lobbyCam.dragging) { try { document.exitPointerLock?.(); } catch {} } lobbyCam.dragging = false; }
   if (e.button === 0) mouseDown = false;
   if (e.button === 2) rightDown = false;
 });
@@ -878,10 +881,14 @@ function stepMe(dt) {
     const cy = Math.cos(lobbyCam.pitch), sy = Math.sin(lobbyCam.pitch);
     const fx = Math.sin(lobbyCam.yaw) * cy, fz = Math.cos(lobbyCam.yaw) * cy;
     const tx = me.pos.x, ty = me.pos.y + 1.35, tz = me.pos.z;
-    let d = lobbyCam.dist;
-    for (let step = 0.8; step <= lobbyCam.dist; step += 0.35) {
-      if (pointInMap(tx + fx * step, ty + sy * step + 0.3, tz + fz * step)) { d = Math.max(1.2, step - 0.5); break; }
+    let dWant = lobbyCam.dist;
+    for (let step = 0.7; step <= lobbyCam.dist; step += 0.2) {
+      if (pointInMap(tx + fx * step, ty + sy * step + 0.3, tz + fz * step)) { dWant = Math.max(1.1, step - 0.45); break; }
     }
+    // smooth: snap IN fast (never clip a wall), ease back OUT gently
+    if (lobbyCam.curD == null) lobbyCam.curD = dWant;
+    lobbyCam.curD += (dWant - lobbyCam.curD) * Math.min(1, dt * (dWant < lobbyCam.curD ? 30 : 5));
+    const d = lobbyCam.curD;
     camera.position.set(tx + fx * d, ty + sy * d + 0.4, tz + fz * d);
     camera.lookAt(tx, ty, tz);
   } else {
