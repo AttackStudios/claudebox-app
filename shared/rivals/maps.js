@@ -228,7 +228,7 @@ export const LOBBY = {
     { x: 30.8, y: 1.1, z: 10 }, { x: 30.8, y: 3.1, z: 13 },
     { x: 26, y: 1.1, z: 0 }, { x: 24, y: 1.1, z: 9 },
   ],
-  spawnsA: [{ x: 0, z: 19, ry: 0 }],   // south end, facing down the red carpet
+  spawnsA: [{ x: 0, z: 16, ry: 0 }],   // south end, facing down the red carpet
   spawnsB: [{ x: 0, z: 19, ry: 0 }],
 };
 

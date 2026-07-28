@@ -873,11 +873,16 @@ function stepMe(dt) {
   if (me.eye == null) me.eye = eyeTarget;
   me.eye += (eyeTarget - me.eye) * Math.min(1, dt * 14);
   if (inLobbyMode()) {
-    // third-person social camera: orbit the character, cursor free, RMB to look
+    // third-person social camera: orbit the character, cursor free, RMB to look.
+    // The camera pulls IN when a wall is behind you (step-march collision).
     const cy = Math.cos(lobbyCam.pitch), sy = Math.sin(lobbyCam.pitch);
     const fx = Math.sin(lobbyCam.yaw) * cy, fz = Math.cos(lobbyCam.yaw) * cy;
     const tx = me.pos.x, ty = me.pos.y + 1.35, tz = me.pos.z;
-    camera.position.set(tx + fx * lobbyCam.dist, ty + sy * lobbyCam.dist + 0.4, tz + fz * lobbyCam.dist);
+    let d = lobbyCam.dist;
+    for (let step = 0.8; step <= lobbyCam.dist; step += 0.35) {
+      if (pointInMap(tx + fx * step, ty + sy * step + 0.3, tz + fz * step)) { d = Math.max(1.2, step - 0.5); break; }
+    }
+    camera.position.set(tx + fx * d, ty + sy * d + 0.4, tz + fz * d);
     camera.lookAt(tx, ty, tz);
   } else {
     camera.position.set(me.pos.x, me.pos.y + me.eye, me.pos.z);
