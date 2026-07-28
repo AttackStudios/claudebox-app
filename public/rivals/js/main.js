@@ -2279,6 +2279,7 @@ net.on('round.freeze', (msg) => {
   }
   game.phase = 'freeze';
   clearAllPortals();
+  taskState.duels++; saveTasks();
   window.__ldAuto?.open();   // pick your loadout while frozen — the only time it changes
   game.score = msg.score;
   game.stateUntil = msg.until;
@@ -2342,6 +2343,7 @@ net.on('match.end', (msg) => {
   if (msg.waveMode) {
     $('#podium-title').textContent = msg.victory ? 'VICTORY' : 'DEFEAT';
     $('#podium-title').className = msg.victory ? 'win' : 'lose';
+    if (msg.victory && !taskState.win) { taskState.win = true; saveTasks(); }
     $('#podium-sub').textContent = msg.victory
       ? 'All ' + msg.total + ' waves defeated! ' + (msg.stats.filter((x) => x.survived).map((x) => x.name).join(' & ') || 'Nobody') + ' survived to the end'
       : 'The horde won on wave ' + msg.wave + ' of ' + msg.total + ' — try again!';
@@ -2368,6 +2370,7 @@ net.on('match.end', (msg) => {
   const won = msg.winner === game.myTeam;
   $('#podium-title').textContent = won ? 'VICTORY' : 'DEFEAT';
   $('#podium-title').className = won ? 'win' : 'lose';
+  if (won && !taskState.win) { taskState.win = true; saveTasks(); }
   const winners = msg.stats.filter((s) => s.team === msg.winner).map((s) => s.name).join(' & ');
   $('#podium-sub').textContent = `${winners} take the duel ${msg.score.A}–${msg.score.B}`;
   const host = $('#podium-stats');
@@ -2758,6 +2761,7 @@ net.on('elim', (msg) => {
   else if (msg.killer === net.id) {
     sfx.elim();
     killStreak++;
+    if (!taskState.elim) { taskState.elim = true; saveTasks(); }
     showElimBanner(victim?.name || 'enemy', killStreak);
     if (!game.gotFirstElim) { game.gotFirstElim = true; window.ClaudeBox?.completeChallenge('rivals-elim'); }
     const o = others.get(msg.victim);
@@ -3128,6 +3132,39 @@ net.on('portal', (msg) => {
   setPortal(st, msg.which, { x: msg.x, y: msg.y, z: msg.z }, { x: msg.nx, y: msg.ny, z: msg.nz }, true);
 });
 
+// ---- daily tasks (local, reset each day) + lobby UI ----
+const taskState = (() => {
+  const today = new Date().toDateString();
+  let t; try { t = JSON.parse(localStorage.getItem('rivals.tasks') || 'null'); } catch {}
+  if (!t || t.date !== today) t = { date: today, duels: 0, elim: false, win: false };
+  return t;
+})();
+function saveTasks() { try { localStorage.setItem('rivals.tasks', JSON.stringify(taskState)); } catch {} renderTasks(); }
+function renderTasks() {
+  const done = taskState.duels >= 5 && taskState.elim && taskState.win;
+  const bar = $('#lt-duels-bar'); if (bar) bar.style.width = Math.min(100, taskState.duels / 5 * 100) + '%';
+  const n = $('#lt-duels-n'); if (n) { n.textContent = taskState.duels >= 5 ? '✔' : `${taskState.duels}/5`; n.style.color = taskState.duels >= 5 ? '#6ee7a0' : '#cfd6e2'; }
+  const e = $('#lt-elim'); if (e) e.textContent = taskState.elim ? '✔' : '—';
+  const w = $('#lt-win'); if (w) w.textContent = taskState.win ? '✔' : '—';
+  $('#lb-tdot')?.classList.toggle('hidden', done);
+}
+async function refreshLobbyWallet() {
+  try { const w = await window.ClaudeBox?.getWallet?.(); if (w) { $('#lb-stars').textContent = w.stars ?? 0; $('#lb-bits').textContent = w.cubes ?? 0; } } catch {}
+}
+function wireLobbyUi() {
+  renderTasks(); refreshLobbyWallet();
+  $('#lb-play').addEventListener('click', () => toggleModes());
+  $('#lt-toduels').addEventListener('click', () => { me.pos = { x: -15, y: 0, z: 0 }; me.ry = 1.57; sfx.beep?.(); });
+  document.querySelectorAll('#lb-bar button').forEach((b) => b.addEventListener('click', () => {
+    const act = b.dataset.act;
+    if (act === 'weapons') window.__ldAuto?.open();
+    else if (act === 'backpack' || act === 'shop') document.getElementById('sk-open')?.click();
+    else if (act === 'settings') document.getElementById('kb-open')?.click();
+    else if (act === 'tasks') $('#lb-tasks')?.classList.toggle('hidden');
+    sfx.click?.();
+  }));
+}
+
 // ---- lobby zones: stand on a duel pad to queue; loadout station in the range ----
 const inRangeZone = () => me.pos.x > 7 && me.pos.z > -10 && me.pos.z < 16;
 let rangeHintAt = 0;
@@ -3154,6 +3191,13 @@ function tickLobbyZones(dt) {
   const ld = document.getElementById('ld-open');
   if (ld) ld.style.display = inRangeZone() ? '' : 'none';
 }
+function tickLobbyUi() {
+  const inLobby = game.phase === 'lobby';
+  $('#lobby-ui')?.classList.toggle('hidden', !inLobby);
+  if (inLobby) $('#lobby-tip')?.classList.add('hidden');   // the lobby UI replaces the tip bar
+  const sk = document.getElementById('sk-open'); if (sk) sk.style.display = inLobby ? 'none' : '';
+  const kb = document.getElementById('kb-open'); if (kb) kb.classList.toggle('hidden', inLobby || game.phase !== 'lobby' && kb.classList.contains('hidden'));
+}
 
 function frame() {
   requestAnimationFrame(frame);
@@ -3163,6 +3207,7 @@ function frame() {
   if (mobileOn) updateMobileHud();
   tickPortals(dt);
   tickLobbyZones(dt);
+  tickLobbyUi();
   const cn = clockNow();
 
   stepMe(dt);
@@ -3683,4 +3728,5 @@ $('#loading').classList.add('hidden');
 $('#hud').classList.remove('hidden');
 $('#lobby-tip').classList.remove('hidden');
 window.ClaudeBox?.setName?.(identity.name);
+wireLobbyUi();
 frame();

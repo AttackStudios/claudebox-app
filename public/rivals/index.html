@@ -75,6 +75,26 @@
 
   <div id="rv-toasts"></div>
 
+  <!-- lobby-only UI (mirrors the original's lobby) -->
+  <div id="lobby-ui" class="hidden">
+    <div id="lb-currency"><span class="cur">⭐ <b id="lb-stars">0</b></span><span class="cur">🔷 <b id="lb-bits">0</b></span></div>
+    <div id="lb-tasks">
+      <b class="lt-head">Daily Tasks</b>
+      <div class="lt-row"><span>Play duels</span><i class="lt-bar"><u id="lt-duels-bar"></u></i><em id="lt-duels-n">0/5</em></div>
+      <div class="lt-row"><span>Get an elimination</span><em id="lt-elim">—</em></div>
+      <div class="lt-row"><span>Win a duel</span><em id="lt-win">—</em></div>
+      <button id="lt-toduels">⚔️ To Duels</button>
+    </div>
+    <button id="lb-play">Play</button>
+    <div id="lb-bar">
+      <button data-act="backpack"><i>🎒</i><small>Backpack</small></button>
+      <button data-act="weapons"><i>🔫</i><small>Weapons</small></button>
+      <button data-act="tasks"><i>📋</i><small>Tasks</small><em class="dot" id="lb-tdot">!</em></button>
+      <button data-act="shop"><i>🎁</i><small>Shop</small></button>
+      <button data-act="settings"><i>⚙️</i><small>Settings</small></button>
+    </div>
+  </div>
+
   <!-- text chat -->
   <div id="chat">
     <div id="chat-log"></div>

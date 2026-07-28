@@ -441,3 +441,38 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
 #map-card { border-color: var(--rv-yellow); border-bottom-color: #a8861e; box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 24px rgba(255,216,61,.3); }
 /* controls button clears the health bar */
 #kb-open { bottom: 64px; }
+
+/* ============ lobby UI (mirrors the original) ============ */
+#lobby-ui { position: fixed; inset: 0; z-index: 44; pointer-events: none; }
+#lobby-ui.hidden { display: none; }
+#lb-currency { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+#lb-currency .cur { background: rgba(16,19,27,.85); border: 2.5px solid var(--rv-ink); border-radius: 999px;
+  padding: 6px 14px; font-weight: 900; font-size: 15px; font-style: italic; }
+#lb-tasks { position: absolute; left: 14px; top: 90px; background: rgba(14,16,22,.88); border: 2.5px solid var(--rv-ink);
+  border-bottom-width: 5px; border-radius: 14px; padding: 12px 14px; width: 210px; pointer-events: auto; }
+#lb-tasks .lt-head { display: block; font-style: italic; font-size: 15px; margin-bottom: 8px; color: #fff; }
+.lt-row { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; color: #cfd6e2; margin: 6px 0; }
+.lt-row span { flex: 1; }
+.lt-row em { font-style: normal; font-weight: 900; color: #6ee7a0; }
+.lt-bar { width: 54px; height: 8px; background: #23272f; border-radius: 99px; overflow: hidden; }
+.lt-bar u { display: block; height: 100%; width: 0%; background: #ffd83d; }
+#lt-toduels { margin-top: 8px; width: 100%; background: #3d6dff; border: 2.5px solid var(--rv-ink);
+  border-bottom-width: 5px; color: #fff; border-radius: 10px; padding: 8px; font-weight: 900;
+  font-style: italic; cursor: pointer; }
+#lb-play { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); pointer-events: auto;
+  background: linear-gradient(180deg,#7de85a,#4bc22e); color: #103300; border: 3px solid var(--rv-ink);
+  border-bottom-width: 7px; border-radius: 14px; padding: 12px 64px; font-size: 24px; font-weight: 900;
+  font-style: italic; cursor: pointer; box-shadow: 0 6px 0 rgba(0,0,0,.3); transition: transform .08s; }
+#lb-play:active { transform: translateX(-50%) translateY(4px); }
+#lb-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: auto; }
+#lb-bar button { position: relative; background: rgba(16,19,27,.88); border: 2.5px solid var(--rv-ink);
+  border-bottom-width: 5px; border-radius: 12px; padding: 7px 14px; color: #cfd6e2; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 66px; transition: transform .1s; }
+#lb-bar button:hover { transform: translateY(-3px); color: #fff; }
+#lb-bar button i { font-style: normal; font-size: 21px; }
+#lb-bar button small { font-size: 10.5px; font-weight: 900; }
+#lb-bar .dot { position: absolute; top: -5px; right: -4px; background: var(--rv-red); color: #fff; font-style: normal;
+  width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 900; display: grid; place-items: center;
+  border: 2px solid var(--rv-ink); }
+#lb-bar .dot.hidden { display: none; }
+@media (max-width: 700px) { #lb-tasks { display: none; } #lb-play { bottom: 150px; } }
