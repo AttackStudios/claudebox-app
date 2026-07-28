@@ -63,6 +63,7 @@ function splitSkinnedToParts(gltf) {
       g2.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
       if (U.length) g2.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
       g2.setIndex(I);
+      g2.userData.shared = true;   // reused by every R6 instance — never dispose per-instance
       if (!out[part]) out[part] = { geo: g2, tex };
     }
   });
@@ -249,7 +250,10 @@ export function makeR6(profile = {}) {
     if (np.legR) legR.children[0].material.color.set(np.legR);
   }
   function dispose() {
-    group.traverse((o) => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose?.(); o.material.dispose?.(); } });
+    group.traverse((o) => {
+      if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
+      if (o.material) o.material.dispose?.();   // per-instance material only — its map may be the shared face texture, leave it alive
+    });
   }
 
   return {
