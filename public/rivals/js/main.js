@@ -1334,81 +1334,160 @@ function sendLoadout() {
 }
 function buildLoadoutUI() {
   if (document.getElementById('ld-open')) return;
+  // ============ RIVALS-style weapon picker: left list, in-hand preview, ============
+  // ============ right detail card, bottom Leave/Skin/Wrap/Charm bar ============
   const st = document.createElement('style'); st.textContent = `
   #ld-open{position:fixed;right:120px;top:10px;z-index:40;background:rgba(20,24,34,.82);border:1px solid rgba(255,255,255,.14);color:#fff;font-weight:800;font-size:14px;padding:11px 16px;border-radius:12px;cursor:pointer;backdrop-filter:blur(8px);}
   #ld-open:hover{background:rgba(40,48,66,.9);}
-  #ld-panel{position:fixed;inset:0;z-index:60;display:none;place-items:center;background:rgba(6,8,14,.66);backdrop-filter:blur(6px);}
-  #ld-panel.open{display:grid;}
-  #ld-card{width:min(880px,94vw);max-height:88vh;overflow:auto;background:#12151d;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:20px 22px;color:#fff;font-family:inherit;}
-  #ld-card h2{font-size:22px;font-weight:900;margin-bottom:4px;}
-  #ld-card .sub{color:#8b93a6;font-size:13px;margin-bottom:16px;}
-  .ld-col{margin-bottom:18px;}
-  .ld-col h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#9fb0c8;margin-bottom:8px;}
-  .ld-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
-  .ld-w{background:#1b1f2a;border:2px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer;text-align:center;transition:transform .1s,border-color .1s;}
-  .ld-w:hover{transform:translateY(-2px);}
-  .ld-w.sel{border-color:#2fa4ff;background:#1f2a3c;box-shadow:0 0 0 2px rgba(47,164,255,.3);}
-  .ld-w .em{font-size:26px;}
-  .ld-w .nm{font-weight:800;font-size:13px;margin-top:4px;}
-  .ld-w .st{color:#8b93a6;font-size:11px;margin-top:2px;}
-  #ld-done{margin-top:6px;width:100%;background:linear-gradient(90deg,#2fa4ff,#4f7dff);border:none;color:#fff;font-weight:900;font-size:16px;padding:13px;border-radius:12px;cursor:pointer;}`;
+  #ld-panel{position:fixed;inset:0;z-index:60;display:none;font-family:inherit;color:#fff;}
+  #ld-panel.open{display:block;}
+  #ld-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,7,10,.88) 0%,rgba(5,7,10,.55) 26%,rgba(5,7,10,.06) 45%,rgba(5,7,10,.06) 62%,rgba(5,7,10,.5) 84%,rgba(5,7,10,.75) 100%);}
+  #ld-side{position:absolute;left:0;top:0;bottom:0;width:250px;padding:14px 0 90px 14px;display:flex;flex-direction:column;}
+  #ld-career{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  #ld-career button{background:rgba(28,32,41,.92);border:1.5px solid rgba(255,255,255,.14);border-radius:9px;color:#cfd6e2;font-weight:800;font-size:12.5px;padding:7px 13px;cursor:pointer;}
+  #ld-filters{display:flex;gap:5px;margin-bottom:10px;}
+  #ld-filters button{background:rgba(28,32,41,.92);border:1.5px solid rgba(255,255,255,.12);border-radius:8px;width:32px;height:30px;font-size:14px;cursor:pointer;opacity:.65;}
+  #ld-filters button.on{opacity:1;border-color:#fff;}
+  #ld-list{flex:1;overflow-y:auto;scrollbar-width:none;padding-right:10px;}
+  #ld-list::-webkit-scrollbar{display:none;}
+  .ldr-head{font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.14em;color:#6b73a1;margin:12px 0 4px 34px;}
+  .ldr{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:8px;cursor:pointer;}
+  .ldr i{font-style:normal;width:25px;text-align:center;font-size:16px;filter:grayscale(.4);opacity:.75;}
+  .ldr b{font-weight:700;font-size:14.5px;color:#8d94a8;transition:color .08s;}
+  .ldr:hover b{color:#e6eaf2;}
+  .ldr:hover i{opacity:1;filter:none;}
+  .ldr.eq b{color:#fff;font-weight:900;}
+  .ldr.eq i{opacity:1;filter:none;}
+  .ldr.eq::after{content:'';width:7px;height:7px;border-radius:50%;background:#3d8bff;margin-left:auto;}
+  #ld-card{position:absolute;right:18px;top:50%;transform:translateY(-50%);width:288px;background:rgba(16,18,24,.96);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:15px 15px 11px;box-shadow:0 18px 50px rgba(0,0,0,.5);}
+  #ldc-cls{font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#8d94a8;}
+  #ldc-name{font-size:19px;font-weight:900;margin:1px 0 3px;}
+  #ldc-desc{font-size:11.5px;line-height:1.45;color:#9aa2b5;min-height:32px;}
+  #ldc-max{margin:10px 0 12px;height:26px;border-radius:7px;background:linear-gradient(90deg,#2f7de0,#3d8bff);display:flex;align-items:center;justify-content:flex-end;padding:0 10px;font-style:italic;font-weight:900;font-size:14px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25);}
+  .ldc-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.045);border-radius:9px;padding:8px 9px;margin-top:7px;cursor:pointer;}
+  .ldc-row:hover{background:rgba(255,255,255,.08);}
+  .ldc-row .ic{width:30px;height:30px;border-radius:7px;background:rgba(255,255,255,.07);display:grid;place-items:center;font-size:15px;}
+  .ldc-row .tx{flex:1;}
+  .ldc-row .tx b{display:block;font-size:13px;font-weight:800;}
+  .ldc-row .tx small{display:block;font-size:10.5px;color:#8d94a8;}
+  .ldc-row .go{width:26px;height:26px;border-radius:7px;background:#3d8bff;display:grid;place-items:center;font-weight:900;font-size:13px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.3);}
+  #ldc-stats{display:none;margin-top:8px;font-size:12px;color:#cfd6e2;background:rgba(255,255,255,.04);border-radius:9px;padding:9px 11px;line-height:1.7;}
+  #ldc-stats.show{display:block;}
+  #ld-actions{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(10,12,16,.92);border:1px solid rgba(255,255,255,.08);border-radius:15px;padding:8px 10px;}
+  #ld-leave{background:#d92d3a;border:none;border-radius:10px;color:#fff;font-weight:900;font-size:13.5px;padding:10px 18px;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.3);}
+  .ld-act{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;color:#cfd6e2;cursor:pointer;padding:6px 12px;display:flex;flex-direction:column;align-items:center;gap:0px;min-width:52px;}
+  .ld-act i{font-style:normal;font-size:16px;}
+  .ld-act small{font-size:10px;font-weight:800;}
+  .ld-act:hover{background:rgba(255,255,255,.11);color:#fff;}`;
   document.head.appendChild(st);
 
   const btn = document.createElement('button'); btn.id = 'ld-open'; btn.textContent = '🎯 Loadout';
   document.body.appendChild(btn);
   const panel = document.createElement('div'); panel.id = 'ld-panel';
-  panel.innerHTML = `<div id="ld-card"><h2>Loadout</h2><div class="sub">Pick one weapon per slot — you'll spawn with exactly these. Everything's unlocked.</div><div id="ld-cols"></div><button id="ld-done">Save loadout</button></div>`;
+  panel.innerHTML = `
+    <div id="ld-shade"></div>
+    <div id="ld-side">
+      <div id="ld-career"><button>🎖 Career</button></div>
+      <div id="ld-filters"></div>
+      <div id="ld-list"></div>
+    </div>
+    <div id="ld-card">
+      <div id="ldc-cls">Standard Primary</div>
+      <div id="ldc-name">Assault Rifle</div>
+      <div id="ldc-desc"></div>
+      <div id="ldc-max">MAX</div>
+      <div class="ldc-row" data-r="contracts"><div class="ic">📜</div><div class="tx"><b>Contracts</b><small>Earn free rewards</small></div><div class="go">→</div></div>
+      <div class="ldc-row" data-r="overview"><div class="ic">👁</div><div class="tx"><b>Overview</b><small>View weapon metrics</small></div><div class="go">→</div></div>
+      <div id="ldc-stats"></div>
+      <div class="ldc-row" data-r="stats"><div class="ic">📊</div><div class="tx"><b>Statistics</b><small>See lifetime data</small></div><div class="go">→</div></div>
+    </div>
+    <div id="ld-actions">
+      <button id="ld-leave">✕ Leave</button>
+      <button class="ld-act" data-a="skin"><i>🎨</i><small>Skin</small></button>
+      <button class="ld-act" data-a="wrap"><i>🎁</i><small>Wrap</small></button>
+      <button class="ld-act" data-a="charm"><i>🔑</i><small>Charm</small></button>
+      <button class="ld-act" data-a="finisher"><i>💥</i><small>Finisher</small></button>
+    </div>`;
   document.body.appendChild(panel);
 
-  const render = () => {
-    const cols = panel.querySelector('#ld-cols'); cols.innerHTML = '';
-    for (const cls of CLASS_ORDER) {
-      const col = document.createElement('div'); col.className = 'ld-col';
-      col.innerHTML = `<h3>${CLASS_LABEL[cls]}</h3>`;
-      const grid = document.createElement('div'); grid.className = 'ld-grid';
-      for (const { id, w } of weaponsOfClass(cls)) {
-        const card = document.createElement('div');
-        const chosen = myPickedLoadout.includes(id);
-        card.className = 'ld-w' + (chosen ? ' sel' : '');
-        const stat = w.melee ? `${w.dmg} dmg` : w.utility ? (w.placeable ? `${w.count} pads` : w.infinite ? '∞ throws' : `x${w.count}`) : `${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''} dmg`;
-        card.innerHTML = `<div class="em">${WEAPON_ICONS[id] || '🔫'}</div><div class="nm">${w.name}</div><div class="st">${stat}</div>`;
-        card.addEventListener('click', () => {
-          const slot = CLASS_ORDER.indexOf(cls);   // 0..3
-          myPickedLoadout[slot] = id;
-          render();
-        });
-        grid.appendChild(card);
-      }
-      col.appendChild(grid); cols.appendChild(col);
-    }
+  const DESC = {
+    primary: 'A dependable main weapon, useful in all situations.',
+    secondary: 'A quick sidearm for when the fight gets close.',
+    melee: 'Silent and deadly up close — backstabs hit hardest.',
+    utility: 'Equipment that changes how you move and fight.',
   };
-  btn.addEventListener('click', () => { render(); panel.classList.add('open'); });
-  window.__ldAuto = { open: () => { render(); panel.classList.add('open'); }, close: () => panel.classList.remove('open') };
-  panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('open'); });
-  panel.querySelector('#ld-done').addEventListener('click', () => {
-    // normalise order to [primary, secondary, melee, utility]
-    const byClass = {};
-    for (const id of myPickedLoadout) if (WEAPONS[id]) byClass[WEAPONS[id].class] = id;
-    myPickedLoadout = CLASS_ORDER.map((c) => byClass[c] || weaponsOfClass(c)[0].id);
-    sendLoadout();
-    // apply the new kit right away in any non-combat phase (lobby, or the
-    // round-start freeze) so it's live this round, mirroring Rivals' pre-round pick
+  let filterCls = null, selId = null;
+  const applyInHand = (id) => {
     if (!game.waveMode && game.phase !== 'live' && game.phase !== 'podium') {
-      const util = myPickedLoadout.find((id) => WEAPONS[id]?.class === 'utility');
-      me.weapon = myPickedLoadout[0]; me.ammo = freshAmmo();
-      me.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
-      me.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
+      me.weapon = id; me.ammo = me.ammo || freshAmmo();
       updateLoadoutHud(); updateAmmoHud();
     }
-    panel.classList.remove('open');
-    toast?.('Loadout saved');
-  });
-  // show the button every round — in the lobby and between/at the start of rounds,
-  // but not mid-fight or during the podium (and never in wave mode)
+  };
+  const showCard = (id) => {
+    const w = WEAPONS[id]; if (!w) return;
+    selId = id;
+    panel.querySelector('#ldc-cls').textContent = 'Standard ' + (CLASS_LABEL[w.class] || w.class);
+    panel.querySelector('#ldc-name').textContent = w.name;
+    panel.querySelector('#ldc-desc').textContent = DESC[w.class] || '';
+    const stats = panel.querySelector('#ldc-stats');
+    stats.innerHTML = w.melee
+      ? `Damage <b>${w.dmg}</b> · Swing <b>${w.rate}s</b> · Range <b>${w.range}</b>${w.backstabOneshot ? ' · Backstab <b>ONE-SHOT</b>' : ''}`
+      : w.mag ? `Damage <b>${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''}</b> · Fire rate <b>${w.rate}s</b> · Mag <b>${w.mag}</b> · Reload <b>${w.reload}s</b>`
+      : `Count <b>${w.count || '∞'}</b> · Rate <b>${w.rate}s</b>`;
+  };
+  const render = () => {
+    const list = panel.querySelector('#ld-list'); list.innerHTML = '';
+    for (const cls of CLASS_ORDER) {
+      if (filterCls && cls !== filterCls) continue;
+      const head = document.createElement('div'); head.className = 'ldr-head'; head.textContent = CLASS_LABEL[cls];
+      list.appendChild(head);
+      for (const { id, w } of weaponsOfClass(cls)) {
+        const row = document.createElement('div');
+        row.className = 'ldr' + (myPickedLoadout.includes(id) ? ' eq' : '');
+        row.innerHTML = `<i>${WEAPON_ICONS[id] || '🔫'}</i><b>${w.name}</b>`;
+        row.addEventListener('mouseenter', () => showCard(id));
+        row.addEventListener('click', () => {
+          const slot = CLASS_ORDER.indexOf(cls);
+          myPickedLoadout[slot] = id;
+          sendLoadout();
+          applyInHand(id);
+          showCard(id);
+          render();
+          sfx.click?.();
+        });
+        list.appendChild(row);
+      }
+    }
+    // class filter icons
+    const flt = panel.querySelector('#ld-filters'); flt.innerHTML = '';
+    const icons = { all: '☰', primary: '🔫', secondary: '🔫', melee: '🗡', utility: '💣' };
+    for (const f of ['all', ...CLASS_ORDER]) {
+      const b = document.createElement('button');
+      b.textContent = icons[f] || '·'; b.title = f;
+      b.className = (filterCls === f || (f === 'all' && !filterCls)) ? 'on' : '';
+      b.addEventListener('click', () => { filterCls = f === 'all' ? null : f; render(); });
+      flt.appendChild(b);
+    }
+  };
+  panel.querySelector('#ld-career button').addEventListener('click', () => toast?.('Career — coming soon'));
+  panel.querySelectorAll('.ldc-row').forEach((r) => r.addEventListener('click', () => {
+    const k = r.dataset.r;
+    if (k === 'overview') panel.querySelector('#ldc-stats').classList.toggle('show');
+    else toast?.((k === 'contracts' ? 'Contracts' : 'Statistics') + ' — coming soon');
+  }));
+  panel.querySelectorAll('.ld-act').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.a === 'skin') { panel.classList.remove('open'); document.getElementById('sk-open')?.click(); }
+    else toast?.(b.querySelector('small').textContent + 's — coming soon');
+  }));
+  const close = () => panel.classList.remove('open');
+  panel.querySelector('#ld-leave').addEventListener('click', close);
+  btn.addEventListener('click', () => { render(); showCard(myPickedLoadout[0] || 'ar'); panel.classList.add('open'); });
+  window.__ldAuto = { open: () => { render(); showCard(myPickedLoadout[0] || 'ar'); panel.classList.add('open'); }, close };
+  // show the button every round — not mid-fight / podium / wave mode
   const syncBtn = () => {
     const show = !game.waveMode && !['live', 'podium'].includes(game.phase);
     btn.style.display = show ? 'block' : 'none';
-    if (!show && panel.classList.contains('open')) panel.classList.remove('open');   // never trapped in the menu mid-fight
+    if (!show && panel.classList.contains('open')) close();
   };
   setInterval(syncBtn, 200); syncBtn();
 }
@@ -3193,7 +3272,8 @@ function tickLobbyZones(dt) {
 }
 function tickLobbyUi() {
   const inLobby = game.phase === 'lobby';
-  $('#lobby-ui')?.classList.toggle('hidden', !inLobby);
+  const pickerOpen = document.getElementById('ld-panel')?.classList.contains('open');
+  $('#lobby-ui')?.classList.toggle('hidden', !inLobby || !!pickerOpen);
   if (inLobby) $('#lobby-tip')?.classList.add('hidden');   // the lobby UI replaces the tip bar
   const sk = document.getElementById('sk-open'); if (sk) sk.style.display = inLobby ? 'none' : '';
   const kb = document.getElementById('kb-open'); if (kb) kb.classList.toggle('hidden', inLobby || game.phase !== 'lobby' && kb.classList.contains('hidden'));
