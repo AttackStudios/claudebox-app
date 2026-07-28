@@ -408,7 +408,7 @@ function ensureMyR6() {
 }
 const inLobbyMode = () => game.phase === 'lobby' && game.zone === 'lobby';
 
-canvas.addEventListener('click', () => { if (!locked && !isTouch && !inLobbyMode()) canvas.requestPointerLock(); });
+canvas.addEventListener('click', () => { if (!locked && !isTouch && !inLobbyMode() && !bfe.open) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
   if (inLobbyMode()) {
@@ -448,6 +448,7 @@ function saveBinds() { try { localStorage.setItem('rivals.binds', JSON.stringify
 let rebinding = null;   // action id currently capturing a key
 // sprint mode: hold (default) vs toggle (press once to lock sprint on/off)
 let sprintToggle = (() => { try { return localStorage.getItem('rivals.sprintToggle') === '1'; } catch { return false; } })();
+let devTools = (() => { try { return localStorage.getItem('rivals.devtools') === '1'; } catch { return false; } })();
 let sprintOn = false, mobileSprint = false;
 const isSprinting = () => mobileSprint || (sprintToggle ? sprintOn : keys.has(binds.sprint));
 
@@ -902,7 +903,7 @@ function stepMe(dt) {
   }
   // my own R6 body: visible only in the third-person lobby
   const r6 = ensureMyR6();
-  r6.group.visible = inLobbyMode();
+  r6.group.visible = inLobbyMode() && !bfe.open;
   if (r6.group.visible) {
     r6.group.position.set(me.pos.x, me.pos.y, me.pos.z);
     r6.group.rotation.y = me.ry + Math.PI;
@@ -1927,6 +1928,245 @@ const GEN_INSPECT = {
     vrz: [{ t: 0, v: 0 }, { t: 1, v: 0 }],
   },
 };
+// ============ BUTTERFLY ANIM STUDIO (Dev Tools): hand-edit BF_TRK keyframes live ============
+const BF_DEFAULT = JSON.parse(JSON.stringify(BF_TRK));
+const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ' };
+const BFE_DUR = { equip: 0.5, stab: 0.5, inspect: 5.5 };
+const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null };
+function applyBfAnim(anim) {
+  if (!anim || typeof anim !== 'object') return;
+  for (const trk of ['equip', 'stab', 'inspect']) {
+    if (!anim[trk] || !BF_TRK[trk]) continue;
+    for (const [ch, keys] of Object.entries(anim[trk]))
+      if (Array.isArray(keys) && keys.length >= 2) BF_TRK[trk][ch] = keys.map((k) => ({ ...k }));
+  }
+}
+(async () => {   // published anim first, then any local draft on top
+  try { const d = await fetch('/api/rivals/bfanim').then((r) => r.json()); applyBfAnim(d?.anim); } catch {}
+  try { applyBfAnim(JSON.parse(localStorage.getItem('rivals.bfDraft') || 'null')); } catch {}
+})();
+let bfePanel = null;
+const bfeStrips = new Map();   // ch -> canvas
+function bfeChannels() { return Object.keys(BF_TRK[bfe.track]); }
+function bfeDrawStrip(ch) {
+  const cv = bfeStrips.get(ch); if (!cv) return;
+  const ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1d25'; ctx.fillRect(0, 0, W, H);
+  const keys = BF_TRK[bfe.track][ch] || [];
+  // value curve (normalized to this channel's own range)
+  let lo = Infinity, hi = -Infinity;
+  for (const k of keys) { lo = Math.min(lo, k.v); hi = Math.max(hi, k.v); }
+  if (hi - lo < 0.001) { hi += 0.5; lo -= 0.5; }
+  ctx.strokeStyle = 'rgba(120,190,255,.5)'; ctx.beginPath();
+  for (let x = 0; x <= W; x += 3) {
+    const v = trackVal(keys, x / W);
+    const y = H - 3 - (v - lo) / (hi - lo) * (H - 6);
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  for (const k of keys) {
+    const x = k.t * W, y = H - 3 - (k.v - lo) / (hi - lo) * (H - 6);
+    ctx.fillStyle = bfe.sel?.key === k ? '#ffd257' : '#e8ecf4';
+    ctx.beginPath(); ctx.arc(x, y, bfe.sel?.key === k ? 4.5 : 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#ff5d6c'; ctx.fillRect(bfe.t * W - 1, 0, 2, H);
+}
+function bfeRedraw() { for (const ch of bfeStrips.keys()) bfeDrawStrip(ch); }
+function bfeSyncTransport() {
+  if (!bfePanel) return;
+  const sc = bfePanel.querySelector('#bfe-scrub'); if (sc && document.activeElement !== sc) sc.value = bfe.t;
+  const tl = bfePanel.querySelector('#bfe-time'); if (tl) tl.textContent = (bfe.t * BFE_DUR[bfe.track]).toFixed(2) + 's';
+  bfeRedraw();
+}
+function bfeSelect(ch, key) {
+  bfe.sel = key ? { ch, key } : null;
+  const ins = bfePanel.querySelector('#bfe-ins');
+  if (!bfe.sel) { ins.style.display = 'none'; bfeRedraw(); return; }
+  ins.style.display = 'block';
+  bfePanel.querySelector('#bfe-ins-ch').textContent = (BFE_CH[ch] || ch) + ` (${ch})`;
+  bfePanel.querySelector('#bfe-t').value = key.t;
+  bfePanel.querySelector('#bfe-v').value = key.v;
+  const sl = bfePanel.querySelector('#bfe-vs');
+  sl.min = (key.v - 3.5).toFixed(2); sl.max = (key.v + 3.5).toFixed(2); sl.value = key.v;
+  bfePanel.querySelector('#bfe-e').value = key.e || 'inOutCubic';
+  bfeRedraw();
+}
+function bfeBuildRows() {
+  const rows = bfePanel.querySelector('#bfe-rows'); rows.innerHTML = ''; bfeStrips.clear();
+  for (const ch of bfeChannels()) {
+    const row = document.createElement('div'); row.className = 'bfe-row';
+    const lab = document.createElement('span'); lab.textContent = BFE_CH[ch] || ch; lab.title = ch;
+    const cv = document.createElement('canvas'); cv.width = 236; cv.height = 26;
+    let drag = null;
+    const keyAt = (ev) => {
+      const r = cv.getBoundingClientRect(); const x = (ev.clientX - r.left) / r.width;
+      const keys = BF_TRK[bfe.track][ch];
+      let best = null, bd = 0.045;
+      for (const k of keys) { const d = Math.abs(k.t - x); if (d < bd) { bd = d; best = k; } }
+      return { x, key: best };
+    };
+    cv.addEventListener('mousedown', (ev) => {
+      const { x, key } = keyAt(ev);
+      if (key) { bfeSelect(ch, key); drag = key; }
+      else { bfe.t = Math.max(0, Math.min(1, x)); bfe.playing = false; bfeSyncTransport(); }
+    });
+    cv.addEventListener('mousemove', (ev) => {
+      if (!drag) return;
+      const r = cv.getBoundingClientRect();
+      drag.t = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+      BF_TRK[bfe.track][ch].sort((a, b) => a.t - b.t);
+      bfePanel.querySelector('#bfe-t').value = drag.t.toFixed(3);
+      bfeDrawStrip(ch);
+    });
+    addEventListener('mouseup', () => { drag = null; });
+    cv.addEventListener('dblclick', (ev) => {
+      const { x } = keyAt(ev);
+      const keys = BF_TRK[bfe.track][ch];
+      const nk = { t: Math.max(0, Math.min(1, x)), v: trackVal(keys, x), e: 'inOutCubic' };
+      keys.push(nk); keys.sort((a, b) => a.t - b.t);
+      bfeSelect(ch, nk);
+    });
+    row.append(lab, cv); rows.appendChild(row);
+    bfeStrips.set(ch, cv);
+  }
+  bfeRedraw();
+}
+function buildBfEditor() {
+  if (bfePanel) return;
+  const st = document.createElement('style'); st.textContent = `
+  #bfe{position:fixed;right:12px;top:60px;bottom:12px;width:344px;z-index:80;display:none;flex-direction:column;gap:8px;background:rgba(15,17,22,.96);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#e8ecf4;font-family:inherit;font-size:12px;box-shadow:0 16px 48px rgba(0,0,0,.6);overflow-y:auto;}
+  #bfe.open{display:flex;}
+  #bfe h3{margin:0;font-size:14px;font-weight:900;}
+  .bfe-tabs{display:flex;gap:5px;}
+  .bfe-tabs button{flex:1;background:#262a34;border:1.5px solid rgba(255,255,255,.1);color:#cfd6e2;border-radius:8px;font-weight:800;font-size:11.5px;padding:6px;cursor:pointer;}
+  .bfe-tabs button.on{background:#3b62d6;border-color:#6f92ff;color:#fff;}
+  .bfe-tr{display:flex;gap:6px;align-items:center;}
+  .bfe-tr button,.bfe-tr select{background:#262a34;border:1px solid rgba(255,255,255,.12);color:#e8ecf4;border-radius:7px;font-weight:800;font-size:12px;padding:5px 9px;cursor:pointer;}
+  .bfe-tr button.on{background:#3b62d6;}
+  #bfe-scrub{flex:1;}
+  .bfe-row{display:flex;gap:7px;align-items:center;}
+  .bfe-row span{width:78px;flex:none;font-size:10.5px;font-weight:700;color:#9aa4b8;overflow:hidden;white-space:nowrap;}
+  .bfe-row canvas{border-radius:6px;cursor:crosshair;}
+  #bfe-ins{background:#1c2028;border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:9px;display:none;}
+  #bfe-ins label{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:#9aa4b8;font-weight:700;}
+  #bfe-ins input[type=number]{width:74px;background:#12151b;border:1px solid rgba(255,255,255,.14);color:#fff;border-radius:6px;padding:4px 6px;font-size:12px;}
+  #bfe-ins input[type=range]{flex:1;}
+  #bfe-ins select{background:#12151b;border:1px solid rgba(255,255,255,.14);color:#fff;border-radius:6px;padding:4px;font-size:11.5px;}
+  .bfe-acts{display:flex;flex-wrap:wrap;gap:5px;}
+  .bfe-acts button{background:#262a34;border:1px solid rgba(255,255,255,.12);color:#e8ecf4;border-radius:7px;font-weight:800;font-size:11px;padding:6px 8px;cursor:pointer;}
+  #bfe-pub{background:#8a6a1c;}
+  .bfe-hint{font-size:10px;color:#6f7890;line-height:1.4;}
+  `; document.head.appendChild(st);
+  bfePanel = document.createElement('div'); bfePanel.id = 'bfe';
+  bfePanel.innerHTML = `
+    <h3>🦋 Butterfly Anim Studio</h3>
+    <div class="bfe-tabs">` + ['equip', 'stab', 'inspect'].map((t) => `<button data-trk="${t}" class="${bfe.track === t ? 'on' : ''}">${t.toUpperCase()}</button>`).join('') + `</div>
+    <div class="bfe-tr">
+      <button id="bfe-play">▶</button>
+      <button id="bfe-loop" class="on">🔁</button>
+      <select id="bfe-speed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>
+      <input id="bfe-scrub" type="range" min="0" max="1" step="0.001" value="0">
+      <b id="bfe-time">0.00s</b>
+    </div>
+    <div id="bfe-rows"></div>
+    <div id="bfe-ins">
+      <b id="bfe-ins-ch"></b>
+      <label>t <input id="bfe-t" type="number" min="0" max="1" step="0.005"></label>
+      <label>v <input id="bfe-v" type="number" step="0.01"><input id="bfe-vs" type="range" step="0.01"></label>
+      <label>ease <select id="bfe-e">${Object.keys(EASES).map((e) => `<option>${e}</option>`).join('')}</select>
+        <button id="bfe-del">🗑 key</button></label>
+    </div>
+    <div class="bfe-acts">
+      <button id="bfe-add">＋ key @ playhead</button>
+      <button id="bfe-draft">💾 Draft</button>
+      <button id="bfe-reset">↺ Reset track</button>
+      <button id="bfe-exp">📋 Export</button>
+      <button id="bfe-imp">📥 Import</button>
+      <button id="bfe-pub" style="display:none;">⬆ Publish to game</button>
+    </div>
+    <div class="bfe-hint">Click a dot to select · drag to retime · double-click a lane to add a key · edits preview LIVE on your viewmodel. Draft = saved on this device. Publish = becomes the real animation for everyone.</div>`;
+  document.body.appendChild(bfePanel);
+  bfePanel.querySelectorAll('.bfe-tabs button').forEach((b) => b.addEventListener('click', () => {
+    bfe.track = b.dataset.trk; bfe.t = 0; bfe.sel = null;
+    bfePanel.querySelectorAll('.bfe-tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    bfePanel.querySelector('#bfe-ins').style.display = 'none';
+    bfeBuildRows(); bfeSyncTransport();
+  }));
+  bfePanel.querySelector('#bfe-play').addEventListener('click', () => {
+    bfe.playing = !bfe.playing;
+    if (bfe.playing && bfe.t >= 1) bfe.t = 0;
+    bfePanel.querySelector('#bfe-play').textContent = bfe.playing ? '⏸' : '▶';
+  });
+  bfePanel.querySelector('#bfe-loop').addEventListener('click', (e) => { bfe.loop = !bfe.loop; e.target.classList.toggle('on', bfe.loop); });
+  bfePanel.querySelector('#bfe-speed').addEventListener('change', (e) => { bfe.speed = Number(e.target.value); });
+  bfePanel.querySelector('#bfe-scrub').addEventListener('input', (e) => { bfe.t = Number(e.target.value); bfe.playing = false; bfePanel.querySelector('#bfe-play').textContent = '▶'; bfeSyncTransport(); });
+  const selKey = () => bfe.sel && (BF_TRK[bfe.track][bfe.sel.ch] || []).includes(bfe.sel.key) ? bfe.sel : null;
+  bfePanel.querySelector('#bfe-t').addEventListener('input', (e) => { const s2 = selKey(); if (!s2) return; s2.key.t = Math.max(0, Math.min(1, Number(e.target.value) || 0)); BF_TRK[bfe.track][s2.ch].sort((a, b) => a.t - b.t); bfeRedraw(); });
+  const setV = (val) => { const s2 = selKey(); if (!s2) return; s2.key.v = Number(val) || 0; bfePanel.querySelector('#bfe-v').value = s2.key.v; bfeRedraw(); };
+  bfePanel.querySelector('#bfe-v').addEventListener('input', (e) => setV(e.target.value));
+  bfePanel.querySelector('#bfe-vs').addEventListener('input', (e) => setV(e.target.value));
+  bfePanel.querySelector('#bfe-e').addEventListener('change', (e) => { const s2 = selKey(); if (s2) { s2.key.e = e.target.value; bfeRedraw(); } });
+  bfePanel.querySelector('#bfe-del').addEventListener('click', () => {
+    const s2 = selKey(); if (!s2) return;
+    const keys = BF_TRK[bfe.track][s2.ch];
+    if (keys.length <= 2) { toast('A lane needs at least 2 keys'); return; }
+    keys.splice(keys.indexOf(s2.key), 1); bfeSelect(s2.ch, null);
+  });
+  bfePanel.querySelector('#bfe-add').addEventListener('click', () => {
+    const ch = bfe.sel?.ch || bfeChannels()[0];
+    const keys = BF_TRK[bfe.track][ch];
+    const nk = { t: bfe.t, v: trackVal(keys, bfe.t), e: 'inOutCubic' };
+    keys.push(nk); keys.sort((a, b) => a.t - b.t); bfeSelect(ch, nk);
+  });
+  bfePanel.querySelector('#bfe-draft').addEventListener('click', () => {
+    try { localStorage.setItem('rivals.bfDraft', JSON.stringify(BF_TRK)); toast('Draft saved on this device 💾'); } catch {}
+  });
+  bfePanel.querySelector('#bfe-reset').addEventListener('click', () => {
+    BF_TRK[bfe.track] = JSON.parse(JSON.stringify(BF_DEFAULT[bfe.track]));
+    bfe.sel = null; bfePanel.querySelector('#bfe-ins').style.display = 'none';
+    bfeBuildRows(); toast('Track reset to default');
+  });
+  bfePanel.querySelector('#bfe-exp').addEventListener('click', () => { prompt('Copy your animation JSON:', JSON.stringify(BF_TRK)); });
+  bfePanel.querySelector('#bfe-imp').addEventListener('click', () => {
+    const j = prompt('Paste animation JSON:'); if (!j) return;
+    try { applyBfAnim(JSON.parse(j)); bfeBuildRows(); toast('Imported ✓'); } catch { toast('Bad JSON'); }
+  });
+  const pub = bfePanel.querySelector('#bfe-pub');
+  if ((identity.name || '').toLowerCase() === 'attackface15') pub.style.display = 'block';
+  pub.addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/rivals/bfanim', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' }, body: JSON.stringify({ name: identity.name, anim: BF_TRK }) });
+      const d = await r.json();
+      toast(d.ok ? '⬆ Published — this is now THE butterfly animation!' : (d.error || 'Publish failed'));
+    } catch { toast('Publish failed'); }
+  });
+  bfeBuildRows();
+}
+function bfeOpen() {
+  buildBfEditor();
+  if (me.weapon !== 'butterfly') { try { switchWeapon('butterfly'); } catch {} }
+  bfe.open = true; bfe.playing = false; bfe.t = 0;
+  bfePanel.classList.add('open');
+  bfePanel.querySelector('#bfe-play').textContent = '▶';
+  document.exitPointerLock?.();
+  bfeSyncTransport();
+}
+function bfeClose() {
+  bfe.open = false;
+  bfePanel?.classList.remove('open');
+  vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; vmAnim.bfInspectPrev = 1;
+}
+addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyN' || !devTools) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (typeof chatting !== 'undefined' && chatting) return;
+  if (bfe.open) { bfeClose(); return; }
+  if (game.phase !== 'lobby') { toast('Anim Studio opens in the lobby'); return; }
+  bfeOpen();
+});
+
 const inspectClassFor = (w) => (w === 'butterfly' ? 'butterfly' : WEAPONS[w]?.mag ? 'gun' : w === 'fists' ? 'fists' : WEAPONS[w]?.melee ? 'melee' : 'util');
 const INSPECT_DUR = { butterfly: 5.5, gun: 2.6, melee: 2.6, fists: 1.8, util: 2.2 };
 
@@ -3273,6 +3513,19 @@ function renderKeybinds() {
     sfx.click?.(); renderKeybinds();
   });
   optRow.append(optName, sw); host.appendChild(optRow);
+  // ---- dev tools toggle: unlocks the in-game Anim Studio (N) ----
+  const devRow = document.createElement('div'); devRow.className = 'kb-row';
+  const devName = document.createElement('span'); devName.className = 'kb-label'; devName.textContent = 'Dev Tools (N = Anim Studio)';
+  const dsw = document.createElement('button');
+  dsw.className = 'kb-switch' + (devTools ? ' on' : ''); dsw.setAttribute('role', 'switch');
+  dsw.setAttribute('aria-checked', String(devTools)); dsw.innerHTML = '<i></i>';
+  dsw.addEventListener('click', () => {
+    devTools = !devTools;
+    try { localStorage.setItem('rivals.devtools', devTools ? '1' : '0'); } catch {}
+    if (devTools) toast('Dev Tools on — press N in the lobby with the Butterfly to open the Anim Studio');
+    sfx.click?.(); renderKeybinds();
+  });
+  devRow.append(devName, dsw); host.appendChild(devRow);
   // ---- key rebinds ----
   for (const [id, label] of KB_ACTIONS) {
     const row = document.createElement('div'); row.className = 'kb-row';
@@ -3651,6 +3904,17 @@ function frame() {
     vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
     vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
     vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / (vmAnim.inspectDur || 5.5));
+    // Anim Studio drives the clock directly while open
+    if (bfe.open && me.weapon === 'butterfly') {
+      if (bfe.playing) {
+        bfe.t += dt * bfe.speed / BFE_DUR[bfe.track];
+        if (bfe.t >= 1) bfe.t = bfe.loop ? bfe.t % 1 : 1;
+        bfeSyncTransport();
+      }
+      if (bfe.track === 'equip') { vmAnim.bfEquipT = Math.min(bfe.t, 0.9999); vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; }
+      else if (bfe.track === 'stab') { vmAnim.bfStabT = Math.min(bfe.t, 0.9999); vmAnim.bfEquipT = 1; vmAnim.bfInspectT = 1; }
+      else { vmAnim.bfInspectT = Math.min(bfe.t, 0.9999); vmAnim.bfInspectPrev = vmAnim.bfInspectT; vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; }
+    }
     vmAnim.boltT = Math.min(1, vmAnim.boltT + dt / 0.55);
   }
 
@@ -3661,7 +3925,7 @@ function frame() {
 
   const vm = viewmodels[vmKey];
   if (vm) {
-    vm.visible = !scoped && !inLobbyMode();   // no guns out in the social lobby
+    vm.visible = !scoped && (!inLobbyMode() || bfe.open);   // lobby hides guns — unless the Anim Studio is previewing
     const k = me.ads;
     const loose = 1 - k * 0.85;                 // ADS tightens everything
     const bobAmt = (moving ? (sprinting2 ? 1.5 : 1) : 0) * loose;

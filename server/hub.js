@@ -962,6 +962,31 @@ export function hubRouter() {
     }
     return s;
   };
+  // butterfly knife animation — hand-authored by the owner in the in-game Anim Studio
+  r.get('/rivals/bfanim', (req, res) => res.json(platform.rivalsBfAnim || null));
+  r.post('/rivals/bfanim', (req, res) => {
+    const name = clean(req.body?.name);
+    if (String(name).toLowerCase() !== 'attackface15') return res.status(403).json({ error: 'Only the owner can publish animations.' });
+    const anim = req.body?.anim;
+    if (!anim || typeof anim !== 'object') return res.status(400).json({ error: 'bad anim' });
+    const EASE_OK = new Set(['linear', 'inQuad', 'outQuad', 'inCubic', 'outCubic', 'inOutCubic', 'outExpo', 'outBack', 'outElastic']);
+    const out = {};
+    for (const trk of ['equip', 'stab', 'inspect']) {
+      const src = anim[trk]; if (!src || typeof src !== 'object') continue;
+      const to = {};
+      for (const [ch, keys] of Object.entries(src)) {
+        if (!/^[a-zA-Z]{1,8}$/.test(ch) || !Array.isArray(keys)) continue;
+        const ks = keys.slice(0, 60)
+          .map((k) => ({ t: Math.max(0, Math.min(1, Number(k?.t) || 0)), v: Math.max(-100, Math.min(100, Number(k?.v) || 0)), ...(EASE_OK.has(k?.e) ? { e: k.e } : {}) }))
+          .sort((a, b) => a.t - b.t);
+        if (ks.length >= 2) to[ch] = ks;
+      }
+      if (Object.keys(to).length) out[trk] = to;
+    }
+    platform.rivalsBfAnim = { anim: out, by: name, at: Date.now() };
+    save();
+    res.json({ ok: true });
+  });
   r.get('/rivals/skins', (req, res) => {
     const name = clean(req.query.name), nameLower = name.toLowerCase();
     let u = getUser(nameLower);
