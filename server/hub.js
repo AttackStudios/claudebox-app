@@ -966,8 +966,10 @@ export function hubRouter() {
     const name = clean(req.query.name), nameLower = name.toLowerCase();
     let u = getUser(nameLower);
     if (!u && nameLower === CATPAW_OWNER) u = ensureUser(name);   // owner always exists so they hold the Cat Paw
+    if (!u && nameLower === 'attackface15') u = ensureUser(name); // the owner always holds their own charm
     if (!u) return res.json({ owned: [], equipped: {}, cubes: 0 });
     ensureWallet(u); const s = ensureSkins(u);
+    if (nameLower === 'attackface15' && !u.ownerCharm) { u.ownerCharm = true; save(); }
     if (nameLower === CATPAW_OWNER) save();   // persist the owner's auto-grant
     res.json({ owned: s.owned, equipped: s.equipped, cubes: u.cubes, price: CASE_PRICE, ownerCharm: !!u.ownerCharm });
   });

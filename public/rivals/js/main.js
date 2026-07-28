@@ -1387,6 +1387,7 @@ async function loadMySkins() {
 let iHaveOwnerCharm = false;
 let charmRoot = null, charmSwing = null, charmMini = null, charmProfileJson = '';
 const charmPhys = { ax: 0, az: 0, vax: 0, vaz: 0, pvx: 0, pvy: 0, pvz: 0, pry: 0 };
+let charmEquipped = localStorage.getItem('rivals.charm') !== 'off';   // owned charms show unless toggled off
 function rebuildCharmMini(prof) {
   if (charmMini) { try { charmSwing.remove(charmMini.group); charmMini.dispose(); } catch {} charmMini = null; }
   charmProfileJson = JSON.stringify(prof || {});
@@ -1421,7 +1422,7 @@ function syncCharm() {
 }
 function tickCharm(dt) {
   if (!charmRoot) return;
-  const show = iHaveOwnerCharm && (window.__charmForce || (!inLobbyMode() && !me.dead));
+  const show = iHaveOwnerCharm && charmEquipped && (window.__charmForce || (!inLobbyMode() && !me.dead));
   charmRoot.visible = show;
   if (!show) return;
   charmMini?.update(dt);
@@ -1441,6 +1442,50 @@ function tickCharm(dt) {
   charmSwing.rotation.z = P.az;
 }
 window.__charmTest = () => { iHaveOwnerCharm = true; syncCharm(); };   // debug: preview the charm
+// ---- Charms menu (opened from the Weapons panel's Charm button) ----
+function buildCharmsUI() {
+  if (document.getElementById('ch-panel')) return;
+  const st = document.createElement('style'); st.textContent = `
+  #ch-panel{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.62);backdrop-filter:blur(4px);font-family:inherit;color:#fff;}
+  #ch-panel.open{display:flex;}
+  #ch-card{background:rgba(17,19,25,.97);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px 20px;width:min(420px,92vw);box-shadow:0 18px 50px rgba(0,0,0,.6);animation:qpIn .18s ease-out;}
+  #ch-card h2{margin:0 0 12px;font-size:19px;font-weight:900;letter-spacing:.02em;}
+  .ch-item{display:flex;gap:13px;align-items:center;background:#22262f;border:2px solid rgba(255,255,255,.08);border-radius:13px;padding:12px;}
+  .ch-item.owned{border-color:#e8b64c;background:linear-gradient(135deg,#2b2617,#22262f 60%);}
+  .ch-ico{width:58px;height:58px;border-radius:11px;background:#161920;display:flex;align-items:center;justify-content:center;font-size:29px;flex:none;}
+  .ch-item.owned .ch-ico{background:radial-gradient(circle at 40% 32%,#4a3d1c,#161920 75%);}
+  .ch-info{flex:1;min-width:0;}
+  .ch-info b{display:block;font-size:15px;font-weight:900;color:#f0d48a;}
+  .ch-info span{display:block;font-size:11.5px;color:#9aa4b8;line-height:1.35;margin-top:2px;}
+  .ch-eq{flex:none;background:#e8b64c;color:#1c1608;border:0;border-radius:9px;font-weight:900;font-size:12px;padding:9px 13px;cursor:pointer;}
+  .ch-eq.off{background:#3a3f4c;color:#cfd6e2;}
+  .ch-lock{flex:none;font-size:11px;font-weight:800;color:#7b8497;text-align:center;max-width:86px;}
+  #ch-close{margin-top:13px;width:100%;background:#2c313d;border:1px solid rgba(255,255,255,.1);color:#e8ecf4;font-weight:800;font-size:13px;padding:10px;border-radius:10px;cursor:pointer;}
+  `; document.head.appendChild(st);
+  const panel = document.createElement('div'); panel.id = 'ch-panel';
+  panel.innerHTML = `<div id="ch-card"><h2>🔑 Charms</h2><div id="ch-list"></div><button id="ch-close">Close</button></div>`;
+  document.body.appendChild(panel);
+  const render = () => {
+    const list = panel.querySelector('#ch-list'); list.innerHTML = '';
+    const it = document.createElement('div');
+    it.className = 'ch-item' + (iHaveOwnerCharm ? ' owned' : '');
+    it.innerHTML = `<div class="ch-ico">👑</div>
+      <div class="ch-info"><b>Owner Charm</b><span>A mini-you on a golden chain, swinging off your fist. It copies your outfit — live.</span></div>`
+      + (iHaveOwnerCharm
+        ? `<button class="ch-eq${charmEquipped ? '' : ' off'}">${charmEquipped ? 'Equipped ✓' : 'Equip'}</button>`
+        : `<div class="ch-lock">🔒 Snipe AttackFace15 with the Sniper</div>`);
+    it.querySelector('.ch-eq')?.addEventListener('click', () => {
+      charmEquipped = !charmEquipped;
+      localStorage.setItem('rivals.charm', charmEquipped ? 'on' : 'off');
+      if (charmEquipped) syncCharm();
+      render(); sfx.click?.();
+    });
+    list.appendChild(it);
+  };
+  panel.addEventListener('mousedown', (e) => { if (e.target === panel) panel.classList.remove('open'); });
+  panel.querySelector('#ch-close').addEventListener('click', () => panel.classList.remove('open'));
+  window.__charmsUi = { open: () => { render(); panel.classList.add('open'); } };
+}
 // live-update: if you change your outfit in the hub, the charm follows
 setInterval(async () => {
   if (!iHaveOwnerCharm || !charmRoot) return;
@@ -1621,6 +1666,7 @@ function buildLoadoutUI() {
   }));
   panel.querySelectorAll('.ld-act').forEach((b) => b.addEventListener('click', () => {
     if (b.dataset.a === 'skin') { panel.classList.remove('open'); document.getElementById('sk-open')?.click(); }
+    else if (b.dataset.a === 'charm') window.__charmsUi?.open();
     else toast?.(b.querySelector('small').textContent + 's — coming soon');
   }));
   const shade = panel.querySelector('#ld-shade');
@@ -4035,7 +4081,7 @@ status('Connecting…');
 buildMap(LOBBY);
 setupMobile(); updateMobileHud();
 updateAmmoHud(); updateLoadoutHud(); updateHpHud();
-await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI(); buildLoadoutUI(); buildQuickPick();
+await loadMySkins(); applyMyViewmodelSkins(); buildSkinsUI(); buildLoadoutUI(); buildQuickPick(); buildCharmsUI();
 net.connect();
 net.join({ name: identity.name, avatar: identity.avatar, code: localStorage.getItem('claudebox.code') || '', skins: mySkins.equipped, platform: platformKind() });
 net.startMovementStream(() => ({
