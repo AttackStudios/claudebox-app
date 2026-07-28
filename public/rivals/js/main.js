@@ -1942,7 +1942,7 @@ function applyBfAnim(anim) {
   }
 }
 (async () => {   // published anim first, then any local draft on top
-  try { const d = await fetch('/api/rivals/bfanim').then((r) => r.json()); applyBfAnim(d?.anim); } catch {}
+  try { const d = await fetch('/api/rivals/bfanim', { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json()); applyBfAnim(d?.anim); } catch {}
   try { applyBfAnim(JSON.parse(localStorage.getItem('rivals.bfDraft') || 'null')); } catch {}
 })();
 let bfePanel = null;
