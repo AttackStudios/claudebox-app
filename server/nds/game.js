@@ -134,13 +134,23 @@ function botsUpdate(dt) {
 function startRound() {
   state.round++;
   rand = mulberry((state.round * 2654435761) >>> 0);
-  let mi = Math.floor(rand() * MAP_IDS.length);
-  if (MAP_IDS[mi] === state.map) mi = (mi + 1) % MAP_IDS.length;   // never the same map twice in a row
-  state.map = MAP_IDS[mi] || MAP_IDS[0];
-  const count = 1 + state.stacks;
-  const picked = [];
-  const pool = [...DISASTER_IDS];
-  for (let i = 0; i < count; i++) { const idx = Math.floor(rand() * pool.length); picked.push(pool[idx] ?? DISASTER_IDS[0]); }
+  if (state.forceMap && MAPS[state.forceMap]) { state.map = state.forceMap; }   // owner picked the map
+  else {
+    let mi = Math.floor(rand() * MAP_IDS.length);
+    if (MAP_IDS[mi] === state.map) mi = (mi + 1) % MAP_IDS.length;   // never the same map twice in a row
+    state.map = MAP_IDS[mi] || MAP_IDS[0];
+  }
+  state.forceMap = null;
+  let picked;
+  if (state.forceDisasters?.length) {                                            // owner picked the disaster(s)
+    picked = state.forceDisasters.filter((id) => DISASTER_IDS.includes(id)).slice(0, 3);
+  } else {
+    const count = 1 + state.stacks;
+    picked = [];
+    const pool = [...DISASTER_IDS];
+    for (let i = 0; i < count; i++) { const idx = Math.floor(rand() * pool.length); picked.push(pool[idx] ?? DISASTER_IDS[0]); }
+  }
+  state.forceDisasters = null;
   state.disasters = picked.map(makeDisaster);
   state.stacks = 0;
   // everyone in the lobby joins the round on the island
@@ -230,6 +240,19 @@ export function handleMessage(p, msg, ctx) {
       if (!p.joined || !p.alive) return;
       p.alive = false;
       broadcast({ t: 'dead', id: p.id, cause: String(msg.cause || 'disaster').slice(0, 16) });
+      return;
+    }
+    case 'admin': {   // OWNER ONLY: queue the next round's map and/or disaster
+      if (!p.joined || p.nameLower !== 'attackface15') { p.ws.send(JSON.stringify({ t: 'toast', text: 'Owner only.' })); return; }
+      const mapId = typeof msg.map === 'string' && MAPS[msg.map] ? msg.map : null;
+      const dis = Array.isArray(msg.disasters) ? msg.disasters.filter((id) => DISASTER_IDS.includes(id)).slice(0, 3) : [];
+      if (mapId) state.forceMap = mapId;
+      if (dis.length) state.forceDisasters = dis;
+      if (!mapId && !dis.length) { state.forceMap = null; state.forceDisasters = null; }
+      const bits = [];
+      if (mapId) bits.push(MAPS[mapId].name);
+      if (dis.length) bits.push(dis.join(' + '));
+      broadcast({ t: 'toast', text: bits.length ? `👑 ${p.name} queued next round: ${bits.join(' — ')}` : `👑 ${p.name} cleared the queue — back to random` });
       return;
     }
     case 'machine': {   // buy an extra disaster for next round with ClaudeBux

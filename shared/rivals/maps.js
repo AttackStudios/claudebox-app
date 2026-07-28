@@ -117,33 +117,67 @@ export const BATTLEGROUND = {
   spawnsB: [{ x: 39, z: -21, ry: 2.06 }, { x: 39, z: 21, ry: 1.08 }],
 };
 
-// ================= LOBBY — neon hub + shooting range =================
-const LB_D = '#2a2e38', LB_D2 = '#343947', NEON = '#38b6e8';
+// ============ LOBBY — the facility: red-carpet hallway, duel pads, range wing ============
+// Modeled on the original's spawn: grey bulkhead corridor with a red carpet
+// spine, DUELS pad alcove (west), shooting-range wing (east), and a warm
+// wood event hall at the far end.
+const LB_W = '#59606e', LB_W2 = '#4a515c', LB_D = '#343a44', LB_DK = '#23272f';
+const WD = '#8a6a48', WD2 = '#6b5138', CARPET = '#c81f2e', PIPE = '#4ae06a';
 export const LOBBY = {
-  id: 'lobby', name: 'Lobby', sky: '#12141c', fog: 0.014,
-  ground: { color: '#3a3f4c', size: 44 },
+  id: 'lobby', name: 'Lobby', sky: '#12141c', fog: 0.012,
+  ground: { color: '#2e333c', sizeX: 100, sizeZ: 140 },
   boxes: [
-    B(0, 3.5, -14, 30, 7, 1, LB_D), B(0, 3.5, 14, 30, 7, 1, LB_D),
-    B(-15, 3.5, 0, 1, 7, 29, LB_D), B(15, 3.5, 0, 1, 7, 29, LB_D2),
-    // duel pad plinth
-    B(0, 0.15, -8, 6, 0.3, 6, '#101218', { pad: true }),
-    // range divider + target wall
-    B(5, 1.6, 4, 0.6, 3.2, 12, LB_D2),
-    B(12, 2.2, 4, 0.8, 4.4, 14, LB_D),
-    // neon trims (client renders emissive)
-    B(0, 6.6, -13.7, 30, 0.15, 0.15, NEON, { glow: true }),
-    B(0, 0.06, -8, 6.4, 0.12, 6.4, NEON, { glow: true }),
-    B(11.5, 4.3, 4, 0.15, 0.15, 13, '#ff7eb6', { glow: true }),
+    // ---- main hallway (spine along z) ----
+    B(0, 4, 23, 16, 8, 1.2, LB_W),                       // south wall (behind spawn)
+    B(-7.6, 4, 15.5, 1.2, 8, 15, LB_W),                  // west wall (south of alcove)
+    B(-7.6, 4, -19, 1.2, 8, 22, LB_W2),                  // west wall (north of alcove)
+    B(7.6, 4, -20, 1.2, 8, 20, LB_W),                    // east wall (north of range)
+    B(7.6, 4, 19.5, 1.2, 8, 7, LB_W2),                   // east wall (south of range)
+    // bulkhead door frames across the hall
+    B(-6.2, 3.5, 8, 1.4, 7, 1, LB_D), B(6.2, 3.5, 8, 1.4, 7, 1, LB_D), B(0, 7.2, 8, 14, 1.6, 1, LB_D),
+    B(-6.2, 3.5, -12, 1.4, 7, 1, LB_D), B(6.2, 3.5, -12, 1.4, 7, 1, LB_D), B(0, 7.2, -12, 14, 1.6, 1, LB_D),
+    // ---- DUELS alcove (west) ----
+    B(-22.6, 4, 0, 1.2, 8, 17.2, LB_W),
+    B(-15, 4, -8.6, 16, 8, 1.2, LB_W2),
+    B(-15, 4, 8.6, 16, 8, 1.2, LB_W2),
+    // ---- shooting-range wing (east) ----
+    B(34.6, 4, 3, 1.2, 8, 27.2, LB_W),
+    B(21, 4, -10.6, 28, 8, 1.2, LB_W2),
+    B(21, 4, 16.6, 28, 8, 1.2, LB_W),
+    B(32, 2.6, 3, 0.8, 5.2, 24, LB_DK),                  // target backstop
+    B(19, 1, -2, 9, 2, 0.5, LB_W2), B(19, 1, 8, 9, 2, 0.5, LB_W2),   // lane dividers
+    B(11, 1.1, 13.5, 2, 2.2, 2, LB_DK),                  // loadout station (like the range trash cans)
+    // ---- event hall (warm wood, far north) ----
+    B(-11, 4, -30.6, 8.5, 8, 1.2, LB_W), B(11, 4, -30.6, 8.5, 8, 1.2, LB_W),
+    B(-14.6, 4.5, -41.5, 1.2, 9, 23, WD), B(14.6, 4.5, -41.5, 1.2, 9, 23, WD),
+    B(0, 4.5, -52.6, 30.4, 9, 1.2, WD2),
+    B(0, 0.6, -46, 12, 1.2, 8, WD2, { walk: true }),     // stage
+    B(0, 1.9, -48.5, 2, 1.4, 2, LB_DK),                  // trophy plinth
+    // arcade kiosk in the hallway
+    B(5.8, 1.5, -24, 1.6, 3, 2.4, '#16181e'),
+    // ---- ceilings ----
+    B(0, 8.6, -3.5, 16.4, 0.5, 54, LB_DK),
+    B(-15, 8.6, 0, 16, 0.5, 18.4, LB_DK),
+    B(21, 8.6, 3, 28.4, 0.5, 28.4, LB_DK),
+    B(0, 9.7, -41.5, 30.4, 0.6, 23.4, WD2),
+    // ---- decor: red carpet spine + green pipe trim + posters (non-solid glow / plain) ----
+    B(0, 0.031, -15, 5, 0.06, 74, CARPET, { glow: true }),
+    B(-15, 0.031, 0, 14, 0.06, 4, CARPET, { glow: true }),
+    B(-6.9, 6.5, 2, 0.12, 0.16, 40, PIPE, { glow: true }),
+    B(6.9, 6.5, -14, 0.12, 0.16, 32, PIPE, { glow: true }),
+    B(-7.0, 3.4, 12.5, 0.16, 2.4, 3.4, '#e04a9a', { plain: true }),   // posters
+    B(-7.0, 3.6, -24, 0.16, 2.2, 3, '#e8c83a', { plain: true }),
+    B(7.0, 3.4, 18.8, 0.16, 2.2, 3, '#3fd1c4', { plain: true }),
   ],
-  // shooting-range dummies (client-side breakables) at varied ranges + heights
+  // range dummies: lanes shoot east toward the backstop
   targets: [
-    { x: 10.9, y: 1.1, z: 0 }, { x: 10.9, y: 2.2, z: 3 },
-    { x: 10.9, y: 1.4, z: 6 }, { x: 10.9, y: 2.6, z: 8.5 },
-    { x: 10.9, y: 1.1, z: -3 }, { x: 10.9, y: 3.1, z: -1 },
-    { x: 8, y: 1.1, z: 9.5 }, { x: 6.5, y: 1.1, z: 7 },   // closer pop-ups
+    { x: 30.8, y: 1.1, z: -6 }, { x: 30.8, y: 2.2, z: -2 },
+    { x: 30.8, y: 1.4, z: 2 }, { x: 30.8, y: 2.6, z: 6 },
+    { x: 30.8, y: 1.1, z: 10 }, { x: 30.8, y: 3.1, z: 13 },
+    { x: 26, y: 1.1, z: 0 }, { x: 24, y: 1.1, z: 9 },
   ],
-  spawnsA: [{ x: -6, z: 8, ry: -0.36 }],   // facing the duel pad
-  spawnsB: [{ x: -6, z: 8, ry: -0.36 }],
+  spawnsA: [{ x: 0, z: 19, ry: 0 }],   // south end, facing down the red carpet
+  spawnsB: [{ x: 0, z: 19, ry: 0 }],
 };
 
 

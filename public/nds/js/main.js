@@ -763,4 +763,19 @@ function frame() {
 
   renderer.render(scene, camera);
 }
+// ---- owner controls (AttackFace15): queue next round's map + disaster ----
+if (identityName.toLowerCase() === 'attackface15') {
+  const btn = $('own-btn'), panel = $('own-panel');
+  btn.classList.remove('hidden');
+  for (const [id, m] of Object.entries(MAPS)) { const o = document.createElement('option'); o.value = id; o.textContent = m.name; $('own-map').appendChild(o); }
+  for (const [id, d] of Object.entries(DISASTERS)) { const o = document.createElement('option'); o.value = id; o.textContent = `${d.emoji} ${d.name}`; $('own-dis').appendChild(o); }
+  btn.onclick = () => panel.classList.toggle('hidden');
+  $('own-set').onclick = () => {
+    const map = $('own-map').value, dis = $('own-dis').value;
+    send({ t: 'admin', map: map || undefined, disasters: dis ? [dis] : [] });
+    panel.classList.add('hidden');
+  };
+  $('own-clear').onclick = () => { send({ t: 'admin' }); panel.classList.add('hidden'); };
+}
+
 (async () => { try { await preloadAvatars(['boy', 'girl']); } catch {} myAvatar = makeAvatar(myAvatarData || {}); scene.add(myAvatar.group); myHpBar = makeHealthBar(); myAvatar.group.add(myHpBar.sprite); connect(); frame(); })();

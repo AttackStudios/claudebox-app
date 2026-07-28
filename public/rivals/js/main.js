@@ -297,12 +297,67 @@ function buildMap(def) {
   fill.intensity = panels ? 0.5 : 0.5;
   hemi.intensity = panels ? 0.9 : 0.35;
   hemi.color.set(sky[0]); hemi.groundColor.set(def.ground.color);
-  // the lobby is an interior — give it its own neon mood lighting
+  // the lobby is the FACILITY — warm hall lights, purple duels glow, range light
   if (def.id === 'lobby') {
-    const l1 = new THREE.PointLight('#6ee7ff', 30, 26); l1.position.set(0, 5.4, -8);
-    const l2 = new THREE.PointLight('#ff7eb6', 22, 24); l2.position.set(11, 5, 4);
-    const l3 = new THREE.PointLight('#ffffff', 16, 22); l3.position.set(-8, 5.6, 6);
-    mapGroup.add(l1, l2, l3);
+    ambientLight.intensity = 2.1; hemi.intensity = 0.9;   // the facility is well-lit like the original
+    const l1 = new THREE.PointLight('#fff2dc', 26, 30); l1.position.set(0, 6.5, 0);
+    const l1b = new THREE.PointLight('#fff2dc', 22, 30); l1b.position.set(0, 6.5, -22);
+    const l2 = new THREE.PointLight('#b06aff', 24, 22); l2.position.set(-15, 6, 0);      // duels alcove
+    const l3 = new THREE.PointLight('#ffe9a8', 26, 30); l3.position.set(24, 6.5, 3);     // range
+    const l4 = new THREE.PointLight('#ffca7a', 30, 30); l4.position.set(0, 7, -42);      // wood hall
+    mapGroup.add(l1, l1b, l2, l3, l4);
+    // canvas sign helper
+    const sign = (w, h, draw) => {
+      const c = document.createElement('canvas'); c.width = 512; c.height = Math.round(512 * h / w);
+      draw(c.getContext('2d'), c.width, c.height);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true }));
+    };
+    const text = (x2, W2, H2, label, bg, fg, size) => { if (bg) { x2.fillStyle = bg; x2.fillRect(0, 0, W2, H2); } x2.fillStyle = fg; x2.font = `italic 900 ${size || 110}px Arial Black, sans-serif`; x2.textAlign = 'center'; x2.textBaseline = 'middle'; x2.fillText(label, W2 / 2, H2 / 2 + 6); };
+    // DUELS — purple tilted sign over the alcove opening
+    const duels = sign(7, 2.2, (x2, W2, H2) => { text(x2, W2, H2, 'DUELS', '#7a2fe0', '#fff'); x2.strokeStyle = '#fff'; x2.lineWidth = 10; x2.strokeRect(6, 6, W2 - 12, H2 - 12); });
+    duels.position.set(-8.6, 6.6, 0); duels.rotation.y = Math.PI / 2; duels.rotation.z = 0.07; mapGroup.add(duels);
+    // SHOOTING RANGE — yellow sign over the east opening
+    const range = sign(8, 1.8, (x2, W2, H2) => { text(x2, W2, H2, 'SHOOTING RANGE', '#e8c83a', '#16181e', 64); });
+    range.position.set(8.6, 6.6, 3); range.rotation.y = -Math.PI / 2; mapGroup.add(range);
+    // RIVALS logo — end of the wood hall
+    const logo = sign(14, 3.4, (x2, W2, H2) => { text(x2, W2, H2, 'RIVALS', null, '#fff'); x2.strokeStyle = 'rgba(0,0,0,.35)'; x2.lineWidth = 8; x2.strokeText('RIVALS', W2 / 2, H2 / 2 + 6); });
+    logo.position.set(0, 6, -51.9); mapGroup.add(logo);
+    // WIN STREAKS leaderboard — alcove south wall
+    const board = sign(6.5, 4.6, (x2, W2, H2) => {
+      x2.fillStyle = '#14161c'; x2.fillRect(0, 0, W2, H2);
+      x2.fillStyle = '#ffd24a'; x2.font = 'italic 900 54px Arial Black'; x2.textAlign = 'center'; x2.fillText('WIN STREAKS', W2 / 2, 64);
+      x2.font = '700 34px Arial'; x2.textAlign = 'left';
+      ['AttackFace15', 'KitKat', 'EmGamerOG', 'Declan', 'LilBugTrainer'].forEach((n, i) => {
+        x2.fillStyle = i === 0 ? '#ffd24a' : '#cfd6e2'; x2.fillText(`${i + 1}.  ${n}`, 40, 130 + i * 48);
+        x2.fillStyle = '#6ee7a0'; x2.textAlign = 'right'; x2.fillText(`${9 - i * 2}🔥`, W2 - 40, 130 + i * 48); x2.textAlign = 'left';
+      });
+    });
+    board.position.set(-15, 3.6, 7.9); board.rotation.y = Math.PI; mapGroup.add(board);
+    // kiosk screen
+    const kioskScr = sign(1.5, 1.1, (x2, W2, H2) => { x2.fillStyle = '#0c0e12'; x2.fillRect(0, 0, W2, H2); for (let i = 0; i < 8; i++) { x2.fillStyle = ['#e04a9a', '#38b6e8', '#ffd24a', '#6ee7a0'][i % 4]; x2.fillRect(30 + (i % 4) * 115, 40 + Math.floor(i / 4) * 130, 90, 100); } });
+    kioskScr.position.set(4.9, 1.9, -24); kioskScr.rotation.y = -Math.PI / 2; mapGroup.add(kioskScr);
+    // ---- QUEUE PADS: walk on to queue (the original's duel pads) ----
+    lobbyPads = [];
+    const PAD_DEFS = [
+      { mode: 'beginner', label: '🎓 Beginner', color: '#6ee7a0', x: -12, z: -3.8 },
+      { mode: 'duo', label: '⚔️ 1v1', color: '#38b6e8', x: -18, z: -3.8 },
+      { mode: 'squad', label: '👥 2v2', color: '#ff7eb6', x: -18, z: 3.8 },
+      { mode: 'wave', label: '🌊 Waves', color: '#b06aff', x: -12, z: 3.8 },
+    ];
+    for (const pd of PAD_DEFS) {
+      const g2 = new THREE.Group();
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.75, 0.16, 26), new THREE.MeshLambertMaterial({ color: '#cfe8ff' }));
+      disc.position.y = 0.08;
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(1.62, 0.09, 8, 26), new THREE.MeshBasicMaterial({ color: pd.color }));
+      rim.rotation.x = Math.PI / 2; rim.position.y = 0.18;
+      const lbl = sign(2.6, 0.7, (x2, W2, H2) => text(x2, W2, H2, pd.label, 'rgba(12,14,20,.85)', pd.color, 64));
+      lbl.position.y = 2.6;
+      g2.add(disc, rim, lbl);
+      g2.position.set(pd.x, 0, pd.z);
+      mapGroup.add(g2);
+      lobbyPads.push({ ...pd, rim, holdT: 0 });
+    }
   }
   // deployed jump pads reset on map change (they're placed live via the net)
   clearPads();
@@ -338,6 +393,8 @@ const me = {
 };
 const keys = new Set();
 let locked = false;
+let lobbyPads = [];
+let padQueueCd = 0;
 
 canvas.addEventListener('click', () => { if (!locked && !isTouch) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
@@ -1326,6 +1383,7 @@ function buildLoadoutUI() {
     }
   };
   btn.addEventListener('click', () => { render(); panel.classList.add('open'); });
+  window.__ldAuto = { open: () => { render(); panel.classList.add('open'); }, close: () => panel.classList.remove('open') };
   panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('open'); });
   panel.querySelector('#ld-done').addEventListener('click', () => {
     // normalise order to [primary, secondary, melee, utility]
@@ -1637,6 +1695,11 @@ function finishReload() {
 
 function tryFire() {
   vmAnim.bfInspectT = 1;   // any attack intent cancels an inspect
+  if (game.phase === 'lobby' && !inRangeZone() && me.weapon !== 'warper') {
+    const now2 = clockNow();
+    if (now2 > rangeHintAt) { toast('Weapons live in the SHOOTING RANGE →  (east door)'); rangeHintAt = now2 + 3; }
+    return;
+  }
   if (me.weapon === 'warper') {
     const now2 = clockNow();
     if (me.dead || now2 - me.lastFire < WEAPONS.warper.rate) return;
@@ -2216,6 +2279,7 @@ net.on('round.freeze', (msg) => {
   }
   game.phase = 'freeze';
   clearAllPortals();
+  window.__ldAuto?.open();   // pick your loadout while frozen — the only time it changes
   game.score = msg.score;
   game.stateUntil = msg.until;
   // spawn everyone
@@ -2258,6 +2322,7 @@ net.on('round.freeze', (msg) => {
 });
 net.on('round.live', (msg) => {
   game.phase = 'live';
+  window.__ldAuto?.close();
   game.stateUntil = msg.until;
   $('#freeze-count').classList.add('hidden');
   banner('GO!', 600);
@@ -2812,13 +2877,13 @@ function enterLobby(fromMatch) {
   $('#wave-top')?.classList.add('hidden');
   for (const g of dropMeshes.values()) scene.remove(g);
   dropMeshes.clear();
-  // the "range" IS the Arena, empty — a free practice space (no bots/targets)
-  game.mapId = 'arena'; game.builtMap = 'arena';
-  buildMap(MAPS.arena);
+  // the FACILITY lobby: red-carpet hallway, duel pads, shooting-range wing
+  game.mapId = 'lobby'; game.builtMap = 'lobby';
+  buildMap(LOBBY);
   clearOthers();
   clearPads(); clearLocalNades();
   lobbyClearAt = clockNow() + PRACTICE_CLEAR_SECS;   // auto-wipe placed stuff every 5 min
-  const sp = MAPS.arena.spawnsA[0];
+  const sp = LOBBY.spawnsA[0];
   me.pos = { x: sp.x, y: 0, z: sp.z };
   me.ry = sp.ry; me.pitch = 0;
   me.hp = 100; me.dead = false; me.weapon = 'ar';
@@ -2828,7 +2893,7 @@ function enterLobby(fromMatch) {
   $('#freeze-count').classList.add('hidden');
   $('#health-wrap').classList.add('hidden');
   $('#ammo-wrap').classList.remove('hidden');
-  const tip = $('#lobby-tip'); if (tip) tip.textContent = 'Practice Arena — try any weapon, pad or slide-hop. Press E to queue for a match.';
+  const tip = $('#lobby-tip'); if (tip) tip.textContent = 'Stand on a DUEL PAD to queue · Shooting Range through the east door · loadout changes at round start';
   tip?.classList.remove('hidden');
   $('#kb-open')?.classList.remove('hidden');
   $('#podium').classList.add('hidden');
@@ -3063,6 +3128,33 @@ net.on('portal', (msg) => {
   setPortal(st, msg.which, { x: msg.x, y: msg.y, z: msg.z }, { x: msg.nx, y: msg.ny, z: msg.nz }, true);
 });
 
+// ---- lobby zones: stand on a duel pad to queue; loadout station in the range ----
+const inRangeZone = () => me.pos.x > 7 && me.pos.z > -10 && me.pos.z < 16;
+let rangeHintAt = 0;
+function tickLobbyZones(dt) {
+  const now = clockNow();
+  // spin pad rims gently
+  for (const pd of lobbyPads) if (pd.rim) pd.rim.rotation.z += dt * 1.2;
+  if (game.phase !== 'lobby' || me.dead || now < padQueueCd) { for (const pd of lobbyPads) pd.holdT = 0; return; }
+  if (!$('#queue-banner').classList.contains('hidden')) return;   // already queued
+  for (const pd of lobbyPads) {
+    const d = Math.hypot(me.pos.x - pd.x, me.pos.z - pd.z);
+    if (d < 1.7) {
+      pd.holdT += dt;
+      if (pd.rim) pd.rim.scale.setScalar(1 + Math.sin(now * 6) * 0.06);
+      if (pd.holdT > 0.9) {
+        net.send({ t: 'queue.join', mode: pd.mode });
+        sfx.beep?.();
+        padQueueCd = now + 3;
+        pd.holdT = 0;
+      }
+    } else { pd.holdT = 0; if (pd.rim) pd.rim.scale.setScalar(1); }
+  }
+  // loadout button only lives at the range station (like the original's bins)
+  const ld = document.getElementById('ld-open');
+  if (ld) ld.style.display = inRangeZone() ? '' : 'none';
+}
+
 function frame() {
   requestAnimationFrame(frame);
   const now = performance.now() / 1000;
@@ -3070,6 +3162,7 @@ function frame() {
   last = now;
   if (mobileOn) updateMobileHud();
   tickPortals(dt);
+  tickLobbyZones(dt);
   const cn = clockNow();
 
   stepMe(dt);
