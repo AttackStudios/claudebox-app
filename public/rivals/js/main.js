@@ -7,9 +7,6 @@ import { Net } from './net.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { makeR6, R6_DEFAULT, preloadR6 } from '/shared/r6.js';
-preloadR6().then((hq) => {   // upgrade to the high-quality mesh once it loads
-  if (hq && myR6) { scene.remove(myR6.group); myR6.dispose?.(); myR6 = null; }
-});
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
 import { SKINS, SKIN_BY_ID, SKINS_BY_WEAPON, SKIN_WEAPONS, RARITY_COLOR, CASE_PRICE } from '/shared/rivals/skins.js';
@@ -3915,4 +3912,7 @@ $('#hud').classList.remove('hidden');
 $('#lobby-tip').classList.remove('hidden');
 window.ClaudeBox?.setName?.(identity.name);
 wireLobbyUi();
+preloadR6().then((hq) => {   // upgrade to the high-quality rig once it loads
+  if (hq && myR6) { scene.remove(myR6.group); myR6.dispose?.(); myR6 = null; }
+});
 frame();
