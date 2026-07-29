@@ -988,21 +988,12 @@ function box(w, h, d, color, x, y, z, rx = 0) {
 function makeBalisong() {   // the REAL articulated balisong — shared by the viewmodel and the Anim Studio preview
   const pivot = new THREE.Group();
   const bladeG = new THREE.Group();
-  bladeG.add(box(0.05, 0.05, 0.055, STEEL, 0, 0, 0.01));     // tang + pin boss
-  // sculpted recurve blade: segments dip, then sweep UP to a raised point —
-  // bright edge strip below, darker spine above, like the reference silhouette
-  for (const g2 of [
-    { z: -0.1, y: -0.004, h: 0.062, l: 0.115, a: -0.08 },
-    { z: -0.19, y: -0.016, h: 0.056, l: 0.11, a: -0.16 },
-    { z: -0.27, y: -0.022, h: 0.048, l: 0.1, a: 0.06 },
-    { z: -0.345, y: -0.004, h: 0.04, l: 0.1, a: 0.32 },
-    { z: -0.408, y: 0.03, h: 0.028, l: 0.09, a: 0.58 },
-  ]) {
-    bladeG.add(box(0.024, g2.h, g2.l, '#e6ebf4', 0, g2.y, g2.z, g2.a));
-    bladeG.add(box(0.012, 0.014, g2.l * 0.94, '#f8fbff', 0, g2.y - g2.h / 2 + 0.004, g2.z, g2.a));   // gleaming edge
-    bladeG.add(box(0.014, 0.012, g2.l * 0.88, '#98a2b2', 0, g2.y + g2.h / 2 - 0.004, g2.z, g2.a));   // spine
-  }
-  bladeG.add(box(0.016, 0.02, 0.062, '#f4f7fc', 0, 0.055, -0.452, 0.72));   // upswept point
+  for (const m of [
+    box(0.05, 0.05, 0.055, STEEL, 0, 0, 0.01),               // tang + pin boss
+    box(0.03, 0.06, 0.3, '#e2e8f2', 0, 0, -0.19),            // blade
+    box(0.018, 0.045, 0.1, '#f4f7fc', 0, 0.006, -0.38),      // clip point
+    box(0.012, 0.02, 0.26, '#aeb6c6', 0, -0.026, -0.17),     // edge grind line
+  ]) bladeG.add(m);
   // channel handles, like the real thing: each handle's two rails straddle the
   // blade's FLAT (x) so the folded blade nests inside; the handles themselves sit
   // above/below the blade (y) on vertically offset pins — they surround it
@@ -1018,8 +1009,8 @@ function makeBalisong() {   // the REAL articulated balisong — shared by the v
     if (latch) h.add(box(0.014, 0.03, 0.05, STEEL, 0, side * -0.03, 0.33));   // latch on the bite handle
     return h;
   };
-  const hB = mkHandle(-1, '#17181d', '#282b33', false);      // safe handle (stays in the palm)
-  const hA = mkHandle(1, '#1d1f26', '#31343e', true);        // bite handle (the one that fans)
+  const hB = mkHandle(-1, '#23252c', '#33363f', false);      // safe handle (stays in the palm)
+  const hA = mkHandle(1, '#2a2d35', '#3b3f4a', true);        // bite handle (the one that fans)
   hA.position.y = 0.02; hB.position.y = -0.02;               // offset pins, like the real tang
   // spin-blur disc: streaked circle in the spin plane — keyframable 'blur' channel
   const bc = document.createElement('canvas'); bc.width = bc.height = 128;
