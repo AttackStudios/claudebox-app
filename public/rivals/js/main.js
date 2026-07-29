@@ -1027,8 +1027,14 @@ function makeBalisong() {   // the REAL articulated balisong — shared by the v
     new THREE.MeshBasicMaterial({ map: blurTex, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
   blurMesh.visible = false;
   blurWrap.add(blurMesh);
-  pivot.add(bladeG, hA, hB, blurWrap);
-  return { pivot, bladeG, hA, hB, blurMesh };
+  // the swept VOLUME: a solid knife-thick cylinder filling where the knife spins
+  const blurDisc = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.43, 0.43, 0.034, 40),
+    new THREE.MeshBasicMaterial({ color: '#c8d0dc', transparent: true, opacity: 0, depthWrite: false }));
+  blurDisc.rotation.z = Math.PI / 2;   // axis along the pin
+  blurDisc.visible = false;
+  pivot.add(bladeG, hA, hB, blurWrap, blurDisc);
+  return { pivot, bladeG, hA, hB, blurMesh, blurDisc };
 }
 function buildViewmodels() {
   // ---- assault rifle: stock/body/grip/mag/handguard/barrel/sights ----
@@ -1145,10 +1151,10 @@ function buildViewmodels() {
   // handles each pivot on the tang pin, so flips/fans/twirls are real motion ----
   {
     const g = new THREE.Group();
-    const { pivot, bladeG, hA, hB, blurMesh } = makeBalisong();
+    const { pivot, bladeG, hA, hB, blurMesh, blurDisc } = makeBalisong();
     pivot.position.set(0.5, -0.135, -0.15);   // pin rides the OUTER edge of the fist — flips sweep beside the hand, not through it
     rigWeapon(g, [pivot], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
-    g.userData.bf = { pivot, blade: bladeG, hA, hB, blur: blurMesh };
+    g.userData.bf = { pivot, blade: bladeG, hA, hB, blur: blurMesh, blurDisc };
     viewmodels.butterfly = g;
   }
   // ---- The Warper: white portal gun, blue + orange prongs ----
@@ -2108,7 +2114,7 @@ const BFE_PART_CH = { blade: 'bRx', hA: 'hARx', hB: 'hBRx' };
 const BFE_PART_NAME = { blade: 'Blade', hA: 'Bite handle', hB: 'Safe handle', pivot: 'Whole knife' };
 function bfeBuildPrev() {
   if (bfePrev) return;
-  const { pivot, bladeG, hA, hB, blurMesh } = makeBalisong();
+  const { pivot, bladeG, hA, hB, blurMesh, blurDisc } = makeBalisong();
   const spin = new THREE.Group(); spin.add(pivot);
   const root = new THREE.Group();
   root.position.set(-0.34, 0.15, -1.02);
@@ -2119,7 +2125,7 @@ function bfeBuildPrev() {
   const seen = new Map();
   spin.traverse((m) => { if (m.isMesh) { if (!seen.has(m.material)) seen.set(m.material, m.material.clone()); m.material = seen.get(m.material); } });
   camera.add(root);
-  bfePrev = { root, spin, pivot, blade: bladeG, hA, hB, blur: blurMesh, yaw: 0.7, pitch: 0.3, selPart: null };
+  bfePrev = { root, spin, pivot, blade: bladeG, hA, hB, blur: blurMesh, blurDisc, yaw: 0.7, pitch: 0.3, selPart: null };
 }
 function bfeHighlightPart(part) {
   if (!bfePrev) return;
@@ -2161,10 +2167,13 @@ function bfeTickPrev() {
     const bk = T.blur ? trackVal(T.blur, t2) : 0;
     const on = bk > 0.03, hide = bk > 0.5;
     P2.blur.visible = on;
+    if (P2.blurDisc) P2.blurDisc.visible = on;
     P2.blade.visible = !hide; P2.hA.visible = !hide; P2.hB.visible = !hide;
     if (on) {
-      P2.blur.material.opacity = Math.min(1, bk) * (0.24 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() / 16)));
+      const k = Math.min(1, bk);
+      P2.blur.material.opacity = k * (0.26 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() / 16)));
       P2.blur.rotation.z = (performance.now() / 22) % (Math.PI * 2);
+      if (P2.blurDisc) P2.blurDisc.material.opacity = k * (0.3 + 0.05 * Math.sin(performance.now() / 25));
     }
   }
 }
@@ -4539,10 +4548,13 @@ function frame() {
         if (B.blur) {
           const on = blurK > 0.03, hide = blurK > 0.5;
           B.blur.visible = on;
+          if (B.blurDisc) B.blurDisc.visible = on;
           B.blade.visible = !hide; B.hA.visible = !hide; B.hB.visible = !hide;
           if (on) {
-            B.blur.material.opacity = Math.min(1, blurK) * (0.24 + 0.14 * (0.5 + 0.5 * Math.sin(now * 62)));   // flicker
+            const k = Math.min(1, blurK);
+            B.blur.material.opacity = k * (0.26 + 0.14 * (0.5 + 0.5 * Math.sin(now * 62)));   // streaks flicker
             B.blur.rotation.z = (now * 46) % (Math.PI * 2);   // streaks whirl
+            if (B.blurDisc) B.blurDisc.material.opacity = k * (0.3 + 0.05 * Math.sin(now * 40));   // solid swept volume, gentle shimmer
           }
         }
       }
