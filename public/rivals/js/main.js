@@ -3030,7 +3030,13 @@ function buildQuickPick() {
   #qp-panel{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:55;display:none;flex-direction:column;align-items:center;gap:7px;font-family:inherit;}
   #qp-panel.open{display:flex;animation:qpIn .18s ease-out;}
   @keyframes qpIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+  #qp-tiprow{display:flex;align-items:center;gap:6px;}
   #qp-tip{background:rgba(12,14,18,.94);color:#eef1f7;font-weight:800;font-size:12.5px;padding:7px 15px;border-radius:9px;box-shadow:0 4px 16px rgba(0,0,0,.45);}
+  #qp-close{background:rgba(12,14,18,.94);border:1px solid rgba(255,255,255,.14);color:#aeb6c8;width:28px;height:28px;border-radius:8px;font-weight:900;font-size:13px;cursor:pointer;}
+  #qp-close:hover{color:#fff;background:rgba(40,46,60,.95);}
+  #qp-chip{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:54;display:none;background:rgba(16,18,24,.92);border:1px solid rgba(255,255,255,.14);color:#e8ecf4;font-weight:800;font-size:12.5px;padding:8px 14px;border-radius:999px;cursor:pointer;backdrop-filter:blur(6px);}
+  #qp-chip.show{display:block;}
+  #qp-chip:hover{background:rgba(40,46,60,.95);}
   #qp-grid{background:rgba(16,18,24,.93);border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:9px;display:flex;flex-direction:column;gap:6px;box-shadow:0 12px 36px rgba(0,0,0,.55);backdrop-filter:blur(7px);}
   .qp-row{display:flex;gap:6px;justify-content:center;align-items:center;}
   .qp-cls{width:62px;flex:none;text-align:right;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#5d6578;padding-right:2px;}
@@ -3042,8 +3048,21 @@ function buildQuickPick() {
   .qp-tile.eq small{color:#1c2028;}
   `; document.head.appendChild(st);
   const panel = document.createElement('div'); panel.id = 'qp-panel';
-  panel.innerHTML = '<div id="qp-tip"></div><div id="qp-grid"></div>';
+  panel.innerHTML = '<div id="qp-tiprow"><div id="qp-tip"></div><button id="qp-close" title="Hide (Esc)">✕</button></div><div id="qp-grid"></div>';
   document.body.appendChild(panel);
+  const chip = document.createElement('button'); chip.id = 'qp-chip'; chip.textContent = '🎯 Weapons';
+  document.body.appendChild(chip);
+  let qpMode = null, qpTimer = 0;
+  const collapse = () => {
+    panel.classList.remove('open');
+    if (qpMode === 'range') chip.classList.add('show');   // in the range you can always bring it back
+  };
+  chip.addEventListener('click', () => { chip.classList.remove('show'); window.__qpAuto.open('range'); });
+  panel.addEventListener('pointerdown', () => {   // interacting keeps it around longer
+    clearTimeout(qpTimer);
+    if (qpMode === 'range') qpTimer = setTimeout(collapse, 7000);
+  });
+  addEventListener('keydown', (e) => { if (e.code === 'Escape' && panel.classList.contains('open')) collapse(); });
   const render = () => {
     const grid = panel.querySelector('#qp-grid'); grid.innerHTML = '';
     for (const cls of CLASS_ORDER) {
@@ -3065,14 +3084,18 @@ function buildQuickPick() {
       grid.appendChild(row);
     }
   };
+  panel.querySelector('#qp-close').addEventListener('click', collapse);
   window.__qpAuto = {
     open(mode) {
+      qpMode = mode;
       panel.querySelector('#qp-tip').textContent = mode === 'range'
         ? 'Try out any weapon here for free!'
         : 'Pick your loadout — locks when the round starts!';
-      render(); panel.classList.add('open');
+      render(); panel.classList.add('open'); chip.classList.remove('show');
+      clearTimeout(qpTimer);
+      if (mode === 'range') qpTimer = setTimeout(collapse, 7000);   // never stuck on your screen
     },
-    close: () => panel.classList.remove('open'),
+    close: () => { qpMode = null; clearTimeout(qpTimer); panel.classList.remove('open'); chip.classList.remove('show'); },
   };
 }
 
