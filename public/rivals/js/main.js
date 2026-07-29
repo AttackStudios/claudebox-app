@@ -1023,7 +1023,7 @@ function makeBalisong() {   // the REAL articulated balisong — shared by the v
   const blurTex = new THREE.CanvasTexture(bc);
   const blurWrap = new THREE.Group(); blurWrap.rotation.y = Math.PI / 2;
   const blurMesh = new THREE.Mesh(
-    new THREE.CircleGeometry(0.43, 40),
+    new THREE.CircleGeometry(0.34, 40),
     new THREE.MeshBasicMaterial({ map: blurTex, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
   blurMesh.visible = false;
   blurMesh.position.z = 0.0185;                    // rides the front face of the solid disc
@@ -1032,7 +1032,7 @@ function makeBalisong() {   // the REAL articulated balisong — shared by the v
   blurWrap.add(blurMesh, blurMesh2);
   // the swept VOLUME: a SOLID knife-thick cylinder — you can't see through a speeding knife
   const blurDisc = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.43, 0.43, 0.034, 40),
+    new THREE.CylinderGeometry(0.34, 0.34, 0.034, 40),
     new THREE.MeshLambertMaterial({ color: '#cfd6e2', transparent: true, opacity: 0 }));
   blurDisc.rotation.z = Math.PI / 2;   // axis along the pin
   blurDisc.visible = false;
