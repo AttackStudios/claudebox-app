@@ -1164,7 +1164,7 @@ function buildViewmodels() {
   {
     const g = new THREE.Group();
     const { pivot, bladeG, hA, hB, blurMesh, blurMesh2, blurDisc } = makeBalisong();
-    pivot.position.set(0.31, -0.135, -0.15);   // pin rests on the LEFT side of the fist — flips fan out beside it, never through it
+    pivot.position.set(0.28, -0.16, -0.18);   // pin ahead-left of the fist so the HANDLE STACK passes through the grip
     rigWeapon(g, [pivot], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
     g.userData.bf = { pivot, blade: bladeG, hA, hB, blur: blurMesh, blur2: blurMesh2, blurDisc };
     viewmodels.butterfly = g;
