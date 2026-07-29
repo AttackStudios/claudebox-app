@@ -411,6 +411,13 @@ const inLobbyMode = () => game.phase === 'lobby' && game.zone === 'lobby';
 canvas.addEventListener('click', () => { if (!locked && !isTouch && !inLobbyMode() && !bfe.open) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 document.addEventListener('mousemove', (e) => {
+  if (typeof bfeRecActive === 'function' && bfeRecActive()) {   // recording: mouse IS the knife
+    const R = bfeRec.vals, lim = 2.1;
+    if (bfeRec.twist) R.pRz = Math.max(-lim, Math.min(lim, R.pRz + e.movementX * 0.005));
+    else R.pRy = Math.max(-lim, Math.min(lim, R.pRy + e.movementX * 0.005));
+    R.pRx = Math.max(-lim, Math.min(lim, R.pRx + e.movementY * 0.005));
+    return;
+  }
   if (inLobbyMode()) {
     if (lobbyCam.dragging) {
       lobbyCam.yaw -= e.movementX * 0.007;
@@ -479,7 +486,7 @@ addEventListener('keyup', (e) => {
 let mouseDown = false, rightDown = false;
 addEventListener('mousedown', (e) => {
   if (inLobbyMode()) {
-    if (e.button === 2) { lobbyCam.dragging = true; try { canvas.requestPointerLock?.(); } catch {} }
+    if (e.button === 2) { if (typeof bfe !== 'undefined' && bfe.open) return; lobbyCam.dragging = true; try { canvas.requestPointerLock?.(); } catch {} }
     return;
   }
   if (!locked) return;
@@ -2084,7 +2091,14 @@ function bfeTickPrev() {
   bfePrev.root.visible = show;
   if (!show) return;
   bfePrev.spin.rotation.set(bfePrev.pitch, bfePrev.yaw, 0);
-  const T = BF_TRK[bfe.track], t2 = bfe.t, P2 = bfePrev;
+  const P2 = bfePrev;
+  if (bfeRecActive()) {
+    const R = bfeRec.vals;
+    P2.blade.rotation.set(R.bRx, 0, 0); P2.hA.rotation.set(R.hARx, 0, 0); P2.hB.rotation.set(0, 0, 0);
+    P2.pivot.rotation.set(R.pRx, R.pRy, R.pRz); P2.pivot.position.set(0, 0, 0);
+    return;
+  }
+  const T = BF_TRK[bfe.track], t2 = bfe.t;
   P2.blade.rotation.set(0, 0, 0); P2.hA.rotation.set(0, 0, 0); P2.hB.rotation.set(0, 0, 0);
   P2.pivot.rotation.set(0, 0, 0); P2.pivot.position.set(0, 0, 0);
   if (T.bRx) P2.blade.rotation.x = trackVal(T.bRx, t2);
@@ -2097,38 +2111,148 @@ function bfeTickPrev() {
   if (T.vy) P2.pivot.position.y = trackVal(T.vy, t2) * 0.45;
   if (T.vz) P2.pivot.position.z = trackVal(T.vz, t2) * 0.45;
 }
-{ // orbit + click-select on the game canvas while the studio is open
+{ // direct manipulation on the 3D preview: grab pieces with the mouse
   const bfeRay = new THREE.Raycaster();
   let bd = null;
+  const bfePartAt = (e) => {
+    camera.updateMatrixWorld();
+    bfeRay.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    const hits = bfeRay.intersectObject(bfePrev.spin, true);
+    if (!hits.length) return null;
+    let o = hits[0].object;
+    while (o && o !== bfePrev.spin) {
+      if (o === bfePrev.blade) return 'blade';
+      if (o === bfePrev.hA) return 'hA';
+      if (o === bfePrev.hB) return 'hB';
+      o = o.parent;
+    }
+    return null;
+  };
+  canvas.addEventListener('contextmenu', (e) => { if (bfe.open || bfeRec) e.preventDefault(); });
   canvas.addEventListener('mousedown', (e) => {
-    if (!bfe.open || e.button !== 0 || !bfePrev) return;
-    bd = { x: e.clientX, y: e.clientY, moved: false };
+   try {
+    if (bfeRecActive()) { if (e.button === 2) bfeRec.twist = true; return; }
+    if (!bfe.open || !bfePrev) return;
+    bfe.playing = false;
+    if (e.button === 0) {
+      const part = bfePartAt(e);
+      if (part) {   // grab the piece — dragging rotates IT and drops a key at the playhead
+        bfeHighlightPart(part);
+        const ch = BFE_PART_CH[part];
+        bd = { mode: 'part', ch, v: trackVal(bfeChanKeys(ch), bfe.t), x: e.clientX, y: e.clientY };
+      } else bd = { mode: 'orbit', x: e.clientX, y: e.clientY, moved: false };
+    } else if (e.button === 2) {
+      bd = { mode: 'wrist', x: e.clientX, y: e.clientY,
+             rx: trackVal(bfeChanKeys('pRx'), bfe.t), ry: trackVal(bfeChanKeys('pRy'), bfe.t), rz: trackVal(bfeChanKeys('pRz'), bfe.t) };
+    }
+   } catch {}
   });
   addEventListener('mousemove', (e) => {
     if (!bd || !bfePrev) return;
     const dx = e.clientX - bd.x, dy = e.clientY - bd.y;
-    if (Math.abs(dx) + Math.abs(dy) > 3) bd.moved = true;
-    bfePrev.yaw += dx * 0.011; bfePrev.pitch = Math.max(-1.4, Math.min(1.4, bfePrev.pitch + dy * 0.008));
-    bd.x = e.clientX; bd.y = e.clientY;
+    if (bd.mode === 'orbit') {
+      if (Math.abs(dx) + Math.abs(dy) > 3) bd.moved = true;
+      bfePrev.yaw += dx * 0.011; bfePrev.pitch = Math.max(-1.4, Math.min(1.4, bfePrev.pitch + dy * 0.008));
+      bd.x = e.clientX; bd.y = e.clientY;
+    } else if (bd.mode === 'part') {
+      bd.v -= dy * 0.02;   // drag up = swing open
+      bfeUpsert(bd.ch, Math.round(bfe.t * 200) / 200, bd.v);
+      bd.y = e.clientY; bd.x = e.clientX;
+      bfeSyncSliders(); bfeRedraw(); bfeDrawPoses();
+    } else if (bd.mode === 'wrist') {   // whole knife: tilt/turn, Shift = twist
+      const t2 = Math.round(bfe.t * 200) / 200;
+      if (e.shiftKey) { bd.rz += dx * 0.008; bfeUpsert('pRz', t2, Math.max(-2.1, Math.min(2.1, bd.rz))); }
+      else { bd.ry += dx * 0.008; bfeUpsert('pRy', t2, Math.max(-2.1, Math.min(2.1, bd.ry))); }
+      bd.rx += dy * 0.008; bfeUpsert('pRx', t2, Math.max(-2.1, Math.min(2.1, bd.rx)));
+      bd.x = e.clientX; bd.y = e.clientY;
+      bfeSyncSliders(); bfeRedraw(); bfeDrawPoses();
+    }
   });
   addEventListener('mouseup', (e) => {
-    if (!bd || !bfePrev) { bd = null; return; }
-    const wasClick = !bd.moved; bd = null;
-    if (!wasClick) return;
-    camera.updateMatrixWorld();
-    bfeRay.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    const hits = bfeRay.intersectObject(bfePrev.spin, true);
-    if (!hits.length) { bfeHighlightPart(null); return; }
-    let o = hits[0].object;
-    while (o && o !== bfePrev.spin) {
-      if (o === bfePrev.blade) return bfeHighlightPart('blade');
-      if (o === bfePrev.hA) return bfeHighlightPart('hA');
-      if (o === bfePrev.hB) return bfeHighlightPart('hB');
-      o = o.parent;
-    }
-    bfeHighlightPart(null);
+    if (bfeRec) { if (e.button === 2) bfeRec.twist = false; return; }
+    if (!bd) return;
+    if (bd.mode === 'orbit' && !bd.moved) bfeHighlightPart(null);   // empty click = deselect
+    bd = null;
   });
 }
+// ---- LIVE RECORD: perform the trick with your mouse, the studio captures it ----
+// move = wrist tilt/turn · hold RMB + move = twist · scroll = half-spin flips
+let bfeRec = null;   // { started, dur, vals, targ, samples, countdownUntil }
+function bfeRecActive() { return !!bfeRec && bfeRec.started; }
+function bfeRecStart() {
+  const dur = BFE_DUR[bfe.track] / bfe.speed;    // record in your chosen slow-mo
+  bfeRec = {
+    started: false, t0: 0, dur,
+    vals: { pRx: 0, pRy: 0, pRz: 0, bRx: 0, hARx: 0 },
+    targ: { bRx: 0, hARx: 0 },
+    samples: { pRx: [], pRy: [], pRz: [], bRx: [], hARx: [] },
+    twist: false,
+  };
+  try { canvas.requestPointerLock?.(); } catch {}
+  let n = 3;
+  const tick = () => {
+    if (!bfeRec) return;
+    if (n > 0) { banner(String(n), 800); sfx.beep?.(); n--; setTimeout(tick, 850); }
+    else { banner('🔴 GO — DO YOUR TRICK', 1200); bfeRec.started = true; bfeRec.t0 = performance.now() / 1000; }
+  };
+  tick();
+  const btn = bfePanel?.querySelector('#bfe-rec'); if (btn) { btn.textContent = '⏹ Stop'; btn.classList.add('on'); }
+}
+function bfeRecFinish(keep) {
+  const rec = bfeRec; bfeRec = null;
+  document.exitPointerLock?.();
+  const btn = bfePanel?.querySelector('#bfe-rec'); if (btn) { btn.textContent = '⏺ Record'; btn.classList.remove('on'); }
+  if (!rec || !keep || !rec.started) { if (rec) toast('Recording cancelled'); return; }
+  // keyframe-simplify each performed channel (RDP), then it becomes the animation
+  const rdp = (pts, eps) => {
+    if (pts.length <= 2) return pts;
+    const keepIdx = new Set([0, pts.length - 1]);
+    const rec2 = (a, b) => {
+      let mi = -1, md = 0;
+      for (let i = a + 1; i < b; i++) {
+        const t0 = pts[a], t1 = pts[b];
+        const dv = t1.t === t0.t ? 0 : t0.v + (pts[i].t - t0.t) / (t1.t - t0.t) * (t1.v - t0.v);
+        const d = Math.abs(pts[i].v - dv);
+        if (d > md) { md = d; mi = i; }
+      }
+      if (md > eps && mi > 0) { keepIdx.add(mi); rec2(a, mi); rec2(mi, b); }
+    };
+    rec2(0, pts.length - 1);
+    return [...keepIdx].sort((x, y) => x - y).map((i) => pts[i]);
+  };
+  const T = BF_TRK[bfe.track];
+  for (const [ch, pts] of Object.entries(rec.samples)) {
+    if (pts.length < 4) continue;
+    let eps = ch === 'bRx' || ch === 'hARx' ? 0.09 : 0.035;
+    let keys = rdp(pts, eps);
+    while (keys.length > 58) { eps *= 1.5; keys = rdp(pts, eps); }
+    T[ch] = keys.map((k) => ({ t: Math.round(k.t * 500) / 500, v: Math.round(k.v * 1000) / 1000, e: 'linear' }));
+  }
+  bfe.t = 0; bfeBuildRows(); bfeSyncTransport();
+  toast('🎬 Recorded! Press ▶ to watch — sliders still work for touch-ups');
+}
+function bfeRecTick(dt) {
+  if (!bfeRec) return;
+  const R = bfeRec;
+  if (!R.started) return;
+  const now = performance.now() / 1000;
+  const t = (now - R.t0) / R.dur;
+  if (t >= 1) { bfeRecFinish(true); return; }
+  const k = Math.min(1, dt * 15);   // flips snap toward their scroll target
+  R.vals.bRx += (R.targ.bRx - R.vals.bRx) * k;
+  R.vals.hARx += (R.targ.hARx - R.vals.hARx) * k;
+  for (const ch of Object.keys(R.samples)) R.samples[ch].push({ t, v: R.vals[ch] });
+  bfe.t = t; bfeSyncTransport();
+}
+addEventListener('wheel', (e) => {
+  if (!bfeRecActive()) return;
+  const d = e.deltaY > 0 ? -Math.PI : Math.PI;   // one notch = half a spin
+  bfeRec.targ.bRx += d; bfeRec.targ.hARx += d;
+  try { playOne('knife', 0.25); } catch {}
+}, { passive: true });
+document.addEventListener('pointerlockchange', () => {
+  if (bfeRec && document.pointerLockElement !== canvas) bfeRecFinish(false);   // Esc = cancel
+});
 function bfeChanKeys(ch) {
   const trk = BF_TRK[bfe.track];
   if (!trk[ch]) trk[ch] = [{ t: 0, v: 0 }, { t: 1, v: 0 }];
@@ -2188,6 +2312,7 @@ function buildBfEditor() {
   #bfe-poses{border-radius:7px;cursor:pointer;}
   .bfe-pbtn{display:flex;gap:6px;align-items:center;}
   .bfe-pbtn button{background:#262a34;border:1px solid rgba(255,255,255,.12);color:#e8ecf4;border-radius:7px;font-weight:800;font-size:11.5px;padding:6px 9px;cursor:pointer;}
+  .bfe-pbtn button.on{background:#a3273b;border-color:#ff6f84;}
   .bfe-snapl{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#9aa4b8;margin-left:auto;}
   .bfe-sl{display:flex;align-items:center;gap:7px;}
   .bfe-sl span{width:96px;flex:none;font-size:11px;font-weight:800;color:#aeb6c8;}
@@ -2215,13 +2340,14 @@ function buildBfEditor() {
     <div class="bfe-tabs">` + ['equip', 'stab', 'inspect'].map((t) => `<button data-trk="${t}" class="${bfe.track === t ? 'on' : ''}">${t.toUpperCase()}</button>`).join('') + `</div>
     <div class="bfe-tr">
       <button id="bfe-play">▶</button>
-      <button id="bfe-loop" class="on">🔁</button>
+      <button id="bfe-loop" class="on" title="Loop playback">🔁</button>
       <select id="bfe-speed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option></select>
       <input id="bfe-scrub" type="range" min="0" max="1" step="0.001" value="0">
       <b id="bfe-time">0.00s</b>
     </div>
     <canvas id="bfe-poses" width="308" height="34"></canvas>
     <div class="bfe-pbtn">
+      <button id="bfe-rec" title="Perform the trick live with your mouse">⏺ Record</button>
       <button id="bfe-delpose">🗑 Delete pose</button>
       <label class="bfe-snapl"><input id="bfe-snappy" type="checkbox"> SNAP! (whippy)</label>
     </div>
@@ -2231,9 +2357,9 @@ function buildBfEditor() {
       <button id="bfe-draft">💾 Save</button>
       <button id="bfe-reset">↺ Start over</button>
       <button id="bfe-pub" style="display:none;">⬆ Publish to game</button>
-      <button id="bfe-advb">🛠</button>
+      <button id="bfe-advb" title="Advanced: keyframe lanes, export/import">🛠</button>
     </div>
-    <div class="bfe-hint">Drag the red line anywhere, then move sliders — that makes a pose (♦) right there. Add poses along the bar and press ▶ to watch the knife flow through them. SNAP! makes the next pose hit fast and whippy.</div>
+    <div class="bfe-hint">GRAB the knife: drag a piece to swing it (blade or either handle), right-drag to tilt/turn the whole knife (hold Shift = twist), drag empty space to orbit your view. Every move drops a pose (♦) at the red line — scrub, pose, scrub, pose, then ▶ to watch it flow. Sliders do the same thing with numbers. SNAP! makes the next pose whippy. ⏺ Record = perform the whole trick live: mouse = wrist, right-click hold = twist, scroll = half-spin flips (your slow-mo speed applies).</div>
     <div id="bfe-adv">
       <div id="bfe-rows"></div>
       <div id="bfe-ins">
@@ -2272,6 +2398,11 @@ function buildBfEditor() {
     bfe.t = near ? near.c : x; bfe.playing = false;
     bfePanel.querySelector('#bfe-play').textContent = '▶';
     bfeSyncTransport();
+  });
+  bfePanel.querySelector('#bfe-rec').addEventListener('click', () => {
+    if (bfeRec) { bfeRecFinish(true); return; }
+    bfe.playing = false; bfePanel.querySelector('#bfe-play').textContent = '▶';
+    bfeRecStart();
   });
   bfePanel.querySelector('#bfe-delpose').addEventListener('click', () => {
     const near = bfePoseTimes().find((p2) => Math.abs(p2.c - bfe.t) < 0.03);
@@ -2819,7 +2950,8 @@ function buildQuickPick() {
   @keyframes qpIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
   #qp-tip{background:rgba(12,14,18,.94);color:#eef1f7;font-weight:800;font-size:12.5px;padding:7px 15px;border-radius:9px;box-shadow:0 4px 16px rgba(0,0,0,.45);}
   #qp-grid{background:rgba(16,18,24,.93);border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:9px;display:flex;flex-direction:column;gap:6px;box-shadow:0 12px 36px rgba(0,0,0,.55);backdrop-filter:blur(7px);}
-  .qp-row{display:flex;gap:6px;justify-content:center;}
+  .qp-row{display:flex;gap:6px;justify-content:center;align-items:center;}
+  .qp-cls{width:62px;flex:none;text-align:right;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#5d6578;padding-right:2px;}
   .qp-tile{width:54px;height:54px;border-radius:9px;background:#262a34;border:2px solid rgba(255,255,255,.07);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;transition:transform .07s,background .07s;}
   .qp-tile i{font-style:normal;font-size:20px;line-height:1;}
   .qp-tile small{font-size:8px;font-weight:800;color:#8d95a8;letter-spacing:.02em;max-width:50px;overflow:hidden;white-space:nowrap;}
@@ -2834,6 +2966,8 @@ function buildQuickPick() {
     const grid = panel.querySelector('#qp-grid'); grid.innerHTML = '';
     for (const cls of CLASS_ORDER) {
       const row = document.createElement('div'); row.className = 'qp-row';
+      const lab = document.createElement('small'); lab.className = 'qp-cls'; lab.textContent = CLASS_LABEL[cls] || cls;
+      row.appendChild(lab);
       for (const { id, w } of weaponsOfClass(cls)) {
         const t = document.createElement('div');
         t.className = 'qp-tile' + (myPickedLoadout.includes(id) ? ' eq' : '');
@@ -4099,7 +4233,10 @@ function frame() {
     vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
     vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / (vmAnim.inspectDur || 5.5));
     // Anim Studio drives the clock directly while open
-    if (bfe.open && me.weapon === 'butterfly') {
+    if (bfe.open && me.weapon === 'butterfly' && bfeRec) {
+      vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; vmAnim.bfInspectPrev = 1;
+      bfeRecTick(dt);
+    } else if (bfe.open && me.weapon === 'butterfly') {
       if (bfe.playing) {
         bfe.t += dt * bfe.speed / BFE_DUR[bfe.track];
         if (bfe.t >= 1) bfe.t = bfe.loop ? bfe.t % 1 : 1;
@@ -4282,6 +4419,11 @@ function frame() {
         B.hA.rotation.x += Math.sin(now * 2.1) * 0.012;
         B.pivot.rotation.z += Math.sin(now * 1.6) * 0.018;
         B.pivot.rotation.x += Math.sin(vmBob * 0.5) * 0.025 * vmAnim.sprintK;
+        if (bfeRecActive()) {   // live record: your mouse IS the knife
+          const R = bfeRec.vals;
+          B.blade.rotation.x += R.bRx; B.hA.rotation.x += R.hARx;
+          B.pivot.rotation.x += R.pRx; B.pivot.rotation.y += R.pRy; B.pivot.rotation.z += R.pRz;
+        }
         if (vmAnim.bfEquipT < 1) {
           const t = vmAnim.bfEquipT, T = BF_TRK.equip;
           B.blade.rotation.x += trackVal(T.bRx, t); B.hA.rotation.x += trackVal(T.hARx, t);
