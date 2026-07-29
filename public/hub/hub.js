@@ -288,8 +288,10 @@ async function likeGame(gameId) {
 const PC_ICON = '<svg class="pc-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.4c-3.2 0-5.6 1.6-5.6 3.6V14h11.2v-1c0-2-2.4-3.6-5.6-3.6z"/></svg>';
 // a stable, plausible approval % from the like count (Roblox shows a % positive)
 function approvalPct(game) {
-  const l = game.likes || 0;
-  return Math.min(99, 78 + Math.round(Math.log2(l + 1) * 3.2));
+  let h = 0;
+  for (const c of String(game.id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const base = 81 + (h % 15);   // each game gets its own stable 81–95
+  return Math.min(99, base + Math.round(Math.log2((game.likes || 0) + 1) * 2));
 }
 function gameTile(game) {
   const t = themeOf(game.id);
@@ -452,8 +454,10 @@ function openGameDetail(game) {
   renderCreators(gdEl.querySelector('.gd-creators'), game.creators || [{ name: 'ClaudeBox Studios', badge: 'verified' }]);
   const likes = game.likes || 0, pct = approvalPct(game);
   gdEl.querySelector('.gd-likes').textContent = fmtNum(likes);
-  gdEl.querySelector('.gd-dislikes').textContent = fmtNum(Math.round(likes * (100 - pct) / Math.max(1, pct)));
-  gdEl.querySelector('.gd-bar-fill').style.width = pct + '%';
+  gdEl.querySelector('.gd-dislikes').textContent = fmtNum(likes ? Math.round(likes * (100 - pct) / Math.max(1, pct)) : 0);
+  const barFill = gdEl.querySelector('.gd-bar-fill');
+  barFill.style.width = likes ? pct + '%' : '0%';
+  barFill.closest('.gd-bar').classList.toggle('empty', !likes);
   const fav = favGames().includes(game.id);
   gdEl.querySelector('.gd-star').textContent = fav ? '★' : '☆';
   gdEl.querySelector('.gd-fav').classList.toggle('on', fav);

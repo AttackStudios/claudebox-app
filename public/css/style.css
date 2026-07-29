@@ -404,8 +404,8 @@ html, body {
 .cloud-btn::before, .cloud-btn::after {
   content: ''; position: absolute; background: #fff; border-radius: 50%; z-index: -1;
 }
-.cloud-btn::before { width: 58px; height: 58px; left: 26px; top: -20px; }
-.cloud-btn::after { width: 44px; height: 44px; right: 34px; top: -14px; }
+.cloud-btn::before { width: 58px; height: 58px; left: 26px; top: -11px; }
+.cloud-btn::after { width: 44px; height: 44px; right: 34px; top: -8px; }
 .cloud-btn:hover { transform: translateY(-2px) scale(1.03); }
 .cloud-btn:active { transform: scale(.97); }
 
