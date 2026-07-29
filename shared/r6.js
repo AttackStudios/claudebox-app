@@ -153,7 +153,8 @@ export function makeR6(profile = {}) {
     const POSES = buildPoses(target);
     const setPart = (part, rx, rz) => {
       const b = bones[part]; if (!b) return;
-      e.set(rz || 0, 0, rx || 0);   // this rig's limbs swing about local Z; sideways lift is local X
+      if (part === 'torso') e.set(rx || 0, 0, rz || 0);   // root bone pitches about X — Z would roll it sideways
+      else e.set(rz || 0, 0, rx || 0);   // limbs swing about local Z; sideways lift is local X
       q.setFromEuler(e);
       b.quaternion.copy(rest[part]).multiply(q);
     };
