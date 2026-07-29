@@ -1973,7 +1973,7 @@ const GEN_INSPECT = {
 const BF_DEFAULT = JSON.parse(JSON.stringify(BF_TRK));
 const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ', blur: 'Spin blur' };
 const BFE_DUR = { equip: 0.5, stab: 0.5, inspect: 5.5 };
-const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null };
+const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null, selParts: null, tool: 'rotate' };
 // ---- undo/redo: Cmd-Z / Shift-Cmd-Z — snapshot before every gesture ----
 const bfeUndo = { stack: [], redo: [] };
 function bfeSnapshot() {
@@ -2130,17 +2130,21 @@ function bfeBuildPrev() {
   camera.add(root);
   bfePrev = { root, spin, pivot, blade: bladeG, hA, hB, blur: blurMesh, blur2: blurMesh2, blurDisc, yaw: 0.7, pitch: 0.3, selPart: null };
 }
-function bfeHighlightPart(part) {
+function bfeSetSelection(parts) {
   if (!bfePrev) return;
-  bfePrev.selPart = part;
+  bfe.selParts = parts && parts.size ? parts : null;
+  const sel = bfe.selParts || new Set();
   for (const [nm, grp] of [['blade', bfePrev.blade], ['hA', bfePrev.hA], ['hB', bfePrev.hB]])
-    grp.traverse((m) => { if (m.isMesh && m.material.emissive) m.material.emissive.setHex(part === nm ? 0x8a6a1c : 0x000000); });
+    grp.traverse((m) => { if (m.isMesh && m.material.emissive) m.material.emissive.setHex(sel.has(nm) ? 0x8a6a1c : 0x000000); });
   bfePanel?.querySelectorAll('.bfe-sl').forEach((r) => r.classList.remove('hl'));
-  const ch = BFE_PART_CH[part];
-  const sl = ch && bfePanel?.querySelector(`[data-sl="${ch}"]`);
-  if (sl) sl.closest('.bfe-sl').classList.add('hl');
-  if (part) toast(`🎯 ${BFE_PART_NAME[part]} selected` + (part === 'hB' ? ' — it stays in your grip (edit in 🛠)' : ''));
+  for (const nm of sel) {
+    const ch = BFE_PART_CH[nm];
+    const sl = ch && bfePanel?.querySelector(`[data-sl="${ch}"]`);
+    if (sl) sl.closest('.bfe-sl').classList.add('hl');
+  }
+  if (sel.size) toast(`🎯 ${[...sel].map((n) => BFE_PART_NAME[n]).join(' + ')}` + (sel.size > 1 ? ' — they drag together' : ''));
 }
+function bfeHighlightPart(part) { bfeSetSelection(part ? new Set([part]) : null); }
 function bfeTickPrev() {
   if (!bfePrev) return;
   const show = bfe.open && me.weapon === 'butterfly';
@@ -2207,11 +2211,19 @@ function bfeTickPrev() {
     bfe.playing = false;
     if (e.button === 0) {
       const part = bfePartAt(e);
-      if (part) {   // grab the piece — dragging rotates IT and drops a key at the playhead
+      if (bfe.tool === 'move') {   // MOVE tool: drag the whole knife through 3D space
         bfeSnapshot();
-        bfeHighlightPart(part);
-        const ch = BFE_PART_CH[part];
-        bd = { mode: 'part', ch, v: trackVal(bfeChanKeys(ch), bfe.t), x: e.clientX, y: e.clientY };
+        bd = { mode: 'move', x: e.clientX, y: e.clientY,
+               vx: trackVal(bfeChanKeys('vx'), bfe.t), vy: trackVal(bfeChanKeys('vy'), bfe.t), vz: trackVal(bfeChanKeys('vz'), bfe.t) };
+      } else if (part) {   // grab piece(s) — Shift-click adds to the selection, drags move them together
+        let sel = bfe.selParts instanceof Set ? new Set(bfe.selParts) : new Set();
+        if (e.shiftKey) { sel.has(part) ? sel.delete(part) : sel.add(part); }
+        else if (!sel.has(part)) sel = new Set([part]);
+        bfeSetSelection(sel);
+        if (!sel.size) return;
+        bfeSnapshot();
+        const chs = [...sel].map((p2) => BFE_PART_CH[p2]);
+        bd = { mode: 'part', chs, base: Object.fromEntries(chs.map((c2) => [c2, trackVal(bfeChanKeys(c2), bfe.t)])), delta: 0, x: e.clientX, y: e.clientY };
       } else bd = { mode: 'orbit', x: e.clientX, y: e.clientY, moved: false };
     } else if (e.button === 2) {
       bfeSnapshot();
@@ -2228,9 +2240,18 @@ function bfeTickPrev() {
       bfePrev.yaw += dx * 0.011; bfePrev.pitch = Math.max(-1.4, Math.min(1.4, bfePrev.pitch + dy * 0.008));
       bd.x = e.clientX; bd.y = e.clientY;
     } else if (bd.mode === 'part') {
-      bd.v -= dy * 0.02;   // drag up = swing open
-      bfeUpsert(bd.ch, Math.round(bfe.t * 200) / 200, bd.v);
+      bd.delta -= dy * 0.02;   // drag up = swing open
+      const t2 = Math.round(bfe.t * 200) / 200;
+      for (const c2 of bd.chs) bfeUpsert(c2, t2, bd.base[c2] + bd.delta);
       bd.y = e.clientY; bd.x = e.clientX;
+      bfeSyncSliders(); bfeRedraw(); bfeDrawPoses();
+    } else if (bd.mode === 'move') {   // view-plane move; hold Shift to push/pull depth
+      const t2 = Math.round(bfe.t * 200) / 200;
+      bd.vx = Math.max(-0.6, Math.min(0.6, bd.vx + dx * 0.0016));
+      if (e.shiftKey) bd.vz = Math.max(-0.8, Math.min(0.4, bd.vz + dy * 0.0016));
+      else bd.vy = Math.max(-0.6, Math.min(0.6, bd.vy - dy * 0.0016));
+      bfeUpsert('vx', t2, bd.vx); bfeUpsert('vy', t2, bd.vy); bfeUpsert('vz', t2, bd.vz);
+      bd.x = e.clientX; bd.y = e.clientY;
       bfeSyncSliders(); bfeRedraw(); bfeDrawPoses();
     } else if (bd.mode === 'wrist') {   // whole knife: tilt/turn, Shift = twist
       const t2 = Math.round(bfe.t * 200) / 200;
@@ -2244,7 +2265,7 @@ function bfeTickPrev() {
   addEventListener('mouseup', (e) => {
     if (bfeRec) { if (e.button === 2) bfeRec.twist = false; return; }
     if (!bd) return;
-    if (bd.mode === 'orbit' && !bd.moved) bfeHighlightPart(null);   // empty click = deselect
+    if (bd.mode === 'orbit' && !bd.moved) bfeSetSelection(null);   // empty click = deselect all
     bd = null;
   });
 }
@@ -2386,7 +2407,8 @@ function buildBfEditor() {
   #bfe-poses{border-radius:7px;cursor:pointer;}
   .bfe-pbtn{display:flex;gap:6px;align-items:center;}
   .bfe-pbtn button{background:#262a34;border:1px solid rgba(255,255,255,.12);color:#e8ecf4;border-radius:7px;font-weight:800;font-size:11.5px;padding:6px 9px;cursor:pointer;}
-  .bfe-pbtn button.on{background:#a3273b;border-color:#ff6f84;}
+  .bfe-pbtn button.on{background:#3b62d6;border-color:#6f92ff;}
+  #bfe-rec.on{background:#a3273b;border-color:#ff6f84;}
   .bfe-snapl{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#9aa4b8;margin-left:auto;}
   .bfe-sl{display:flex;align-items:center;gap:7px;}
   .bfe-sl span{width:96px;flex:none;font-size:11px;font-weight:800;color:#aeb6c8;}
@@ -2421,6 +2443,8 @@ function buildBfEditor() {
     </div>
     <canvas id="bfe-poses" width="308" height="34"></canvas>
     <div class="bfe-pbtn">
+      <button id="bfe-tool-rot" class="on" title="Drag pieces to spin them">🔄 Rotate</button>
+      <button id="bfe-tool-move" title="Drag the knife through 3D space (Shift = closer/farther)">✥ Move</button>
       <button id="bfe-rec" title="Perform the trick live with your mouse">⏺ Record</button>
       <button id="bfe-delpose">🗑 Delete pose</button>
       <label class="bfe-snapl"><input id="bfe-snappy" type="checkbox"> SNAP! (whippy)</label>
@@ -2433,7 +2457,7 @@ function buildBfEditor() {
       <button id="bfe-pub" style="display:none;">⬆ Publish to game</button>
       <button id="bfe-advb" title="Advanced: keyframe lanes, export/import">🛠</button>
     </div>
-    <div class="bfe-hint">GRAB the knife: drag a piece to swing it (blade or either handle), right-drag to tilt/turn the whole knife (hold Shift = twist), drag empty space to orbit your view. Every move drops a pose (♦) at the red line — scrub, pose, scrub, pose, then ▶ to watch it flow. Sliders do the same thing with numbers. Cmd-Z undoes any move (Shift-Cmd-Z redoes). SNAP! makes the next pose whippy. ⏺ Record = perform the whole trick live: mouse = wrist, right-click hold = twist, scroll = half-spin flips (your slow-mo speed applies).</div>
+    <div class="bfe-hint">GRAB the knife: drag a piece to swing it — Shift-click more pieces to move them TOGETHER. The ✥ Move tool drags the whole knife through 3D space (hold Shift = closer/farther). Right-drag tilts/turns (Shift = twist), empty space orbits your view. Every move drops a pose (♦) at the red line — scrub, pose, scrub, pose, then ▶ to watch it flow. Sliders do the same thing with numbers. Cmd-Z undoes any move (Shift-Cmd-Z redoes). SNAP! makes the next pose whippy. ⏺ Record = perform the whole trick live: mouse = wrist, right-click hold = twist, scroll = half-spin flips (your slow-mo speed applies).</div>
     <div id="bfe-adv">
       <div id="bfe-rows"></div>
       <div id="bfe-ins">
@@ -2473,6 +2497,13 @@ function buildBfEditor() {
     bfePanel.querySelector('#bfe-play').textContent = '▶';
     bfeSyncTransport();
   });
+  const toolBtns = { rotate: bfePanel.querySelector('#bfe-tool-rot'), move: bfePanel.querySelector('#bfe-tool-move') };
+  for (const [tool, btn] of Object.entries(toolBtns))
+    btn.addEventListener('click', () => {
+      bfe.tool = tool;
+      for (const [t2, b2] of Object.entries(toolBtns)) b2.classList.toggle('on', t2 === tool);
+      sfx.click?.();
+    });
   bfePanel.querySelector('#bfe-rec').addEventListener('click', () => {
     if (bfeRec) { bfeRecFinish(true); return; }
     bfe.playing = false; bfePanel.querySelector('#bfe-play').textContent = '▶';
