@@ -1925,17 +1925,16 @@ const BF_TRK = {
   // SWING (attack, 0.38s): the hand carries the knife in from the LEFT edge and
   // cuts horizontally across to the RIGHT, full handle fan mid-sweep, settle home.
   swing: {
-    // wind-up pulls the hand OFF-SCREEN left, then one smooth blade-leading sweep
-    // across to the right, settle back to grip. No spin — the knife stays open.
-    vx:   [{ t: 0, v: 0 }, { t: 0.16, v: -0.75, e: 'inOutCubic' }, { t: 0.62, v: 0.5, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vy:   [{ t: 0, v: 0 }, { t: 0.16, v: -0.12, e: 'inOutCubic' }, { t: 0.4, v: 0.08, e: 'inOutCubic' }, { t: 0.62, v: -0.04, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vz:   [{ t: 0, v: 0 }, { t: 0.16, v: 0.06, e: 'inOutCubic' }, { t: 0.42, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vrx:  [{ t: 0, v: 0 }, { t: 0.4, v: 0.15, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    vry:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.9, e: 'inOutCubic' }, { t: 0.62, v: -0.75, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    vrz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.35, e: 'inOutCubic' }, { t: 0.62, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    pRy:  [{ t: 0, v: 0 }, { t: 0.16, v: 1.2, e: 'inOutCubic' }, { t: 0.62, v: -1.2, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
-    pRz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.4, e: 'inOutCubic' }, { t: 0.6, v: -0.35, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    // one CLEAN slice: hand sweeps left-to-right, modest blade lead, calm wrists.
+    vx:   [{ t: 0, v: 0 }, { t: 0.16, v: -0.6, e: 'inOutCubic' }, { t: 0.62, v: 0.42, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.16, v: -0.06, e: 'inOutCubic' }, { t: 0.4, v: 0.05, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.16, v: 0.04, e: 'inOutCubic' }, { t: 0.42, v: -0.18, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.35, e: 'inOutCubic' }, { t: 0.62, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.12, e: 'inOutCubic' }, { t: 0.62, v: -0.1, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    pRy:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.5, e: 'inOutCubic' }, { t: 0.62, v: -0.5, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    pRz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.15, e: 'inOutCubic' }, { t: 0.6, v: -0.12, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
   },
+
 
   // INSPECT (F, 3.4s): non-stop combo — snap up + instant fan, double-flip
   // DURING a full twirl, second fan DURING a sweep, aerial twirl INTO the side
