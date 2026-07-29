@@ -1932,7 +1932,7 @@ const BF_TRK = {
     vry:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.35, e: 'inOutCubic' }, { t: 0.62, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
     vrz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.12, e: 'inOutCubic' }, { t: 0.62, v: -0.1, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
     pRy:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.5, e: 'inOutCubic' }, { t: 0.62, v: -0.5, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    pRz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.15, e: 'inOutCubic' }, { t: 0.6, v: -0.12, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    pRz:  [{ t: 0, v: 0 }, { t: 0.16, v: 1.45, e: 'inOutCubic' }, { t: 0.62, v: 1.45 }, { t: 1, v: 0, e: 'inOutCubic' }],   // roll the sharp edge to face the swing direction
   },
 
 
@@ -4579,7 +4579,7 @@ function frame() {
       // idle rattle + equip flip + slash fan + stab grip-flip + inspect
       if (P.bf && me.weapon === 'butterfly') {
         const B = P.bf;
-        B.pivot.rotation.set(0, 0, 0); B.blade.rotation.set(0, 0, 0);
+        B.pivot.rotation.set(0.3, 1.1, 0.15); B.blade.rotation.set(0, 0, 0);   // rest hold: blade sweeps left across the view, flat to camera (ref footage)
         B.hA.rotation.set(0, 0, 0); B.hB.rotation.set(0, 0, 0);
         // movement/idle: gentle handle rattle + wrist shimmer + sprint tilt
         B.hA.rotation.x += Math.sin(now * 2.1) * 0.012;
