@@ -168,7 +168,7 @@ export function makeR6(profile = {}) {
       setPart('legR', target.legR.x, 0);
       setPart('torso', target.torso.x, 0);
       const bobA = anim === 'run' ? 0.05 : anim === 'walk' ? 0.032 : 0;
-      inner.position.y = -hqTpl.groundY * hqTpl.scale + Math.abs(Math.sin(t * (anim === 'run' ? 10.5 : 7))) * bobA;
+      inner.position.y = -hqTpl.groundY * hqTpl.scale + Math.abs(Math.sin(t * (anim === 'run' ? 10.5 : 7))) * bobA - (anim === 'slide' ? 0.24 : 0);   // slides ride low
     }
     function setColors(np) { tintByPart(inner, { ...p, ...np }); }
     function dispose() {
@@ -256,7 +256,7 @@ function buildPoses(target) {
     fall: () => { target.armL.x = Math.PI; target.armR.x = Math.PI; target.armL.z = 0.25; target.armR.z = 0.25; target.legL.x = 0.12; target.legR.x = -0.12; },
     death: () => { target.armL.x = 0.4; target.armR.x = 0.4; target.legL.x = 0.1; target.legR.x = 0.1; },
     // the powerslide: lean back, legs kicked forward, arms trailing
-    slide: (tt) => { if (target.torso) target.torso.x = -0.5; target.legL.x = 1.15; target.legR.x = 0.95; target.armL.x = -0.55; target.armR.x = -0.35; target.armL.z = 0.25; target.armR.z = 0.25; },
+    slide: (tt) => { if (target.torso) target.torso.x = -0.24; target.legL.x = 0.7; target.legR.x = 0.55; target.armL.x = -0.4; target.armR.x = -0.28; target.armL.z = 0.2; target.armR.z = 0.2; },
     toolhold: (tt) => { POSES.idle(tt); target.armR.x = Math.PI / 2; target.armR.z = 0; },
     knifeidle: (tt) => { POSES.idle(tt); target.armR.x = Math.PI * 0.32; },
     pistolidle: (tt) => { POSES.idle(tt); target.armR.x = Math.PI / 2; },

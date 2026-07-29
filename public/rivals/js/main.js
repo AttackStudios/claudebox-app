@@ -1467,6 +1467,20 @@ function tickCharm(dt) {
   const show = iHaveOwnerCharm && charmEquipped && (window.__charmForce || (!inLobbyMode() && !me.dead));
   charmRoot.visible = show;
   if (!show) return;
+  // hang from the RIGHT HAND so it rides equip/swing/recoil animation
+  const vmNow = viewmodels[typeof activeVmKey === 'function' ? activeVmKey() : me.weapon];
+  const hand = vmNow?.visible ? vmNow.userData?.rArm : null;
+  if (hand) {
+    if (charmRoot.parent !== hand) {
+      hand.add(charmRoot);
+      charmRoot.position.set(0.15, -0.1, 0.1);      // off the outer edge of the fist
+      charmRoot.scale.setScalar(1 / 0.68);          // undo the viewmodel shrink
+    }
+  } else if (charmRoot.parent !== viewRoot) {
+    viewRoot.add(charmRoot);
+    charmRoot.position.set(0.47, -0.21, -0.62);
+    charmRoot.scale.setScalar(1);
+  }
   charmMini?.update(dt);
   // pendulum: your acceleration (walk/jump/turn) whips the charm around, spring pulls it back
   const P = charmPhys, idt = 1 / Math.max(dt, 0.001);
@@ -1908,6 +1922,18 @@ const BF_TRK = {
     gPy:  [{ t: 0, v: 0 }, { t: 0.26, v: 0.17, e: 'outExpo' }, { t: 0.38, v: 0.18 }, { t: 0.52, v: -0.13, e: 'inCubic' }, { t: 0.72, v: -0.09 }, { t: 1, v: 0, e: 'inOutCubic' }],
     gPz:  [{ t: 0, v: 0 }, { t: 0.26, v: 0.06, e: 'outExpo' }, { t: 0.52, v: -0.2, e: 'inCubic' }, { t: 0.72, v: -0.14 }, { t: 1, v: 0, e: 'inOutCubic' }],
   },
+  // SWING (attack, 0.38s): the hand carries the knife in from the LEFT edge and
+  // cuts horizontally across to the RIGHT, full handle fan mid-sweep, settle home.
+  swing: {
+    vx:   [{ t: 0, v: -0.5 }, { t: 0.12, v: -0.44, e: 'outQuad' }, { t: 0.55, v: 0.45, e: 'outExpo' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vy:   [{ t: 0, v: -0.07 }, { t: 0.5, v: 0.04, e: 'outQuad' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vz:   [{ t: 0, v: -0.18 }, { t: 0.35, v: -0.26, e: 'outQuad' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vry:  [{ t: 0, v: 0.85 }, { t: 0.55, v: -0.7, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    vrz:  [{ t: 0, v: 0.3 }, { t: 0.55, v: -0.28, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    pRy:  [{ t: 0, v: 1.05 }, { t: 0.55, v: -1.15, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    pRz:  [{ t: 0, v: 0.45 }, { t: 0.5, v: -0.35, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
+    hARx: [{ t: 0, v: 0 }, { t: 0.14, v: 0 }, { t: 0.6, v: -6.283, e: 'outExpo' }, { t: 1, v: -6.283 }],
+  },
   // INSPECT (F, 3.4s): non-stop combo — snap up + instant fan, double-flip
   // DURING a full twirl, second fan DURING a sweep, aerial twirl INTO the side
   // pose, latch-rattle snap home. At least two channels are moving at all times.
@@ -1972,7 +1998,7 @@ const GEN_INSPECT = {
 // ============ BUTTERFLY ANIM STUDIO (Dev Tools): hand-edit BF_TRK keyframes live ============
 const BF_DEFAULT = JSON.parse(JSON.stringify(BF_TRK));
 const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ', blur: 'Spin blur' };
-const BFE_DUR = { equip: 0.5, stab: 0.5, inspect: 5.5 };
+const BFE_DUR = { equip: 0.5, stab: 0.5, swing: 0.38, inspect: 5.5 };
 const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null, selParts: null, tool: 'rotate' };
 // ---- undo/redo: Cmd-Z / Shift-Cmd-Z — snapshot before every gesture ----
 const bfeUndo = { stack: [], redo: [] };
@@ -2001,7 +2027,7 @@ addEventListener('keydown', (e) => {
 });
 function applyBfAnim(anim) {
   if (!anim || typeof anim !== 'object') return;
-  for (const trk of ['equip', 'stab', 'inspect']) {
+  for (const trk of ['equip', 'stab', 'swing', 'inspect']) {
     if (!anim[trk] || !BF_TRK[trk]) continue;
     for (const [ch, keys] of Object.entries(anim[trk]))
       if (Array.isArray(keys) && keys.length >= 2) BF_TRK[trk][ch] = keys.map((k) => ({ ...k }));
@@ -2433,7 +2459,7 @@ function buildBfEditor() {
   bfePanel = document.createElement('div'); bfePanel.id = 'bfe';
   bfePanel.innerHTML = `
     <h3>🦋 Butterfly Anim Studio</h3>
-    <div class="bfe-tabs">` + ['equip', 'stab', 'inspect'].map((t) => `<button data-trk="${t}" class="${bfe.track === t ? 'on' : ''}">${t.toUpperCase()}</button>`).join('') + `</div>
+    <div class="bfe-tabs">` + ['equip', 'stab', 'swing', 'inspect'].map((t) => `<button data-trk="${t}" class="${bfe.track === t ? 'on' : ''}">${t.toUpperCase()}</button>`).join('') + `</div>
     <div class="bfe-tr">
       <button id="bfe-play">▶</button>
       <button id="bfe-loop" class="on" title="Loop playback">🔁</button>
@@ -2593,7 +2619,7 @@ function bfeClose() {
   bfe.open = false;
   if (bfePrev) bfePrev.root.visible = false;
   bfePanel?.classList.remove('open');
-  vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; vmAnim.bfInspectPrev = 1;
+  vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; vmAnim.bfInspectPrev = 1; vmAnim.swingT = 1;
 }
 addEventListener('keydown', (e) => {
   if (e.code !== 'KeyN' || !devTools) return;
@@ -4378,9 +4404,11 @@ function frame() {
         if (bfe.t >= 1) bfe.t = bfe.loop ? bfe.t % 1 : 1;
         bfeSyncTransport();
       }
-      if (bfe.track === 'equip') { vmAnim.bfEquipT = Math.min(bfe.t, 0.9999); vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; }
-      else if (bfe.track === 'stab') { vmAnim.bfStabT = Math.min(bfe.t, 0.9999); vmAnim.bfEquipT = 1; vmAnim.bfInspectT = 1; }
-      else { vmAnim.bfInspectT = Math.min(bfe.t, 0.9999); vmAnim.bfInspectPrev = vmAnim.bfInspectT; vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; }
+      vmAnim.bfEquipT = 1; vmAnim.bfStabT = 1; vmAnim.bfInspectT = 1; vmAnim.swingT = 1;
+      if (bfe.track === 'equip') vmAnim.bfEquipT = Math.min(bfe.t, 0.9999);
+      else if (bfe.track === 'stab') vmAnim.bfStabT = Math.min(bfe.t, 0.9999);
+      else if (bfe.track === 'swing') vmAnim.swingT = Math.min(bfe.t, 0.9999);
+      else { vmAnim.bfInspectT = Math.min(bfe.t, 0.9999); vmAnim.bfInspectPrev = vmAnim.bfInspectT; }
     }
     bfeTickPrev();
     vmAnim.boltT = Math.min(1, vmAnim.boltT + dt / 0.55);
@@ -4567,19 +4595,17 @@ function frame() {
           B.pivot.rotation.z += trackVal(T.pRz, t); B.pivot.rotation.y += trackVal(T.pRy, t);
         }
         if (vmAnim.swingT < 1) {
-          const t = vmAnim.swingT, sd = vmAnim.swingSide;
-          const w2 = sstep(0, 0.12, t) * (1 - sstep(0.12, 0.3, t));
-          const s2 = Math.sin(Math.pow(sstep(0.06, 0.68, t), 0.75) * Math.PI);
-          B.hA.rotation.x += Math.PI * 2 * EASES.outExpo(t) * -sd;              // full handle fan per slash
-          B.blade.rotation.x += Math.sin(sstep(0.15, 0.6, t) * Math.PI) * 0.14; // blade flex at impact
-          B.pivot.rotation.z += Math.sin(t * Math.PI) * 0.35 * sd;
-          // the actual sweep: hand + knife arc across the view, arm stays rooted
-          P.gun.position.x += (w2 * 0.1 - s2 * 0.34) * sd;
-          P.gun.position.z += -s2 * 0.24; P.gun.position.y += s2 * 0.05;
-          P.rArm.position.x += (w2 * 0.08 - s2 * 0.26) * sd;
-          P.rArm.position.z += -s2 * 0.18;
-          P.rArm.rotation.z += s2 * 0.35 * sd;
-          P.lArm.position.y -= s2 * 0.28; P.lArm.position.x -= s2 * 0.1;        // keep the off-hand tucked out of frame
+          // keyframed SWING track (edit it in the Anim Studio like the rest)
+          const t = vmAnim.swingT, T = BF_TRK.swing;
+          const tv = (ch) => (T[ch] ? trackVal(T[ch], t) : 0);
+          B.blade.rotation.x += tv('bRx'); B.hA.rotation.x += tv('hARx'); B.hB.rotation.x += tv('hBRx');
+          B.pivot.rotation.x += tv('pRx'); B.pivot.rotation.y += tv('pRy'); B.pivot.rotation.z += tv('pRz');
+          const gx = tv('vx'), gy = tv('vy'), gz = tv('vz');
+          P.gun.position.x += gx; P.gun.position.y += gy; P.gun.position.z += gz;
+          P.gun.rotation.x += tv('vrx'); P.gun.rotation.y += tv('vry'); P.gun.rotation.z += tv('vrz');
+          P.rArm.position.x += gx * 0.8; P.rArm.position.y += gy * 0.8; P.rArm.position.z += gz * 0.75;
+          P.rArm.rotation.z += tv('vry') * 0.35;
+          P.lArm.position.y -= Math.sin(t * Math.PI) * 0.2;   // off-hand stays tucked
         }
         if (vmAnim.bfStabT < 1) {
           const t = vmAnim.bfStabT, T = BF_TRK.stab;
@@ -4603,6 +4629,7 @@ function frame() {
         let blurK = 0;
         if (vmAnim.bfEquipT < 1 && BF_TRK.equip.blur) blurK = Math.max(blurK, trackVal(BF_TRK.equip.blur, vmAnim.bfEquipT));
         if (vmAnim.bfStabT < 1 && BF_TRK.stab.blur) blurK = Math.max(blurK, trackVal(BF_TRK.stab.blur, vmAnim.bfStabT));
+        if (vmAnim.swingT < 1 && BF_TRK.swing.blur) blurK = Math.max(blurK, trackVal(BF_TRK.swing.blur, vmAnim.swingT));
         if (vmAnim.bfInspectT < 1 && BF_TRK.inspect.blur) blurK = Math.max(blurK, trackVal(BF_TRK.inspect.blur, vmAnim.bfInspectT));
         if (B.blur) {
           const on = blurK > 0.03, hide = blurK > 0.5;

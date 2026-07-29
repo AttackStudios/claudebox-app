@@ -971,7 +971,7 @@ export function hubRouter() {
     if (!anim || typeof anim !== 'object') return res.status(400).json({ error: 'bad anim' });
     const EASE_OK = new Set(['linear', 'inQuad', 'outQuad', 'inCubic', 'outCubic', 'inOutCubic', 'outExpo', 'outBack', 'outElastic']);
     const out = {};
-    for (const trk of ['equip', 'stab', 'inspect']) {
+    for (const trk of ['equip', 'stab', 'swing', 'inspect']) {
       const src = anim[trk]; if (!src || typeof src !== 'object') continue;
       const to = {};
       for (const [ch, keys] of Object.entries(src)) {
