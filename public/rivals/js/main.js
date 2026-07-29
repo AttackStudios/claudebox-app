@@ -1925,15 +1925,18 @@ const BF_TRK = {
   // SWING (attack, 0.38s): the hand carries the knife in from the LEFT edge and
   // cuts horizontally across to the RIGHT, full handle fan mid-sweep, settle home.
   swing: {
-    vx:   [{ t: 0, v: -0.5 }, { t: 0.12, v: -0.44, e: 'outQuad' }, { t: 0.55, v: 0.45, e: 'outExpo' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vy:   [{ t: 0, v: -0.07 }, { t: 0.5, v: 0.04, e: 'outQuad' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vz:   [{ t: 0, v: -0.18 }, { t: 0.35, v: -0.26, e: 'outQuad' }, { t: 1, v: 0, e: 'inOutCubic' }],
-    vry:  [{ t: 0, v: 0.85 }, { t: 0.55, v: -0.7, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
-    vrz:  [{ t: 0, v: 0.3 }, { t: 0.55, v: -0.28, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
-    pRy:  [{ t: 0, v: 1.05 }, { t: 0.55, v: -1.15, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
-    pRz:  [{ t: 0, v: 0.45 }, { t: 0.5, v: -0.35, e: 'outExpo' }, { t: 1, v: 0, e: 'outBack' }],
-    hARx: [{ t: 0, v: 0 }, { t: 0.14, v: 0 }, { t: 0.6, v: -6.283, e: 'outExpo' }, { t: 1, v: -6.283 }],
+    // wind-up pulls the hand OFF-SCREEN left, then one smooth blade-leading sweep
+    // across to the right, settle back to grip. No spin — the knife stays open.
+    vx:   [{ t: 0, v: 0 }, { t: 0.16, v: -0.75, e: 'inOutCubic' }, { t: 0.62, v: 0.5, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vy:   [{ t: 0, v: 0 }, { t: 0.16, v: -0.12, e: 'inOutCubic' }, { t: 0.4, v: 0.08, e: 'inOutCubic' }, { t: 0.62, v: -0.04, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vz:   [{ t: 0, v: 0 }, { t: 0.16, v: 0.06, e: 'inOutCubic' }, { t: 0.42, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'inOutCubic' }],
+    vrx:  [{ t: 0, v: 0 }, { t: 0.4, v: 0.15, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vry:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.9, e: 'inOutCubic' }, { t: 0.62, v: -0.75, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    vrz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.35, e: 'inOutCubic' }, { t: 0.62, v: -0.3, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    pRy:  [{ t: 0, v: 0 }, { t: 0.16, v: 1.2, e: 'inOutCubic' }, { t: 0.62, v: -1.2, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
+    pRz:  [{ t: 0, v: 0 }, { t: 0.16, v: 0.4, e: 'inOutCubic' }, { t: 0.6, v: -0.35, e: 'inOutCubic' }, { t: 1, v: 0, e: 'outBack' }],
   },
+
   // INSPECT (F, 3.4s): non-stop combo — snap up + instant fan, double-flip
   // DURING a full twirl, second fan DURING a sweep, aerial twirl INTO the side
   // pose, latch-rattle snap home. At least two channels are moving at all times.
@@ -1998,7 +2001,7 @@ const GEN_INSPECT = {
 // ============ BUTTERFLY ANIM STUDIO (Dev Tools): hand-edit BF_TRK keyframes live ============
 const BF_DEFAULT = JSON.parse(JSON.stringify(BF_TRK));
 const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ', blur: 'Spin blur' };
-const BFE_DUR = { equip: 0.5, stab: 0.5, swing: 0.38, inspect: 5.5 };
+const BFE_DUR = { equip: 0.5, stab: 0.5, swing: 0.55, inspect: 5.5 };
 const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null, selParts: null, tool: 'rotate' };
 // ---- undo/redo: Cmd-Z / Shift-Cmd-Z — snapshot before every gesture ----
 const bfeUndo = { stack: [], redo: [] };
@@ -4388,7 +4391,7 @@ function frame() {
     vmAnim.airK += ((me.grounded ? 0 : 1) - vmAnim.airK) * (1 - Math.exp(-6 * dt));
     vmAnim.landK *= Math.exp(-6.5 * dt);
     vmAnim.equipT = Math.min(1, vmAnim.equipT + dt / 0.3);
-    vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / 0.38);
+    vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / (me.weapon === 'butterfly' ? 0.55 : 0.38));
     vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
     vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
