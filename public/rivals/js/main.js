@@ -994,21 +994,41 @@ function makeBalisong() {   // the REAL articulated balisong — shared by the v
     box(0.018, 0.045, 0.1, '#f4f7fc', 0, 0.006, -0.38),      // clip point
     box(0.012, 0.02, 0.26, '#aeb6c6', 0, -0.026, -0.17),     // edge grind line
   ]) bladeG.add(m);
-  const mkHandle = (side, c1, c2, latch) => {                // two rails + spacer, like a real channel handle
+  // channel handles, like the real thing: each handle's two rails straddle the
+  // blade's FLAT (x) so the folded blade nests inside; the handles themselves sit
+  // above/below the blade (y) on vertically offset pins — they surround it
+  // vertically in the spin plane, not side-by-side
+  const mkHandle = (side, c1, c2, latch) => {
     const h = new THREE.Group();
     for (const m of [
-      box(0.016, 0.05, 0.3, c1, side * 0.02, 0, 0.17),       // outer rail
-      box(0.016, 0.05, 0.3, c2, side * 0.045, 0, 0.17),      // inner rail
-      box(0.05, 0.044, 0.045, c1, side * 0.032, 0, 0.315),   // pommel spacer
-      box(0.044, 0.02, 0.05, STEEL, side * 0.032, 0, 0.05), // pin plate
+      box(0.016, 0.05, 0.3, c1, -0.023, side * 0.007, 0.17),   // rail
+      box(0.016, 0.05, 0.3, c2, 0.023, side * 0.007, 0.17),    // rail
+      box(0.05, 0.044, 0.045, c1, 0, side * 0.007, 0.315),     // pommel spacer
+      box(0.044, 0.02, 0.05, STEEL, 0, side * 0.02, 0.05),     // pin plate
     ]) h.add(m);
-    if (latch) h.add(box(0.014, 0.03, 0.05, STEEL, side * 0.032, -0.03, 0.33));   // latch on the bite handle
+    if (latch) h.add(box(0.014, 0.03, 0.05, STEEL, 0, side * -0.03, 0.33));   // latch on the bite handle
     return h;
   };
   const hB = mkHandle(-1, '#23252c', '#33363f', false);      // safe handle (stays in the palm)
   const hA = mkHandle(1, '#2a2d35', '#3b3f4a', true);        // bite handle (the one that fans)
-  pivot.add(bladeG, hA, hB);
-  return { pivot, bladeG, hA, hB };
+  hA.position.y = 0.02; hB.position.y = -0.02;               // offset pins, like the real tang
+  // spin-blur disc: streaked circle in the spin plane — keyframable 'blur' channel
+  const bc = document.createElement('canvas'); bc.width = bc.height = 128;
+  const bx = bc.getContext('2d'); bx.translate(64, 64);
+  for (let i = 0; i < 9; i++) {
+    bx.strokeStyle = `rgba(226,232,242,${0.35 + (i % 3) * 0.2})`;
+    bx.lineWidth = 3 + (i % 3) * 2;
+    bx.beginPath(); bx.arc(0, 0, 18 + i * 5, i * 2.3, i * 2.3 + 1.1 + (i % 2) * 0.5); bx.stroke();
+  }
+  const blurTex = new THREE.CanvasTexture(bc);
+  const blurWrap = new THREE.Group(); blurWrap.rotation.y = Math.PI / 2;
+  const blurMesh = new THREE.Mesh(
+    new THREE.CircleGeometry(0.43, 40),
+    new THREE.MeshBasicMaterial({ map: blurTex, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+  blurMesh.visible = false;
+  blurWrap.add(blurMesh);
+  pivot.add(bladeG, hA, hB, blurWrap);
+  return { pivot, bladeG, hA, hB, blurMesh };
 }
 function buildViewmodels() {
   // ---- assault rifle: stock/body/grip/mag/handguard/barrel/sights ----
@@ -1125,10 +1145,10 @@ function buildViewmodels() {
   // handles each pivot on the tang pin, so flips/fans/twirls are real motion ----
   {
     const g = new THREE.Group();
-    const { pivot, bladeG, hA, hB } = makeBalisong();
+    const { pivot, bladeG, hA, hB, blurMesh } = makeBalisong();
     pivot.position.set(0.5, -0.135, -0.15);   // pin rides the OUTER edge of the fist — flips sweep beside the hand, not through it
     rigWeapon(g, [pivot], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
-    g.userData.bf = { pivot, blade: bladeG, hA, hB };
+    g.userData.bf = { pivot, blade: bladeG, hA, hB, blur: blurMesh };
     viewmodels.butterfly = g;
   }
   // ---- The Warper: white portal gun, blue + orange prongs ----
@@ -1942,9 +1962,34 @@ const GEN_INSPECT = {
 };
 // ============ BUTTERFLY ANIM STUDIO (Dev Tools): hand-edit BF_TRK keyframes live ============
 const BF_DEFAULT = JSON.parse(JSON.stringify(BF_TRK));
-const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ' };
+const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ', blur: 'Spin blur' };
 const BFE_DUR = { equip: 0.5, stab: 0.5, inspect: 5.5 };
 const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null };
+// ---- undo/redo: Cmd-Z / Shift-Cmd-Z — snapshot before every gesture ----
+const bfeUndo = { stack: [], redo: [] };
+function bfeSnapshot() {
+  bfeUndo.stack.push({ track: bfe.track, data: JSON.stringify(BF_TRK[bfe.track]) });
+  if (bfeUndo.stack.length > 120) bfeUndo.stack.shift();
+  bfeUndo.redo.length = 0;
+}
+function bfeRestore(from, to) {
+  const snap = from.pop();
+  if (!snap) { toast(from === bfeUndo.stack ? 'Nothing to undo' : 'Nothing to redo'); return; }
+  to.push({ track: snap.track, data: JSON.stringify(BF_TRK[snap.track]) });
+  bfe.track = snap.track;
+  BF_TRK[snap.track] = JSON.parse(snap.data);
+  bfe.sel = null;
+  if (bfePanel) {
+    bfePanel.querySelector('#bfe-ins').style.display = 'none';
+    bfePanel.querySelectorAll('.bfe-tabs button').forEach((x) => x.classList.toggle('on', x.dataset.trk === snap.track));
+  }
+  bfeBuildRows(); bfeSyncTransport();
+}
+addEventListener('keydown', (e) => {
+  if (!bfe.open || e.code !== 'KeyZ' || !(e.metaKey || e.ctrlKey)) return;
+  e.preventDefault();
+  e.shiftKey ? bfeRestore(bfeUndo.redo, bfeUndo.stack) : bfeRestore(bfeUndo.stack, bfeUndo.redo);
+});
 function applyBfAnim(anim) {
   if (!anim || typeof anim !== 'object') return;
   for (const trk of ['equip', 'stab', 'inspect']) {
@@ -2020,7 +2065,7 @@ function bfeBuildRows() {
     };
     cv.addEventListener('mousedown', (ev) => {
       const { x, key } = keyAt(ev);
-      if (key) { bfeSelect(ch, key); drag = key; }
+      if (key) { bfeSnapshot(); bfeSelect(ch, key); drag = key; }
       else { bfe.t = Math.max(0, Math.min(1, x)); bfe.playing = false; bfeSyncTransport(); }
     });
     cv.addEventListener('mousemove', (ev) => {
@@ -2035,6 +2080,7 @@ function bfeBuildRows() {
     cv.addEventListener('dblclick', (ev) => {
       const { x } = keyAt(ev);
       const keys = BF_TRK[bfe.track][ch];
+      bfeSnapshot();
       const nk = { t: Math.max(0, Math.min(1, x)), v: trackVal(keys, x), e: 'inOutCubic' };
       keys.push(nk); keys.sort((a, b) => a.t - b.t);
       bfeSelect(ch, nk);
@@ -2054,6 +2100,7 @@ const BFE_SLIDERS = [
   { ch: 'vx', label: 'Hand left/right', min: -0.5, max: 0.5, step: 0.01, unit: '', toV: (x) => x, fromV: (v) => v },
   { ch: 'vy', label: 'Hand up/down', min: -0.5, max: 0.5, step: 0.01, unit: '', toV: (x) => x, fromV: (v) => v },
   { ch: 'vz', label: 'Hand close/far', min: -0.7, max: 0.3, step: 0.01, unit: '', toV: (x) => x, fromV: (v) => v },
+  { ch: 'blur', label: 'Spin blur ✨', min: 0, max: 1, step: 0.01, unit: '', toV: (x) => x, fromV: (v) => v },
 ];
 // ---- 3D preview: the real balisong floating in view — drag to orbit, click a piece to select it ----
 let bfePrev = null;
@@ -2061,7 +2108,7 @@ const BFE_PART_CH = { blade: 'bRx', hA: 'hARx', hB: 'hBRx' };
 const BFE_PART_NAME = { blade: 'Blade', hA: 'Bite handle', hB: 'Safe handle', pivot: 'Whole knife' };
 function bfeBuildPrev() {
   if (bfePrev) return;
-  const { pivot, bladeG, hA, hB } = makeBalisong();
+  const { pivot, bladeG, hA, hB, blurMesh } = makeBalisong();
   const spin = new THREE.Group(); spin.add(pivot);
   const root = new THREE.Group();
   root.position.set(-0.34, 0.15, -1.02);
@@ -2072,7 +2119,7 @@ function bfeBuildPrev() {
   const seen = new Map();
   spin.traverse((m) => { if (m.isMesh) { if (!seen.has(m.material)) seen.set(m.material, m.material.clone()); m.material = seen.get(m.material); } });
   camera.add(root);
-  bfePrev = { root, spin, pivot, blade: bladeG, hA, hB, yaw: 0.7, pitch: 0.3, selPart: null };
+  bfePrev = { root, spin, pivot, blade: bladeG, hA, hB, blur: blurMesh, yaw: 0.7, pitch: 0.3, selPart: null };
 }
 function bfeHighlightPart(part) {
   if (!bfePrev) return;
@@ -2110,6 +2157,16 @@ function bfeTickPrev() {
   if (T.vx) P2.pivot.position.x = trackVal(T.vx, t2) * 0.45;
   if (T.vy) P2.pivot.position.y = trackVal(T.vy, t2) * 0.45;
   if (T.vz) P2.pivot.position.z = trackVal(T.vz, t2) * 0.45;
+  if (P2.blur) {
+    const bk = T.blur ? trackVal(T.blur, t2) : 0;
+    const on = bk > 0.03, hide = bk > 0.5;
+    P2.blur.visible = on;
+    P2.blade.visible = !hide; P2.hA.visible = !hide; P2.hB.visible = !hide;
+    if (on) {
+      P2.blur.material.opacity = Math.min(1, bk) * (0.24 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() / 16)));
+      P2.blur.rotation.z = (performance.now() / 22) % (Math.PI * 2);
+    }
+  }
 }
 { // direct manipulation on the 3D preview: grab pieces with the mouse
   const bfeRay = new THREE.Raycaster();
@@ -2137,11 +2194,13 @@ function bfeTickPrev() {
     if (e.button === 0) {
       const part = bfePartAt(e);
       if (part) {   // grab the piece — dragging rotates IT and drops a key at the playhead
+        bfeSnapshot();
         bfeHighlightPart(part);
         const ch = BFE_PART_CH[part];
         bd = { mode: 'part', ch, v: trackVal(bfeChanKeys(ch), bfe.t), x: e.clientX, y: e.clientY };
       } else bd = { mode: 'orbit', x: e.clientX, y: e.clientY, moved: false };
     } else if (e.button === 2) {
+      bfeSnapshot();
       bd = { mode: 'wrist', x: e.clientX, y: e.clientY,
              rx: trackVal(bfeChanKeys('pRx'), bfe.t), ry: trackVal(bfeChanKeys('pRy'), bfe.t), rz: trackVal(bfeChanKeys('pRz'), bfe.t) };
     }
@@ -2220,6 +2279,7 @@ function bfeRecFinish(keep) {
     rec2(0, pts.length - 1);
     return [...keepIdx].sort((x, y) => x - y).map((i) => pts[i]);
   };
+  bfeSnapshot();   // a bad recording is one Cmd-Z away from gone
   const T = BF_TRK[bfe.track];
   for (const [ch, pts] of Object.entries(rec.samples)) {
     if (pts.length < 4) continue;
@@ -2359,7 +2419,7 @@ function buildBfEditor() {
       <button id="bfe-pub" style="display:none;">⬆ Publish to game</button>
       <button id="bfe-advb" title="Advanced: keyframe lanes, export/import">🛠</button>
     </div>
-    <div class="bfe-hint">GRAB the knife: drag a piece to swing it (blade or either handle), right-drag to tilt/turn the whole knife (hold Shift = twist), drag empty space to orbit your view. Every move drops a pose (♦) at the red line — scrub, pose, scrub, pose, then ▶ to watch it flow. Sliders do the same thing with numbers. SNAP! makes the next pose whippy. ⏺ Record = perform the whole trick live: mouse = wrist, right-click hold = twist, scroll = half-spin flips (your slow-mo speed applies).</div>
+    <div class="bfe-hint">GRAB the knife: drag a piece to swing it (blade or either handle), right-drag to tilt/turn the whole knife (hold Shift = twist), drag empty space to orbit your view. Every move drops a pose (♦) at the red line — scrub, pose, scrub, pose, then ▶ to watch it flow. Sliders do the same thing with numbers. Cmd-Z undoes any move (Shift-Cmd-Z redoes). SNAP! makes the next pose whippy. ⏺ Record = perform the whole trick live: mouse = wrist, right-click hold = twist, scroll = half-spin flips (your slow-mo speed applies).</div>
     <div id="bfe-adv">
       <div id="bfe-rows"></div>
       <div id="bfe-ins">
@@ -2407,6 +2467,7 @@ function buildBfEditor() {
   bfePanel.querySelector('#bfe-delpose').addEventListener('click', () => {
     const near = bfePoseTimes().find((p2) => Math.abs(p2.c - bfe.t) < 0.03);
     if (!near) { toast('Move the red line onto a ♦ first'); return; }
+    bfeSnapshot();
     for (const ch of Object.keys(BF_TRK[bfe.track])) {
       const keys = BF_TRK[bfe.track][ch].filter((k) => k.t < near.lo - 0.001 || k.t > near.hi + 0.001);
       BF_TRK[bfe.track][ch] = keys.length >= 2 ? keys : [{ t: 0, v: keys[0]?.v ?? 0 }, { t: 1, v: keys[0]?.v ?? 0 }];
@@ -2415,7 +2476,11 @@ function buildBfEditor() {
   });
   // sliders: drag = pose the knife right at the playhead
   for (const def of BFE_SLIDERS) {
-    bfePanel.querySelector(`[data-sl="${def.ch}"]`).addEventListener('input', (e) => {
+    const slEl = bfePanel.querySelector(`[data-sl="${def.ch}"]`);
+    let inGesture = false;
+    slEl.addEventListener('change', () => { inGesture = false; });
+    slEl.addEventListener('input', (e) => {
+      if (!inGesture) { bfeSnapshot(); inGesture = true; }
       const x = Number(e.target.value);
       bfeUpsert(def.ch, Math.round(bfe.t * 200) / 200, def.toV(x));
       const out = bfePanel.querySelector(`[data-slv="${def.ch}"]`);
@@ -2433,11 +2498,13 @@ function buildBfEditor() {
     const s2 = selKey(); if (!s2) return;
     const keys = BF_TRK[bfe.track][s2.ch];
     if (keys.length <= 2) { toast('A lane needs at least 2 keys'); return; }
+    bfeSnapshot();
     keys.splice(keys.indexOf(s2.key), 1); bfeSelect(s2.ch, null); bfeDrawPoses();
   });
   bfePanel.querySelector('#bfe-add').addEventListener('click', () => {
     const ch = bfe.sel?.ch || bfeChannels()[0];
     const keys = BF_TRK[bfe.track][ch];
+    bfeSnapshot();
     const nk = { t: bfe.t, v: trackVal(keys, bfe.t), e: 'inOutCubic' };
     keys.push(nk); keys.sort((a, b) => a.t - b.t); bfeSelect(ch, nk); bfeDrawPoses();
   });
@@ -2445,6 +2512,7 @@ function buildBfEditor() {
     try { localStorage.setItem('rivals.bfDraft', JSON.stringify(BF_TRK)); toast('Saved on this device 💾'); } catch {}
   });
   bfePanel.querySelector('#bfe-reset').addEventListener('click', () => {
+    bfeSnapshot();
     BF_TRK[bfe.track] = JSON.parse(JSON.stringify(BF_DEFAULT[bfe.track]));
     bfe.sel = null; bfePanel.querySelector('#bfe-ins').style.display = 'none';
     bfeBuildRows(); bfeSyncTransport(); toast('Back to the default animation');
@@ -2453,7 +2521,7 @@ function buildBfEditor() {
   bfePanel.querySelector('#bfe-exp').addEventListener('click', () => { prompt('Copy your animation JSON:', JSON.stringify(BF_TRK)); });
   bfePanel.querySelector('#bfe-imp').addEventListener('click', () => {
     const j = prompt('Paste animation JSON:'); if (!j) return;
-    try { applyBfAnim(JSON.parse(j)); bfeBuildRows(); bfeSyncTransport(); toast('Imported ✓'); } catch { toast('Bad JSON'); }
+    try { bfeSnapshot(); applyBfAnim(JSON.parse(j)); bfeBuildRows(); bfeSyncTransport(); toast('Imported ✓'); } catch { toast('Bad JSON'); }
   });
   const pub = bfePanel.querySelector('#bfe-pub');
   if ((identity.name || '').toLowerCase() === 'attackface15') pub.style.display = 'block';
@@ -4462,6 +4530,20 @@ function frame() {
           B.pivot.rotation.z += trackVal(T.pRz, t);
           P.gun.position.y += 0.06 * Math.sin(t * Math.PI);   // gentle lift keeps it center-frame
           P.lArm.position.y -= 0.08 * Math.sin(t * Math.PI);  // off-hand stays low
+        }
+        // spin-blur: keyframe 'blur' 0→1 and the knife becomes a flickering streak-disc
+        let blurK = 0;
+        if (vmAnim.bfEquipT < 1 && BF_TRK.equip.blur) blurK = Math.max(blurK, trackVal(BF_TRK.equip.blur, vmAnim.bfEquipT));
+        if (vmAnim.bfStabT < 1 && BF_TRK.stab.blur) blurK = Math.max(blurK, trackVal(BF_TRK.stab.blur, vmAnim.bfStabT));
+        if (vmAnim.bfInspectT < 1 && BF_TRK.inspect.blur) blurK = Math.max(blurK, trackVal(BF_TRK.inspect.blur, vmAnim.bfInspectT));
+        if (B.blur) {
+          const on = blurK > 0.03, hide = blurK > 0.5;
+          B.blur.visible = on;
+          B.blade.visible = !hide; B.hA.visible = !hide; B.hB.visible = !hide;
+          if (on) {
+            B.blur.material.opacity = Math.min(1, blurK) * (0.24 + 0.14 * (0.5 + 0.5 * Math.sin(now * 62)));   // flicker
+            B.blur.rotation.z = (now * 46) % (Math.PI * 2);   // streaks whirl
+          }
         }
       }
       // ---- generic inspect part-flavor (non-butterfly) ----
