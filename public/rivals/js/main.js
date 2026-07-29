@@ -473,7 +473,7 @@ addEventListener('keydown', (e) => {
   if (c === binds.jump) tryAirJump();                              // Daggers: mid-air double jump
   if (c === (binds.inspect || 'KeyF') && !me.dead && !me.reloading
       && vmAnim.bfInspectT >= 1 && vmAnim.swingT >= 1 && vmAnim.bfStabT >= 1 && vmAnim.equipT >= 1 && vmAnim.throwT >= 1) {
-    vmAnim.inspectDur = INSPECT_DUR[inspectClassFor(me.weapon)];   // every weapon gets an inspect
+    { const icls = inspectClassFor(me.weapon); vmAnim.inspectDur = icls === 'butterfly' ? BF_DUR.inspect : INSPECT_DUR[icls]; }   // every weapon gets an inspect
     vmAnim.bfInspectT = 0; vmAnim.bfInspectPrev = 0;
   }
 });
@@ -2000,7 +2000,16 @@ const GEN_INSPECT = {
 // ============ BUTTERFLY ANIM STUDIO (Dev Tools): hand-edit BF_TRK keyframes live ============
 const BF_DEFAULT = JSON.parse(JSON.stringify(BF_TRK));
 const BFE_CH = { bRx: 'Blade fold', hARx: 'Bite handle', hBRx: 'Safe handle', pRx: 'Wrist X', pRy: 'Wrist Y', pRz: 'Wrist Z', vx: 'Arm X', vy: 'Arm Y', vz: 'Arm Z', vrx: 'Arm rotX', vry: 'Arm rotY', vrz: 'Arm rotZ', gPy: 'Hand driveY', gPz: 'Hand driveZ', blur: 'Spin blur' };
-const BFE_DUR = { equip: 0.5, stab: 0.5, swing: 0.55, inspect: 5.5 };
+const BF_DUR = { equip: 0.5, stab: 0.5, swing: 0.55, inspect: 5.5 };   // seconds — editable in the studio, publishes with the anim
+const BF_DUR_DEFAULT = { ...BF_DUR };
+const BFE_DUR = BF_DUR;
+function applyBfDur(dur) {
+  if (!dur || typeof dur !== 'object') return;
+  for (const trk of ['equip', 'stab', 'swing', 'inspect']) {
+    const v = Number(dur[trk]);
+    if (isFinite(v)) BF_DUR[trk] = Math.max(0.1, Math.min(12, v));
+  }
+}
 const bfe = { open: false, track: 'inspect', t: 0, playing: false, loop: true, speed: 1, sel: null, selParts: null, tool: 'rotate' };
 // ---- undo/redo: Cmd-Z / Shift-Cmd-Z — snapshot before every gesture ----
 const bfeUndo = { stack: [], redo: [] };
@@ -2036,8 +2045,11 @@ function applyBfAnim(anim) {
   }
 }
 (async () => {   // published anim first, then any local draft on top
-  try { const d = await fetch('/api/rivals/bfanim', { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json()); applyBfAnim(d?.anim); } catch {}
-  try { applyBfAnim(JSON.parse(localStorage.getItem('rivals.bfDraft') || 'null')); } catch {}
+  try { const d = await fetch('/api/rivals/bfanim', { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json()); applyBfAnim(d?.anim); applyBfDur(d?.dur); } catch {}
+  try {
+    const dr = JSON.parse(localStorage.getItem('rivals.bfDraft') || 'null');
+    if (dr?.tracks) { applyBfAnim(dr.tracks); applyBfDur(dr.dur); } else applyBfAnim(dr);
+  } catch {}
 })();
 let bfePanel = null;
 const bfeStrips = new Map();   // ch -> canvas
@@ -2432,6 +2444,8 @@ function buildBfEditor() {
   .bfe-tr button,.bfe-tr select{background:#262a34;border:1px solid rgba(255,255,255,.12);color:#e8ecf4;border-radius:7px;font-weight:800;font-size:12px;padding:5px 9px;cursor:pointer;}
   .bfe-tr button.on{background:#3b62d6;}
   #bfe-scrub{flex:1;}
+  #bfe-dur{width:52px;background:#12151b;border:1px solid rgba(255,255,255,.14);color:#fff;border-radius:6px;padding:4px 5px;font-size:12px;font-weight:800;}
+  .bfe-tr small{color:#7f8aa3;font-weight:800;}
   #bfe-poses{border-radius:7px;cursor:pointer;}
   .bfe-pbtn{display:flex;gap:6px;align-items:center;}
   .bfe-pbtn button{background:#262a34;border:1px solid rgba(255,255,255,.12);color:#e8ecf4;border-radius:7px;font-weight:800;font-size:11.5px;padding:6px 9px;cursor:pointer;}
@@ -2468,6 +2482,7 @@ function buildBfEditor() {
       <select id="bfe-speed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option></select>
       <input id="bfe-scrub" type="range" min="0" max="1" step="0.001" value="0">
       <b id="bfe-time">0.00s</b>
+      <input id="bfe-dur" type="number" min="0.1" max="12" step="0.05" title="Animation length (seconds)"><small>s</small>
     </div>
     <canvas id="bfe-poses" width="308" height="34"></canvas>
     <div class="bfe-pbtn">
@@ -2506,6 +2521,7 @@ function buildBfEditor() {
     bfe.track = b.dataset.trk; bfe.t = 0; bfe.sel = null;
     bfePanel.querySelectorAll('.bfe-tabs button').forEach((x) => x.classList.toggle('on', x === b));
     bfePanel.querySelector('#bfe-ins').style.display = 'none';
+    const de = bfePanel.querySelector('#bfe-dur'); if (de) de.value = BF_DUR[bfe.track];
     bfeBuildRows(); bfeSyncTransport();
   }));
   bfePanel.querySelector('#bfe-play').addEventListener('click', () => {
@@ -2515,6 +2531,14 @@ function buildBfEditor() {
   });
   bfePanel.querySelector('#bfe-loop').addEventListener('click', (e) => { bfe.loop = !bfe.loop; e.target.classList.toggle('on', bfe.loop); });
   bfePanel.querySelector('#bfe-speed').addEventListener('change', (e) => { bfe.speed = Number(e.target.value); });
+  const durEl = bfePanel.querySelector('#bfe-dur');
+  durEl.value = BF_DUR[bfe.track];
+  durEl.addEventListener('change', () => {
+    BF_DUR[bfe.track] = Math.max(0.1, Math.min(12, Number(durEl.value) || BF_DUR[bfe.track]));
+    durEl.value = BF_DUR[bfe.track];
+    bfeSyncTransport();
+    toast(`${bfe.track.toUpperCase()} now runs ${BF_DUR[bfe.track]}s`);
+  });
   bfePanel.querySelector('#bfe-scrub').addEventListener('input', (e) => { bfe.t = Number(e.target.value); bfe.playing = false; bfePanel.querySelector('#bfe-play').textContent = '▶'; bfeSyncTransport(); });
   // pose bar: click to jump (snaps to a nearby ♦)
   bfePanel.querySelector('#bfe-poses').addEventListener('mousedown', (ev) => {
@@ -2582,11 +2606,13 @@ function buildBfEditor() {
     keys.push(nk); keys.sort((a, b) => a.t - b.t); bfeSelect(ch, nk); bfeDrawPoses();
   });
   bfePanel.querySelector('#bfe-draft').addEventListener('click', () => {
-    try { localStorage.setItem('rivals.bfDraft', JSON.stringify(BF_TRK)); toast('Saved on this device 💾'); } catch {}
+    try { localStorage.setItem('rivals.bfDraft', JSON.stringify({ tracks: BF_TRK, dur: BF_DUR })); toast('Saved on this device 💾'); } catch {}
   });
   bfePanel.querySelector('#bfe-reset').addEventListener('click', () => {
     bfeSnapshot();
     BF_TRK[bfe.track] = JSON.parse(JSON.stringify(BF_DEFAULT[bfe.track]));
+    BF_DUR[bfe.track] = BF_DUR_DEFAULT[bfe.track];
+    { const de = bfePanel.querySelector('#bfe-dur'); if (de) de.value = BF_DUR[bfe.track]; }
     bfe.sel = null; bfePanel.querySelector('#bfe-ins').style.display = 'none';
     bfeBuildRows(); bfeSyncTransport(); toast('Back to the default animation');
   });
@@ -2600,7 +2626,7 @@ function buildBfEditor() {
   if ((identity.name || '').toLowerCase() === 'attackface15') pub.style.display = 'block';
   pub.addEventListener('click', async () => {
     try {
-      const r = await fetch('/api/rivals/bfanim', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' }, body: JSON.stringify({ name: identity.name, anim: BF_TRK }) });
+      const r = await fetch('/api/rivals/bfanim', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' }, body: JSON.stringify({ name: identity.name, anim: BF_TRK, dur: BF_DUR }) });
       const d = await r.json();
       toast(d.ok ? '⬆ Published — this is now THE butterfly animation!' : (d.error || 'Publish failed'));
     } catch { toast('Publish failed'); }
@@ -4390,11 +4416,11 @@ function frame() {
     vmAnim.airK += ((me.grounded ? 0 : 1) - vmAnim.airK) * (1 - Math.exp(-6 * dt));
     vmAnim.landK *= Math.exp(-6.5 * dt);
     vmAnim.equipT = Math.min(1, vmAnim.equipT + dt / 0.3);
-    vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / (me.weapon === 'butterfly' ? 0.55 : 0.38));
+    vmAnim.swingT = Math.min(1, vmAnim.swingT + dt / (me.weapon === 'butterfly' ? BF_DUR.swing : 0.38));
     vmAnim.throwT = Math.min(1, vmAnim.throwT + dt / 0.5);
     vmAnim.satchelBtnT = Math.min(1, vmAnim.satchelBtnT + dt / 0.22);
-    vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / 0.5);
-    vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / 0.5);
+    vmAnim.bfEquipT = Math.min(1, vmAnim.bfEquipT + dt / BF_DUR.equip);
+    vmAnim.bfStabT = Math.min(1, vmAnim.bfStabT + dt / BF_DUR.stab);
     vmAnim.bfInspectT = Math.min(1, vmAnim.bfInspectT + dt / (vmAnim.inspectDur || 5.5));
     // Anim Studio drives the clock directly while open
     if (bfe.open && me.weapon === 'butterfly' && bfeRec) {

@@ -983,7 +983,12 @@ export function hubRouter() {
       }
       if (Object.keys(to).length) out[trk] = to;
     }
-    platform.rivalsBfAnim = { anim: out, by: name, at: Date.now() };
+    const dur = {};
+    for (const trk of ['equip', 'stab', 'swing', 'inspect']) {
+      const v = Number(req.body?.dur?.[trk]);
+      if (isFinite(v)) dur[trk] = Math.max(0.1, Math.min(12, v));
+    }
+    platform.rivalsBfAnim = { anim: out, dur, by: name, at: Date.now() };
     save();
     res.json({ ok: true });
   });
