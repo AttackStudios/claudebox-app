@@ -26,7 +26,9 @@ import { state as obState, genId as obGenId, publicPlayer as obPublicPlayer, clo
 import { handleMessage as obHandle, onDisconnect as obDisconnect, makeBroadcaster as obBroadcaster, tickTrolls } from './obby/protocol.js';
 import { applyCourse as obApplyCourse } from '../shared/obby/course.js';
 import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
-import { toObbyCourse, toWibitWorld } from '../shared/studio/adapters.js';
+import { state as jgState, genId as jgGenId } from './juniorguards/state.js';
+import { handleMessage as jgHandle, onDisconnect as jgDisconnect, tick as jgTick, setBeachWorld as jgSetBeach } from './juniorguards/protocol.js';
+import { toObbyCourse, toWibitWorld, toJuniorGuardsWorld } from '../shared/studio/adapters.js';
 import { state as wbState, genId as wbGenId, publicPlayer as wbPublicPlayer, clock as wbClock } from './wibit/state.js';
 import { handleMessage as wbHandle, onDisconnect as wbDisconnect, makeBroadcaster as wbBroadcaster, tickRound as wbTickRound, getRoundInfo as wbRoundInfo } from './wibit/protocol.js';
 import { state as rvState, genId as rvGenId } from './rivals/state.js';
@@ -77,6 +79,7 @@ app.get('/games/backpacking', (req, res) => {
 app.get('/games/restaurant-sim-2', (req, res) => res.sendFile(path.join(ROOT, 'public', 'restaurant-sim-2', 'index.html')));
 app.get('/games/obby', (req, res) => res.sendFile(path.join(ROOT, 'public', 'obby', 'index.html')));
 app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wibit', 'index.html')));
+app.get('/games/juniorguards', (req, res) => res.sendFile(path.join(ROOT, 'public', 'juniorguards', 'index.html')));
 app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));
 app.get('/games/nds', (req, res) => res.sendFile(path.join(ROOT, 'public', 'nds', 'index.html')));
 app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
@@ -98,6 +101,7 @@ const bpWss = new WebSocketServer({ noServer: true });
 const rsWss = new WebSocketServer({ noServer: true });
 const obWss = new WebSocketServer({ noServer: true });
 const wbWss = new WebSocketServer({ noServer: true });
+const jgWss = new WebSocketServer({ noServer: true });
 const rvWss = new WebSocketServer({ noServer: true });
 const bkWss = new WebSocketServer({ noServer: true });
 const tyWss = new WebSocketServer({ noServer: true });
@@ -115,6 +119,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/rs2-ws') rsWss.handleUpgrade(req, socket, head, (ws) => rsWss.emit('connection', ws, req));
   else if (pathname === '/obby-ws') obWss.handleUpgrade(req, socket, head, (ws) => obWss.emit('connection', ws, req));
   else if (pathname === '/wibit-ws') wbWss.handleUpgrade(req, socket, head, (ws) => wbWss.emit('connection', ws, req));
+  else if (pathname === '/jg-ws') jgWss.handleUpgrade(req, socket, head, (ws) => jgWss.emit('connection', ws, req));
   else if (pathname === '/rivals-ws') rvWss.handleUpgrade(req, socket, head, (ws) => rvWss.emit('connection', ws, req));
   else if (pathname === '/brook-ws') bkWss.handleUpgrade(req, socket, head, (ws) => bkWss.emit('connection', ws, req));
   else if (pathname === '/tycoon-ws') tyWss.handleUpgrade(req, socket, head, (ws) => tyWss.emit('connection', ws, req));
@@ -496,3 +501,21 @@ setInterval(() => {
   const players = wrJoined().map((p) => [p.id, +p.pos.x.toFixed(2), +p.pos.y.toFixed(2), +p.pos.z.toFixed(2), +p.ry.toFixed(3), p.anim, p.web ? +p.web.x.toFixed(1) : null, p.web ? +p.web.y.toFixed(1) : null, p.web ? +p.web.z.toFixed(1) : null]);
   wrBroadcast({ t: 'snapshot', players, clock: wrClock() });
 }, 1000 / 16);
+
+
+// ====================== Junior Guards Simulator ======================
+{
+  const w = toJuniorGuardsWorld(loadStudioLevel('juniorguards'));
+  if (w) { jgSetBeach(w); console.log('[jg] loaded custom Studio beach (' + w.solids.length + ' parts)'); }
+}
+jgWss.on('connection', (ws) => {
+  const p = { id: jgGenId('p'), ws, joined: false, name: '', nameLower: '', avatar: null, room: null };
+  jgState.players.set(p.id, p);
+  ws.on('message', (buf) => {
+    let msg; try { msg = JSON.parse(buf); } catch { return; }
+    try { jgHandle(p, msg, {}); } catch (err) { console.error('[jg]', msg?.t, err); }
+  });
+  ws.on('close', () => { try { jgDisconnect(p); } catch {} });
+  ws.on('error', () => {});
+});
+setInterval(() => { try { jgTick(); } catch (err) { console.error('[jg tick]', err); } }, 1000 / 12);

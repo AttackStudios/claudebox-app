@@ -31,6 +31,16 @@ export const BP_MAINTENANCE = false;
 
 const GAMES = [
   {
+    id: 'juniorguards',
+    title: 'Junior Guards Simulator',
+    tagline: 'Capitola Junior Guards — beach mornings, stretches, and salt water',
+    art: '/icons/game-juniorguards.png',
+    url: '/games/juniorguards',
+    creators: ['ClaudeBox Studios'],
+    tags: ['Roleplay', 'Beach', 'Multiplayer'],
+    playable: true,
+  },
+  {
     id: 'feather-friends',
     title: 'Feather Friends',
     tagline: 'Live your best bird life',
@@ -239,6 +249,10 @@ function acceptFriend(a, aLower, b, bLower) {
   if (!b.friends.includes(aLower)) b.friends.push(aLower);
   a.friendReqIn = a.friendReqIn.filter((x) => x !== bLower); a.friendReqOut = a.friendReqOut.filter((x) => x !== bLower);
   b.friendReqIn = b.friendReqIn.filter((x) => x !== aLower); b.friendReqOut = b.friendReqOut.filter((x) => x !== aLower);
+}
+export function areFriends(aLower, bLower) {
+  const a = getUser(String(aLower || '').toLowerCase());
+  return !!a && Array.isArray(a.friends) && a.friends.includes(String(bLower || '').toLowerCase());
 }
 function followersOf(nameLower) {
   let n = 0;
@@ -490,6 +504,8 @@ let wbPlayersSync = null;
 import('./wibit/state.js').then((m) => { wbPlayersSync = m.state.players; }).catch(() => {});
 let rvPlayersSync = null;
 import('./rivals/state.js').then((m) => { rvPlayersSync = m.state.players; }).catch(() => {});
+let jgPlayersSync = null;
+import('./juniorguards/state.js').then((m) => { jgPlayersSync = m.state.players; }).catch(() => {});
 
 function presenceOf(nameLower) {
   for (const p of state.players.values()) {
@@ -513,6 +529,11 @@ function presenceOf(nameLower) {
   if (wbPlayersSync) {
     for (const p of wbPlayersSync.values()) {
       if (p.joined && p.nameLower === nameLower) return 'game:wibit';
+    }
+  }
+  if (jgPlayersSync) {
+    for (const p of jgPlayersSync.values()) {
+      if (p.joined && p.nameLower === nameLower) return 'game:juniorguards';
     }
   }
   if (rvPlayersSync) {

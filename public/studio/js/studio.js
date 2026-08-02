@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
-import { BEHAVIORS, PALETTE, SHAPES, newPart, sanitizeLevel, starterLevel } from '/shared/studio/format.js';
+import { BEHAVIORS, PALETTE, SHAPES, TEXTURES, newPart, sanitizeLevel, starterLevel } from '/shared/studio/format.js';
 import { parseRbxlx } from './rbxlx.js';
 
 const $ = (s) => document.querySelector(s);
@@ -94,11 +94,62 @@ function applyMesh(rec) {
   rec.mesh.material.color.set(s.color);
   rec.mesh.position.set(s.pos[0], s.pos[1], s.pos[2]);
   rec.mesh.rotation.y = s.rotY;
-  rec.mesh.material.emissive.set(rec === state.built.get(state.selected) ? '#2a4a6a' : '#000000');
+  const em = rec === state.built.get(state.selected) ? '#2a4a6a' : '#000000';
+  rec.mesh.traverse((o) => o.material?.emissive?.set(em));
+  if (rec.mesh.material?.emissive) rec.mesh.material.emissive.set(em);
+}
+const _texCache = {};
+function texTile(kind) {
+  if (_texCache[kind]) return _texCache[kind];
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128);
+  if (kind === 'wood') { x.fillStyle = 'rgba(120,80,40,.25)'; for (let i = 0; i < 10; i++) x.fillRect(i * 13 + (i % 3), 0, 4, 128); }
+  else if (kind === 'stripes') { x.fillStyle = 'rgba(0,0,0,.18)'; for (let i = -8; i < 16; i++) { x.save(); x.translate(i * 22, 0); x.rotate(0.6); x.fillRect(0, -40, 10, 220); x.restore(); } }
+  else if (kind === 'brick') { x.fillStyle = 'rgba(90,40,30,.3)'; for (let r = 0; r < 8; r++) { x.fillRect(0, r * 16, 128, 2); for (let c2 = 0; c2 < 4; c2++) x.fillRect(((r % 2) * 16 + c2 * 32) % 128, r * 16, 2, 16); } }
+  else if (kind === 'dots') { x.fillStyle = 'rgba(255,255,255,.5)'; for (let r = 0; r < 6; r++) for (let c2 = 0; c2 < 6; c2++) { x.beginPath(); x.arc(c2 * 22 + 10 + (r % 2) * 10, r * 22 + 10, 5, 0, 7); x.fill(); } }
+  else if (kind === 'sand') { for (let i = 0; i < 1600; i++) { x.fillStyle = Math.random() < 0.5 ? 'rgba(150,120,70,.4)' : 'rgba(255,244,210,.5)'; x.fillRect(Math.random() * 128, Math.random() * 128, 1.4, 1.4); } }
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  _texCache[kind] = t; return t;
+}
+function textTexture(text, color) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+  const x = cv.getContext('2d');
+  x.font = '900 56px Trebuchet MS'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = '#20303f'; x.fillText(text || '·', 258, 68);
+  x.fillStyle = color || '#ffffff'; x.fillText(text || '·', 256, 64);
+  return new THREE.CanvasTexture(cv);
+}
+// kind-aware builder: water / sand / flag / text all LOOK like themselves in the editor
+function buildPartObject(spec) {
+  if (spec.kind === 'water') {
+    return new THREE.Mesh(geomFor('box', spec.size), new THREE.MeshLambertMaterial({ color: spec.color, transparent: true, opacity: 0.65 }));
+  }
+  if (spec.kind === 'sand') {
+    const m = new THREE.Mesh(geomFor('box', spec.size), new THREE.MeshLambertMaterial({ color: spec.color, map: texTile('sand') }));
+    return m;
+  }
+  if (spec.kind === 'flag') {
+    const g = new THREE.Group();
+    const h = spec.size[1];
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.14, h, 0.14), lam(spec.color2 || '#8a6844'));
+    const fabric = new THREE.Mesh(new THREE.BoxGeometry(1.5, Math.min(1, h * 0.3), 0.06), lam(spec.color));
+    fabric.position.set(0.8, h * 0.32, 0);
+    g.add(pole, fabric);
+    return g;
+  }
+  if (spec.kind === 'text') {
+    return new THREE.Mesh(new THREE.PlaneGeometry(spec.size[0], spec.size[1]),
+      new THREE.MeshBasicMaterial({ map: textTexture(spec.text, spec.color), transparent: true, side: THREE.DoubleSide }));
+  }
+  const mat = lam(spec.color);
+  if (spec.texture && spec.texture !== 'none') mat.map = texTile(spec.texture);
+  return new THREE.Mesh(geomFor(spec.shape, spec.size), mat);
 }
 function addMesh(spec) {
-  const mesh = new THREE.Mesh(geomFor(spec.shape, spec.size), lam(spec.color));
+  const mesh = buildPartObject(spec);
   mesh.castShadow = mesh.receiveShadow = true; mesh.userData.id = spec.id;
+  mesh.traverse((o) => { o.userData.id = spec.id; });
   scene.add(mesh);
   const rec = { spec, mesh };
   state.built.set(spec.id, rec);
@@ -106,7 +157,7 @@ function addMesh(spec) {
   return rec;
 }
 function rebuildAll() {
-  for (const rec of state.built.values()) { scene.remove(rec.mesh); rec.mesh.geometry.dispose(); }
+  for (const rec of state.built.values()) { scene.remove(rec.mesh); rec.mesh.traverse?.((o) => o.geometry?.dispose()); }
   state.built.clear();
   for (const spec of state.level.parts) addMesh(spec);
   spawnMarker.position.set(state.level.spawn.x, state.level.spawn.y - 2.2, state.level.spawn.z);
@@ -133,6 +184,10 @@ function refreshInspector() {
     ${numRow('Size (x y z)', s.size, 'size')}
     <div class="field"><label>Rotate Y (°)</label><input type="number" step="5" data-roty value="${Math.round(s.rotY * 180 / Math.PI)}"></div>
     <div class="field"><label>Colour</label><input type="color" data-color value="${s.color}"></div>
+    ${s.kind === 'flag' ? `<div class="field"><label>Handle colour</label><input type="color" data-color2 value="${s.color2 || '#8a6844'}"></div>` : ''}
+    ${s.kind === 'text' ? `<div class="field"><label>Text</label><input type="text" maxlength="80" data-text value="${(s.text || '').replace(/"/g, '&quot;')}"></div>` : ''}
+    ${s.kind === 'solid' ? `<div class="field"><label>Texture</label><select data-texture>${TEXTURES.map((t2) => `<option ${t2 === (s.texture || 'none') ? 'selected' : ''}>${t2}</option>`).join('')}</select></div>` : ''}
+    ${s.kind !== 'solid' ? `<div class="field"><label>Kind</label><b style="color:#7f8aa3">${s.kind}</b></div>` : ''}
     <label class="chk"><input type="checkbox" data-solid ${s.solid ? 'checked' : ''}> Solid (collision)</label>
     <h3>Triggers</h3><div id="beh-list"></div>
     <select id="beh-add"><option value="">+ add trigger…</option>${Object.entries(BEHAVIORS).map(([k, b]) => `<option value="${k}">${b.emoji} ${b.label}</option>`).join('')}</select>
@@ -142,7 +197,16 @@ function refreshInspector() {
   inspBody.querySelectorAll('[data-size]').forEach((el) => el.oninput = () => { s.size[+el.dataset.size] = Math.max(0.1, +el.value); applyMesh(rec); });
   inspBody.querySelector('[data-shape]').onchange = (e) => { s.shape = e.target.value; applyMesh(rec); };
   inspBody.querySelector('[data-roty]').oninput = (e) => { s.rotY = (+e.target.value) * Math.PI / 180; applyMesh(rec); };
-  inspBody.querySelector('[data-color]').oninput = (e) => { s.color = e.target.value; applyMesh(rec); };
+  const rebuildPart = () => {
+    scene.remove(rec.mesh); rec.mesh.traverse?.((o) => o.geometry?.dispose());
+    state.built.delete(s.id);
+    const nr = addMesh(s);
+    state.selected = s.id; applyMesh(nr);
+  };
+  inspBody.querySelector('[data-color]').oninput = (e) => { s.color = e.target.value; rebuildPart(); };
+  inspBody.querySelector('[data-color2]') && (inspBody.querySelector('[data-color2]').oninput = (e) => { s.color2 = e.target.value; rebuildPart(); });
+  inspBody.querySelector('[data-text]') && (inspBody.querySelector('[data-text]').oninput = (e) => { s.text = e.target.value; rebuildPart(); });
+  inspBody.querySelector('[data-texture]') && (inspBody.querySelector('[data-texture]').onchange = (e) => { s.texture = e.target.value; rebuildPart(); });
   inspBody.querySelector('[data-solid]').onchange = (e) => { s.solid = e.target.checked; };
   inspBody.querySelector('#beh-add').onchange = (e) => { if (e.target.value) { s.behaviors.push(behDefaults(e.target.value)); refreshInspector(); } };
   renderBehaviors(s);
@@ -176,7 +240,7 @@ PALETTE.forEach((p) => {
   b.innerHTML = `<span class="e">${p.emoji}</span><span class="l">${p.label}</span>`;
   b.onclick = () => {
     const t = camTarget();
-    const spec = newPart({ shape: p.shape, size: [...p.size], color: p.color, pos: [Math.round(t.x), p.size[1] / 2, Math.round(t.z)] });
+    const spec = newPart({ shape: p.shape, size: [...p.size], color: p.color, kind: p.kind || 'solid', color2: p.color2 || '#8a6844', text: p.text || '', solid: p.kind !== 'water' && p.kind !== 'text', pos: [Math.round(t.x), p.size[1] / 2, Math.round(t.z)] });
     state.level.parts.push(spec); addMesh(spec); select(spec.id); status('Added ' + p.label);
   };
   palList.appendChild(b);
@@ -190,7 +254,7 @@ $('#btn-spawn').onclick = () => {
 };
 function deleteSel() {
   const rec = state.built.get(state.selected); if (!rec) return;
-  scene.remove(rec.mesh); rec.mesh.geometry.dispose(); state.built.delete(rec.spec.id);
+  scene.remove(rec.mesh); rec.mesh.traverse?.((o) => o.geometry?.dispose()); rec.mesh.geometry?.dispose?.(); state.built.delete(rec.spec.id);
   state.level.parts = state.level.parts.filter((p) => p.id !== rec.spec.id);
   select(null); status('Deleted');
 }

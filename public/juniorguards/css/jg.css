@@ -1,0 +1,70 @@
+/* Junior Guards Simulator — beachy UI */
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; overflow: hidden; font-family: 'Trebuchet MS', 'Comic Sans MS', system-ui, sans-serif; }
+#c { position: fixed; inset: 0; display: block; }
+.hidden { display: none !important; }
+
+/* title */
+#title { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; pointer-events: none; }
+#title > * { pointer-events: auto; }
+#title-word { font-size: clamp(44px, 9vw, 96px); font-weight: 900; letter-spacing: .04em; color: #fff7e0;
+  text-shadow: 0 3px 0 #d9a13c, 0 8px 24px rgba(30,60,90,.45); transform: rotate(-2deg); }
+#title-sub { font-size: clamp(14px, 2.2vw, 22px); font-weight: 800; color: #ffffff; opacity: .92; letter-spacing: .3em; text-transform: uppercase; text-shadow: 0 2px 8px rgba(30,60,90,.5); }
+#title-name { background: rgba(255,255,255,.88); border: 3px solid #fff; border-radius: 999px; padding: 8px 22px; font-weight: 800; color: #2b6ba8; box-shadow: 0 6px 18px rgba(20,50,90,.25); }
+.cloudy { position: relative; border: none; cursor: pointer; background: #fff; color: #2b8dd9; font-weight: 900; font-size: 28px;
+  padding: 14px 54px; border-radius: 999px; box-shadow: 0 10px 24px rgba(20,50,90,.3), inset 0 -6px 0 rgba(120,160,210,.25); transition: transform .15s; }
+.cloudy:hover { transform: translateY(-2px) scale(1.04); }
+
+/* panels */
+#menu, #create, #rolepick, #packui, #stretchui { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 30, 50, .35); backdrop-filter: blur(3px); z-index: 20; }
+.panel { background: rgba(255,255,255,.96); border-radius: 20px; padding: 22px 24px; width: min(480px, 92vw); box-shadow: 0 24px 60px rgba(10,30,60,.35); display: flex; flex-direction: column; gap: 12px; }
+.panel.tall { max-height: 84vh; }
+.panel h2 { color: #205a86; font-size: 22px; }
+.panel input { border: 2px solid #bcd6ea; border-radius: 12px; padding: 10px 12px; font-size: 15px; font-weight: 700; color: #234; }
+.row { display: flex; align-items: center; }
+.gap { gap: 8px; }
+.panel button { border: none; border-radius: 12px; padding: 10px 16px; font-weight: 800; font-size: 14px; cursor: pointer; background: #e8f0f8; color: #2b6ba8; box-shadow: inset 0 -3px 0 rgba(90,140,190,.25); }
+.panel button:hover { filter: brightness(1.05); }
+.panel button.primary { background: #33a1e8; color: #fff; }
+.panel .mode { flex: 1; font-size: 16px; padding: 14px; }
+.panel .mode.on { background: #33a1e8; color: #fff; }
+.panel .mode.off { opacity: .55; cursor: not-allowed; }
+.rolebtn { flex: 1; font-size: 18px; padding: 22px 8px; }
+
+/* server list */
+#srv-list { display: flex; flex-direction: column; gap: 8px; max-height: 44vh; overflow-y: auto; }
+.srv { display: flex; align-items: center; gap: 10px; background: #f1f7fc; border-radius: 12px; padding: 10px 12px; }
+.srv b { color: #234; }
+.srv small { color: #7a92a8; font-weight: 700; }
+.srv .spacer { flex: 1; }
+.srv button { padding: 8px 14px; }
+.srv .started { color: #c07a2a; font-weight: 800; font-size: 12px; }
+#srv-list .empty { color: #7a92a8; font-weight: 700; text-align: center; padding: 18px 0; }
+
+/* pack + stretch lists */
+#pack-items, #stretch-list { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow-y: auto; }
+.item { display: flex; align-items: center; gap: 10px; background: #f6f2e8; border-radius: 12px; padding: 8px 12px; }
+.item b { color: #4a3d28; flex: 1; }
+.item button { padding: 7px 12px; font-size: 12.5px; }
+.stretchrow { display: flex; align-items: center; gap: 8px; background: #eef6ee; border-radius: 10px; padding: 7px 12px; cursor: pointer; }
+.stretchrow:hover { background: #def0de; }
+.stretchrow b { color: #2c5a34; flex: 1; font-size: 14px; }
+.stretchrow small { color: #6d8a72; font-weight: 800; }
+
+/* HUD */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#hud > * { pointer-events: auto; }
+#host-bar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+#host-bar button { border: none; border-radius: 999px; padding: 11px 20px; font-weight: 900; font-size: 15px; cursor: pointer; box-shadow: 0 6px 16px rgba(20,50,90,.3); background: #fff; color: #2b6ba8; }
+#host-bar .primary { background: #35b24a; color: #fff; }
+#weather-chip { position: absolute; top: 14px; right: 14px; background: rgba(255,255,255,.9); border-radius: 999px; padding: 9px 16px; font-weight: 800; color: #456; box-shadow: 0 4px 14px rgba(20,50,90,.2); }
+#wet-chip { position: absolute; top: 58px; right: 14px; background: rgba(120,180,235,.92); color: #fff; border-radius: 999px; padding: 7px 14px; font-weight: 900; }
+#stretch-chip { position: absolute; top: 16%; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.94); border-radius: 16px; padding: 12px 26px; font-weight: 900; font-size: 22px; color: #205a86; box-shadow: 0 8px 24px rgba(20,50,90,.3); }
+#actions { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+#actions button { width: 54px; height: 54px; border-radius: 50%; border: 3px solid #fff; background: rgba(255,255,255,.85); font-size: 24px; cursor: pointer; box-shadow: 0 6px 16px rgba(20,50,90,.3); }
+#ctx-actions { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+#ctx-actions button { border: none; border-radius: 999px; padding: 11px 18px; font-weight: 900; font-size: 14px; cursor: pointer; background: rgba(255,255,255,.92); color: #2b6ba8; box-shadow: 0 6px 16px rgba(20,50,90,.3); }
+#hints { position: absolute; bottom: 14px; left: 14px; color: rgba(255,255,255,.9); font-weight: 700; font-size: 12px; text-shadow: 0 1px 4px rgba(20,40,60,.6); }
+
+#toasts { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 40; pointer-events: none; }
+.toast { background: rgba(20, 40, 60, .88); color: #fff; font-weight: 800; font-size: 14px; padding: 10px 18px; border-radius: 999px; box-shadow: 0 6px 18px rgba(0,0,0,.3); }

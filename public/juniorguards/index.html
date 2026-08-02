@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Junior Guards Simulator 🏖️</title>
+<link rel="stylesheet" href="/juniorguards/css/jg.css">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- title screen (Feather-Friends style: floats over the live world) -->
+<div id="title">
+  <div id="title-word">JUNIOR&nbsp;GUARDS</div>
+  <div id="title-sub">Capitola&nbsp;·&nbsp;California&nbsp;·&nbsp;Simulator</div>
+  <div id="title-name"></div>
+  <button id="title-play" class="cloudy">Play</button>
+</div>
+
+<!-- server manager -->
+<div id="menu" class="hidden">
+  <div class="panel">
+    <h2>🏖️ Servers</h2>
+    <div id="srv-list"></div>
+    <div class="row gap">
+      <button id="srv-refresh">↻ Refresh</button>
+      <button id="srv-create" class="primary">＋ Create Server</button>
+      <button id="srv-offline">🌙 Play Offline</button>
+    </div>
+  </div>
+</div>
+
+<!-- create server -->
+<div id="create" class="hidden">
+  <div class="panel">
+    <h2>Create your server</h2>
+    <input id="cr-name" maxlength="40" placeholder="Server name">
+    <div class="row gap" id="cr-modes">
+      <button class="mode on" data-mode="rp">🎭 RP</button>
+      <button class="mode off" data-mode="normal" title="Coming soon">🏁 Normal (soon)</button>
+    </div>
+    <div class="row gap">
+      <button id="cr-back">Back</button>
+      <button id="cr-go" class="primary">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- RP role pick -->
+<div id="rolepick" class="hidden">
+  <div class="panel">
+    <h2>Choose your role</h2>
+    <div class="row gap">
+      <button id="role-instructor" class="rolebtn">🧑‍🏫 Instructor</button>
+      <button id="role-student" class="rolebtn">🧒 Student</button>
+    </div>
+  </div>
+</div>
+
+<!-- backpack contents -->
+<div id="packui" class="hidden">
+  <div class="panel">
+    <h2>🎒 Backpack</h2>
+    <div id="pack-items"></div>
+    <button id="pack-close">Close</button>
+  </div>
+</div>
+
+<!-- stretches -->
+<div id="stretchui" class="hidden">
+  <div class="panel tall">
+    <h2>🤸 Stretches</h2>
+    <div id="stretch-list"></div>
+    <button id="stretch-close">Close</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="host-bar" class="hidden">
+    <button id="host-start" class="primary">▶ Start Game</button>
+    <button id="host-invite">✉️ Invite friend</button>
+  </div>
+  <div id="weather-chip" class="hidden"></div>
+  <div id="wet-chip" class="hidden">💧 Wet</div>
+  <div id="stretch-chip" class="hidden"></div>
+  <div id="actions">
+    <button id="act-pack">🎒</button>
+    <button id="act-stretch">🤸</button>
+    <button id="act-leave">🚪</button>
+  </div>
+  <div id="ctx-actions"></div>
+  <div id="hints">WASD move · Shift run · Space jump · drag to look</div>
+</div>
+<div id="toasts"></div>
+
+<script type="module" src="/juniorguards/js/main.js"></script>
+</body>
+</html>

@@ -4,6 +4,13 @@
 // it; the runtime (and, later, individual games) consume it. Game-agnostic.
 
 export const SHAPES = ['box', 'ramp', 'cylinder', 'sphere'];
+// special part KINDS (Junior Guards additions — usable by any game that understands them):
+//   solid — a normal part · water — swimmable volume, makes you wet
+//   sand  — textured sand with a real heightmap, not a flat plane
+//   flag  — a premade flag: color = fabric, color2 = pole/handle
+//   text  — floating text panel showing `text`
+export const KINDS = ['solid', 'water', 'sand', 'flag', 'text'];
+export const TEXTURES = ['none', 'wood', 'stripes', 'brick', 'dots', 'sand'];
 
 // Behaviors split into:
 //   cont  — animate the part every frame (movers, spinners)
@@ -23,6 +30,10 @@ export const BEHAVIORS = {
   // timed speed boost (set mult:1 to sell a pure message/flex). Charges real
   // Bits when the level is played from the Playground; free in editor test-play.
   buy:        { label: 'Buy (spend Bits)', touch: true, emoji: '🔷', params: { price: 5, item: 'a speed boost', mult: 2, secs: 6, msg: 'Zoom! ⚡' } },
+  // ---- Junior Guards triggers ----
+  jgspawn:    { label: 'JG: Game spawn point', touch: false, emoji: '🏖️', params: {} },
+  jgsit:      { label: 'JG: Sit spot',         touch: true,  emoji: '🪑', params: {} },
+  jgshelter:  { label: 'JG: Rain shelter',     touch: false, emoji: '⛱️', params: {} },
 };
 
 export const PALETTE = [
@@ -31,6 +42,10 @@ export const PALETTE = [
   { shape: 'ramp', label: 'Ramp', emoji: '🛝', size: [6, 3, 4], color: '#f2c20c' },
   { shape: 'cylinder', label: 'Pillar', emoji: '🛢️', size: [2, 4, 2], color: '#2f7fd6' },
   { shape: 'sphere', label: 'Ball', emoji: '⚪', size: [3, 3, 3], color: '#e8478c' },
+  { shape: 'box', label: 'Water', emoji: '💧', size: [12, 2, 12], color: '#2e9ad6', kind: 'water' },
+  { shape: 'box', label: 'Sand', emoji: '🏖️', size: [16, 1, 16], color: '#e8d29a', kind: 'sand' },
+  { shape: 'box', label: 'Flag', emoji: '🚩', size: [0.4, 4, 0.4], color: '#e33d3d', color2: '#8a6844', kind: 'flag' },
+  { shape: 'box', label: 'Text', emoji: '🔤', size: [6, 1.6, 0.2], color: '#ffffff', kind: 'text', text: 'Hello beach!' },
 ];
 
 let _id = 0;
@@ -44,6 +59,10 @@ export function newPart(over = {}) {
     size: [6, 1, 6],
     rotY: 0,
     color: '#5bbf3a',
+    color2: '#8a6844',
+    kind: 'solid',
+    texture: 'none',
+    text: '',
     solid: true,
     behaviors: [],
     ...over,
@@ -74,6 +93,10 @@ function sanitizePart(p = {}) {
     size: [Math.max(0.1, clampNum(size[0], 6)), Math.max(0.1, clampNum(size[1], 1)), Math.max(0.1, clampNum(size[2], 6))],
     rotY: clampNum(p.rotY, 0),
     color: clampColor(p.color, '#5bbf3a'),
+    color2: clampColor(p.color2, '#8a6844'),
+    kind: KINDS.includes(p.kind) ? p.kind : 'solid',
+    texture: TEXTURES.includes(p.texture) ? p.texture : 'none',
+    text: (typeof p.text === 'string' ? p.text : '').slice(0, 80),
     solid: p.solid !== false,
     behaviors: Array.isArray(p.behaviors) ? p.behaviors.filter((b) => BEHAVIORS[b?.type]).slice(0, 12).map(sanitizeBehavior) : [],
   };

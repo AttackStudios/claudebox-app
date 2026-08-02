@@ -159,16 +159,24 @@ export function makeR6(profile = {}) {
       b.quaternion.copy(rest[part]).multiply(q);
     };
     function setAnim(name) { if (!POSES[name]) name = 'idle'; if (anim !== name) anim = name; }
+    let manual = null;   // {armL:{x,z},armR:{x,z},legL:{x},legR:{x},torso:{x},rootRx,rootY} — stretch poses
+    function setPose(p2) { manual = p2 || null; }
     function update(dt) {
       t += dt;
-      (POSES[anim] || POSES.idle)(t);
+      if (manual) {
+        for (const k of ['armL', 'armR', 'legL', 'legR', 'torso']) if (manual[k]) Object.assign(target[k], manual[k]);
+        inner.rotation.x += ((manual.rootRx || 0) - inner.rotation.x) * Math.min(1, dt * 10);
+      } else {
+        inner.rotation.x += (0 - inner.rotation.x) * Math.min(1, dt * 10);
+      }
+      if (!manual) (POSES[anim] || POSES.idle)(t);
       setPart('armL', target.armL.x, target.armL.z);
       setPart('armR', target.armR.x, -target.armR.z);
       setPart('legL', target.legL.x, 0);
       setPart('legR', target.legR.x, 0);
       setPart('torso', target.torso.x, 0);
       const bobA = anim === 'run' ? 0.05 : anim === 'walk' ? 0.032 : 0;
-      inner.position.y = -hqTpl.groundY * hqTpl.scale + Math.abs(Math.sin(t * (anim === 'run' ? 10.5 : 7))) * bobA - (anim === 'slide' ? 0.24 : 0);   // slides ride low
+      inner.position.y = -hqTpl.groundY * hqTpl.scale + Math.abs(Math.sin(t * (anim === 'run' ? 10.5 : 7))) * bobA - (anim === 'slide' ? 0.24 : 0) + (manual?.rootY || 0);   // slides ride low
     }
     function setColors(np) { tintByPart(inner, { ...p, ...np }); }
     function dispose() {
@@ -177,11 +185,13 @@ export function makeR6(profile = {}) {
         if (o.material && o.material.vertexColors) o.material.dispose?.();
       });
     }
-    return {
+    const api = {
       group,
       bones: { R_Wrist: ends.wristR || bones.armR, L_Wrist: ends.wristL || bones.armL, R_Elbow: bones.armR },
       setAnim, update, setColors, dispose, isR6: true, hq: true,
     };
+    api.setPose = setPose;
+    return api;
   }
 
   // ---------- fallback: original box build ----------
@@ -242,7 +252,17 @@ export function makeR6(profile = {}) {
       if (o.material) o.material.dispose?.();
     });
   }
-  return { group, bones: { R_Wrist, L_Wrist, R_Elbow }, setAnim, update, setColors, dispose, isR6: true, hq: false };
+  let boxManual = null;
+  const _upd = update;
+  function setPose(p2) { boxManual = p2 || null; }
+  function updateWrap(dt) {
+    _upd(dt);
+    if (boxManual) {
+      for (const k of ['armL', 'armR', 'legL', 'legR', 'torso']) if (boxManual[k]) Object.assign(target[k], boxManual[k]);
+      group.rotation.x += ((boxManual.rootRx || 0) - group.rotation.x) * Math.min(1, dt * 10);
+    } else group.rotation.x += (0 - group.rotation.x) * Math.min(1, dt * 10);
+  }
+  return { group, bones: { R_Wrist, L_Wrist, R_Elbow }, setAnim, update: updateWrap, setPose, setColors, dispose, isR6: true, hq: false };
 }
 
 // ---- the shared pose set (original, classic-blocky style):
