@@ -27,7 +27,7 @@ import { handleMessage as obHandle, onDisconnect as obDisconnect, makeBroadcaste
 import { applyCourse as obApplyCourse } from '../shared/obby/course.js';
 import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
 import { state as jgState, genId as jgGenId } from './juniorguards/state.js';
-import { handleMessage as jgHandle, onDisconnect as jgDisconnect, tick as jgTick, setBeachWorld as jgSetBeach } from './juniorguards/protocol.js';
+import { handleMessage as jgHandle, onDisconnect as jgDisconnect, tick as jgTick, setBeachWorld as jgSetBeach, setWorld as jgSetWorld } from './juniorguards/protocol.js';
 import { toObbyCourse, toWibitWorld, toJuniorGuardsWorld } from '../shared/studio/adapters.js';
 import { state as wbState, genId as wbGenId, publicPlayer as wbPublicPlayer, clock as wbClock } from './wibit/state.js';
 import { handleMessage as wbHandle, onDisconnect as wbDisconnect, makeBroadcaster as wbBroadcaster, tickRound as wbTickRound, getRoundInfo as wbRoundInfo } from './wibit/protocol.js';
@@ -507,6 +507,8 @@ setInterval(() => {
 {
   const w = toJuniorGuardsWorld(loadStudioLevel('juniorguards'));
   if (w) { jgSetBeach(w); console.log('[jg] loaded custom Studio beach (' + w.solids.length + ' parts)'); }
+  const lw = toJuniorGuardsWorld(loadStudioLevel('juniorguards-lobby'));
+  if (lw) { jgSetWorld('lobby', lw); console.log('[jg] loaded custom Studio lobby'); }
 }
 jgWss.on('connection', (ws) => {
   const p = { id: jgGenId('p'), ws, joined: false, name: '', nameLower: '', avatar: null, room: null };

@@ -43,5 +43,6 @@ export function publicPlayer(p) {
     id: p.id, name: p.name, avatar: p.avatar, role: p.role,
     x: p.x, y: p.y, z: p.z, ry: p.ry, anim: p.anim,
     wet: p.wet, equip: p.equip, stretch: p.stretch, sitting: p.sitting,
+    pack: p.pack ? p.pack.carried !== false : true,
   };
 }

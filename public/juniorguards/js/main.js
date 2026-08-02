@@ -172,11 +172,11 @@ function buildDefaultBeach() {
   const f2 = makeFlag('#35b24a'); f2.position.set(18, groundFn(18, 6), 6); beachG.add(f2);
   beachSpawn = { x: 0, y: groundFn(0, -14) + 1.5, z: -14 };
 }
-function buildStudioBeach(w) {
-  for (const o of w.solids) { beachG.add(box(o.w, o.h, o.d, o.color, o.x, o.y, o.z, o.rotY)); }
+function buildStudioWorld(w, G) {
+  for (const o of w.solids) { G.add(box(o.w, o.h, o.d, o.color, o.x, o.y, o.z, o.rotY)); }
   for (const o of w.waters) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, o.d), new THREE.MeshLambertMaterial({ color: o.color, transparent: true, opacity: 0.8 }));
-    m.position.set(o.x, o.y, o.z); beachG.add(m);
+    m.position.set(o.x, o.y, o.z); G.add(m);
   }
   waters = w.waters.map((o) => ({ x: o.x, y: o.y + o.h / 2, z: o.z, w: o.w, h: o.h, d: o.d }));
   for (const o of w.sands) {
@@ -185,17 +185,14 @@ function buildStudioBeach(w) {
     for (let i = 0; i < pos.count; i++) pos.setY(i, Math.sin(pos.getX(i) * 0.4) * 0.25 + Math.cos(pos.getZ(i) * 0.5) * 0.2);
     geo.computeVertexNormals();
     const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: sandTexture(), color: o.color }));
-    m.position.set(o.x, o.y + o.h / 2, o.z); beachG.add(m);
+    m.position.set(o.x, o.y + o.h / 2, o.z); G.add(m);
   }
-  for (const o of w.flags) { const f = makeFlag(o.color, o.color2, Math.max(2, o.h)); f.position.set(o.x, o.y - o.h / 2, o.z); beachG.add(f); }
-  for (const o of w.texts) { const t = textPanel(o.text || '·', o.color); t.position.set(o.x, o.y, o.z); t.rotation.y = o.rotY; beachG.add(t); }
+  for (const o of w.flags) { const f = makeFlag(o.color, o.color2, Math.max(2, o.h)); f.position.set(o.x, o.y - o.h / 2, o.z); G.add(f); }
+  for (const o of w.texts) { const t = textPanel(o.text || '·', o.color); t.position.set(o.x, o.y, o.z); t.rotation.y = o.rotY; G.add(t); }
   shelters = w.shelters.concat(w.solids.filter((s) => s.h > 0.5 && s.y > 2.5));
-  beachSpawn = { ...w.spawn };
-  const flat = w.sands[0];
-  groundFn = (x, z) => (flat ? flat.y + flat.h / 2 : 0);
-  if (w.sky) scene.background = new THREE.Color(w.sky);
+  return { spawn: { ...w.spawn }, sands: w.sands };
 }
-let studioBeach = null;
+let studioBeach = null, studioLobby = null, lobbySpawn = null;
 
 // ============================ players ============================
 const others = new Map();
@@ -292,8 +289,23 @@ function stopStretch() {
 
 // ============================ weather ============================
 const weather = { phase: 'lobby', rain: null };
+// beach clock: 1 in-game minute passes every 20 real seconds
+const SECS_PER_GAME_MIN = 20;
+let clockBase = 7.5 * 60, clockStart = performance.now() / 1000;
+function setClockForPhase(phase) {
+  clockBase = phase === 'fog' ? 8 * 60 : phase === 'rain' ? 9.5 * 60 : phase === 'sun' ? 11 * 60 : 7.5 * 60;
+  clockStart = performance.now() / 1000;
+}
+function clockText(now) {
+  const mins = Math.floor(clockBase + (now - clockStart) / SECS_PER_GAME_MIN);
+  const h24 = Math.floor(mins / 60) % 24, m = mins % 60;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = ((h24 + 11) % 12) + 1;
+  return `🕐 ${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
 function applyWeather(phase) {
   weather.phase = phase;
+  setClockForPhase(phase);
   const chip = $('#weather-chip');
   chip.classList.remove('hidden');
   if (phase === 'fog') {
@@ -386,10 +398,25 @@ function enterWorld(zone) {
   lobbyG.visible = zone === 'lobby';
   beachG.visible = zone === 'beach';
   if (zone === 'beach') {
-    if (!beachG.children.length) (studioBeach ? buildStudioBeach(studioBeach) : buildDefaultBeach());
+    if (!beachG.userData.built) {
+      beachG.userData.built = true;
+      if (studioBeach) {
+        const r = buildStudioWorld(studioBeach, beachG);
+        beachSpawn = r.spawn;
+        const flat = r.sands[0];
+        groundFn = (x, z) => (flat ? flat.y + flat.h / 2 : 0);
+        if (studioBeach.sky) scene.background = new THREE.Color(studioBeach.sky);
+      } else buildDefaultBeach();
+    }
     me.pos = { ...beachSpawn };
   } else {
-    me.pos = { x: (Math.random() - 0.5) * 8, y: 1, z: (Math.random() - 0.5) * 6 };
+    if (studioLobby && !lobbyG.userData.built) {
+      lobbyG.userData.built = true;
+      lobbyG.clear();
+      const r = buildStudioWorld(studioLobby, lobbyG);
+      lobbySpawn = r.spawn;
+    }
+    me.pos = lobbySpawn ? { ...lobbySpawn } : { x: (Math.random() - 0.5) * 8, y: 1, z: (Math.random() - 0.5) * 6 };
     applyWeather('lobby');
   }
   me.vel = { x: 0, y: 0, z: 0 };
@@ -497,7 +524,7 @@ function updateCtx() {
 setInterval(updateCtx, 500);
 
 // ============================ net handlers ============================
-net.on('welcome', (m) => { net.id = m.id; renderServers(m.servers); if (m.beach) studioBeach = m.beach; });
+net.on('welcome', (m) => { net.id = m.id; renderServers(m.servers); if (m.beach) studioBeach = m.beach; if (m.lobby) studioLobby = m.lobby; });
 net.on('servers', (m) => renderServers(m.servers));
 net.on('jg.err', (m) => toast('⚠️ ' + m.err));
 net.on('jg.info', (m) => toast(m.info));
@@ -533,8 +560,8 @@ net.on('player.leave', (m) => {
 net.on('player.role', () => {});
 net.on('player.stretch', (m) => { const o = others.get(m.id); if (o) o.data.stretch = m.stretch ? { id: m.stretch.id, at: performance.now() / 1000 } : null; });
 net.on('player.equip', (m) => { const o = others.get(m.id); if (o) { o.data.equip = m.equip; setEquipLook(o.rec, m.equip); } });
-net.on('pack.dropped', (m) => addPackMesh(m.pack));
-net.on('pack.gone', (m) => { const r = packMeshes.get(m.id); if (r) { scene.remove(r.m); packMeshes.delete(m.id); } if (m.id) { me.pack.carried = [...packMeshes.values()].every((x) => x.pk.owner !== net.id); } });
+net.on('pack.dropped', (m) => { addPackMesh(m.pack); if (m.pack.owner === net.id) { me.pack.carried = false; toast('🎒 Backpack set down'); } });
+net.on('pack.gone', (m) => { const r = packMeshes.get(m.id); if (r) { if (r.pk.owner === net.id) { me.pack.carried = true; toast('🎒 Backpack picked up'); } scene.remove(r.m); packMeshes.delete(m.id); } });
 net.on('pack.update', (m) => { const r = packMeshes.get(m.id); if (r) { r.pk.items = m.items; if (!$('#packui').classList.contains('hidden')) renderPack(r.pk); } });
 net.on('towel.placed', (m) => addTowelMesh(m.towel));
 net.on('towel.gone', (m) => { const r = towelMeshes.get(m.id); if (r) { scene.remove(r.m); towelMeshes.delete(m.id); } });
@@ -546,6 +573,7 @@ net.on('snap', (m) => {
     if (!o) { addOther(q); continue; }
     o.data.tx = q.x; o.data.ty = q.y; o.data.tz = q.z; o.data.try = q.ry;
     o.data.anim = q.anim; o.data.wet = q.wet;
+    o.rec.pack.visible = q.pack !== false;
     if (JSON.stringify(o.data.equip) !== JSON.stringify(q.equip)) { o.data.equip = q.equip; setEquipLook(o.rec, q.equip); }
   }
 });
@@ -555,6 +583,7 @@ function addOther(q) {
   const rec = makeGuard(q.avatar);
   const data = { tx: q.x, ty: q.y, tz: q.z, try: q.ry, anim: q.anim || 'idle', wet: q.wet, equip: q.equip || {}, stretch: q.stretch ? { id: q.stretch.id, at: performance.now() / 1000 } : null };
   rec.ctrl.group.position.set(q.x, q.y, q.z);
+  rec.pack.visible = q.pack !== false;
   setEquipLook(rec, data.equip);
   others.set(q.id, { rec, data });
 }
@@ -574,7 +603,7 @@ addEventListener('mousemove', (e) => {
   camYaw -= e.movementX * 0.006;
   camPitch = Math.max(0.08, Math.min(1.25, camPitch + e.movementY * 0.005));
 });
-addEventListener('wheel', (e) => { camDist = Math.max(4, Math.min(18, camDist + e.deltaY * 0.01)); }, { passive: true });
+addEventListener('wheel', (e) => { camDist = Math.max(1.0, Math.min(18, camDist + e.deltaY * 0.01)); }, { passive: true });   // zoom all the way in = first person
 
 function inWater() {
   for (const w of waters) {
@@ -592,7 +621,7 @@ function stepMe(dt, now) {
   if (keys.has('KeyA')) mx -= 1; if (keys.has('KeyD')) mx += 1;
   const len = Math.hypot(mx, mz) || 1;
   const sin = Math.sin(camYaw), cos = Math.cos(camYaw);
-  const wx = (mx * cos - mz * sin) / len, wz = (mx * sin + mz * cos) / len;
+  const wx = (mx * cos + mz * sin) / len, wz = (mz * cos - mx * sin) / len;   // W = away from camera
   if (mx || mz) {
     me.vel.x = wx * sp; me.vel.z = wz * sp;
     me.ry = Math.atan2(wx, wz);
@@ -701,12 +730,22 @@ function frame() {
   const wave = Math.sin(now * 2.2) * 0.18;
   for (const grp of [lobbyG, beachG]) grp.traverse((o) => { if (o.parent?.userData?.fabric === o) o.rotation.y = wave; });
 
-  // camera
-  const cx = me.pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist;
-  const cz = me.pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist;
-  const cy = me.pos.y + 1.4 + Math.sin(camPitch) * camDist;
-  camera.position.set(cx, cy, cz);
-  camera.lookAt(me.pos.x, me.pos.y + 1.2, me.pos.z);
+  // camera — zooming all the way in enters first person
+  const fp = camDist < 2;
+  myCtrl.ctrl.group.visible = !fp;
+  if (fp) {
+    camera.position.set(me.pos.x, me.pos.y + 1.55, me.pos.z);
+    camera.lookAt(
+      me.pos.x - Math.sin(camYaw),
+      me.pos.y + 1.55 - (camPitch - 0.35) * 1.3,
+      me.pos.z - Math.cos(camYaw));
+  } else {
+    const cx = me.pos.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist;
+    const cz = me.pos.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+    const cy = me.pos.y + 1.4 + Math.sin(camPitch) * camDist;
+    camera.position.set(cx, cy, cz);
+    camera.lookAt(me.pos.x, me.pos.y + 1.2, me.pos.z);
+  }
 
   // network
   if (me.room && now - sendAt > 1 / 12) {
@@ -714,7 +753,10 @@ function frame() {
     net.send({ t: 'move', x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2), ry: +me.ry.toFixed(2), anim: me.swimming ? 'fall' : sp2 > 7 ? 'run' : sp2 > 0.4 ? 'walk' : 'idle', wet: me.wet, sitting: me.sitting });
   }
 
+  const ck = $('#clock'); if (ck) ck.textContent = clockText(now);
+
   renderer.render(scene, camera);
 }
+window.__me = me; window.__cam = () => ({ yaw: camYaw });   // debug handles
 net.connect();
 frame();

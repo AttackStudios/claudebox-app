@@ -3,9 +3,11 @@ import { state, genId, makeRoom, roomPlayers, publicRoom, publicPlayer } from '.
 import { rollBackpack, rollWeatherPlan, STRETCH_BY_ID } from '../../shared/juniorguards/config.js';
 import { areFriends } from '../hub.js';
 
-// the beach world, designed in ClaudeBox Studio (slug 'juniorguards'); null = client builds the built-in Capitola beach
-let beachWorld = null;
-export function setBeachWorld(w) { beachWorld = w; }
+// worlds designed in ClaudeBox Studio — slug 'juniorguards' = the beach,
+// sub-slot 'juniorguards-lobby' = the lobby. null = client builds the built-in map.
+const worlds = { beach: null, lobby: null };
+export function setWorld(which, w) { worlds[which] = w; }
+export function setBeachWorld(w) { worlds.beach = w; }
 
 const send = (p, msg) => { try { if (p.ws.readyState === 1) p.ws.send(JSON.stringify(msg)); } catch {} };
 const roomSend = (room, msg, except) => { for (const p of roomPlayers(room)) if (p !== except) send(p, msg); };
@@ -54,7 +56,7 @@ export function handleMessage(p, msg, ctx) {
       p.name = String(msg.name || 'Guard').slice(0, 24);
       p.nameLower = p.name.toLowerCase();
       p.avatar = msg.avatar || null;
-      send(p, { t: 'welcome', id: p.id, servers: browserRooms(), beach: beachWorld });
+      send(p, { t: 'welcome', id: p.id, servers: browserRooms(), beach: worlds.beach, lobby: worlds.lobby });
       break;
     }
     case 'servers.list':

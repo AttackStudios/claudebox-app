@@ -10,7 +10,7 @@ import express from 'express';
 import { state, save as saveGame } from './state.js';
 import { applyCourse as obApplyCourse } from '../shared/obby/course.js';
 import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
-import { toObbyCourse, toWibitWorld } from '../shared/studio/adapters.js';
+import { toObbyCourse, toWibitWorld, toJuniorGuardsWorld } from '../shared/studio/adapters.js';
 import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID } from '../shared/rewards.js';
 import { SKIN_BY_ID, CASE_PRICE, rollCase } from '../shared/rivals/skins.js';
 
@@ -621,6 +621,11 @@ export function hubRouter() {
       // (null/empty reverts that game to its built-in level)
       if (slug === 'obby') { try { obApplyCourse(toObbyCourse(level)); } catch {} }
       if (slug === 'wibit') { try { wbApplyWorld(toWibitWorld(level)); } catch {} }
+      if (slug === 'juniorguards' || slug === 'juniorguards-lobby') {
+        try {
+          import('./juniorguards/protocol.js').then((m) => m.setWorld(slug === 'juniorguards' ? 'beach' : 'lobby', toJuniorGuardsWorld(level)));
+        } catch {}
+      }
       res.json({ ok: true, slug });
     } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
   });
