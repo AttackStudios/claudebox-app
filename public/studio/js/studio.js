@@ -295,7 +295,8 @@ function pickPart(e) {
 canvas.addEventListener('pointerdown', (e) => {
   if (state.mode !== 'edit') return;
   last = { x: e.clientX, y: e.clientY };
-  if (e.button === 2 || e.button === 1) { dragging = 'orbit'; return; }
+  if (e.button === 1) { e.preventDefault(); dragging = 'pan'; return; }   // middle mouse = pan
+  if (e.button === 2) { dragging = 'orbit'; return; }
   const id = pickPart(e);
   if (id) { select(id); dragging = 'move'; } else { select(null); dragging = 'orbit'; }
 });
@@ -304,6 +305,13 @@ addEventListener('pointermove', (e) => {
   if (dragging === 'orbit') {
     orbit.yaw -= (e.clientX - last.x) * 0.006; orbit.pitch += (e.clientY - last.y) * 0.006;
     orbit.pitch = Math.max(0.05, Math.min(1.45, orbit.pitch));
+  } else if (dragging === 'pan') {
+    const k = orbit.dist * 0.0016;
+    const sin = Math.sin(orbit.yaw), cos = Math.cos(orbit.yaw);
+    const dx = -(e.clientX - last.x) * k, dy = (e.clientY - last.y) * k;
+    orbit.target.x += dx * cos + dy * sin * Math.sin(orbit.pitch);
+    orbit.target.z += -dx * sin + dy * cos * Math.sin(orbit.pitch);
+    orbit.target.y = Math.max(0, orbit.target.y + dy * Math.cos(orbit.pitch));
   } else if (dragging === 'move') {
     const rec = state.built.get(state.selected); if (!rec) return;
     ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
@@ -490,6 +498,35 @@ function ptoast(t) { const d = document.createElement('div'); d.className = 'pto
 
 addEventListener('keydown', (e) => { if (state.mode === 'play') play.keys.add(e.code); });
 addEventListener('keyup', (e) => play.keys.delete(e.code));
+// edit-mode FREECAM: WASD flies the view, Q/E moves down/up (speed scales with zoom)
+const editKeys = new Set();
+addEventListener('keydown', (e) => {
+  if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (state.mode === 'edit') editKeys.add(e.code);
+});
+addEventListener('keyup', (e) => editKeys.delete(e.code));
+addEventListener('blur', () => editKeys.clear());
+let lastCamT = performance.now() / 1000;
+function tickFreecam() {
+  const now = performance.now() / 1000;
+  const dt = Math.min(0.05, now - lastCamT); lastCamT = now;
+  if (state.mode !== 'edit') return;
+  const sp = Math.max(8, orbit.dist * 0.55) * (editKeys.has('ShiftLeft') || editKeys.has('ShiftRight') ? 2.5 : 1);
+  let mx = 0, mz = 0, myy = 0;
+  if (editKeys.has('KeyW')) mz -= 1;
+  if (editKeys.has('KeyS')) mz += 1;
+  if (editKeys.has('KeyA')) mx -= 1;
+  if (editKeys.has('KeyD')) mx += 1;
+  if (!state.selected) {   // Q/E raise-lower the SELECTED part — freecam only gets them when nothing is selected
+    if (editKeys.has('KeyQ')) myy -= 1;
+    if (editKeys.has('KeyE')) myy += 1;
+  }
+  if (!mx && !mz && !myy) return;
+  const sin = Math.sin(orbit.yaw), cos = Math.cos(orbit.yaw);
+  orbit.target.x += (mx * cos + mz * sin) * sp * dt;
+  orbit.target.z += (mz * cos - mx * sin) * sp * dt;
+  orbit.target.y = Math.max(0, orbit.target.y + myy * sp * 0.7 * dt);
+}
 
 function supportUnder(px, pz, fromY) {
   let best = -Infinity, hit = null;
@@ -650,6 +687,7 @@ function frame(now) {
   if (state.mode === 'play') stepPlay(dt, t);
   // first-person zoom: fade MY avatar as the camera closes in (no nametag to hide — the play avatar has none)
   if (state.mode === 'play' && play.avatar) fpFade(play.avatar.group, orbit.dist);
+  tickFreecam();
   sun.position.set(orbit.target.x + 60, 120, orbit.target.z + 40); sun.target.position.copy(orbit.target);
   updateCamera();
   renderer.render(scene, camera);
