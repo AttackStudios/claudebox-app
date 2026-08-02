@@ -200,10 +200,9 @@ function refreshInspector() {
   inspBody.querySelector('[data-shape]').onchange = (e) => { s.shape = e.target.value; applyMesh(rec); };
   inspBody.querySelector('[data-roty]').oninput = (e) => { s.rotY = (+e.target.value) * Math.PI / 180; applyMesh(rec); };
   const rebuildPart = () => {
-    scene.remove(rec.mesh); rec.mesh.traverse?.((o) => o.geometry?.dispose());
-    state.built.delete(s.id);
-    const nr = addMesh(s);
-    state.selected = s.id; applyMesh(nr);
+    const cur = state.built.get(s.id);   // ALWAYS the live record — color drags fire many times
+    if (cur) { scene.remove(cur.mesh); cur.mesh.traverse?.((o) => o.geometry?.dispose()); state.built.delete(s.id); }
+    addMesh(s);
   };
   inspBody.querySelector('[data-color]').oninput = (e) => { s.color = e.target.value; rebuildPart(); };
   inspBody.querySelector('[data-color2]') && (inspBody.querySelector('[data-color2]').oninput = (e) => { s.color2 = e.target.value; rebuildPart(); });
