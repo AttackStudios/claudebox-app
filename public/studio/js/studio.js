@@ -89,9 +89,11 @@ if (params.get('play')) {
 
 function applyMesh(rec) {
   const s = rec.spec;
-  rec.mesh.geometry.dispose();
-  rec.mesh.geometry = geomFor(s.shape, s.size);
-  rec.mesh.material.color.set(s.color);
+  if (rec.mesh.isMesh && s.kind !== 'text') {   // groups (flags) + text panels keep their built shape
+    rec.mesh.geometry.dispose();
+    rec.mesh.geometry = geomFor(s.shape, s.size);
+    rec.mesh.material.color?.set(s.color);
+  }
   rec.mesh.position.set(s.pos[0], s.pos[1], s.pos[2]);
   rec.mesh.rotation.y = s.rotY;
   const em = rec === state.built.get(state.selected) ? '#2a4a6a' : '#000000';
@@ -285,8 +287,10 @@ const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function pickPart(e) {
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hit = ray.intersectObjects([...state.built.values()].map((r) => r.mesh), false)[0];
-  return hit ? hit.object.userData.id : null;
+  const hit = ray.intersectObjects([...state.built.values()].map((r) => r.mesh), true)[0];   // recursive: flags/groups are draggable too
+  let o = hit?.object;
+  while (o && !o.userData.id) o = o.parent;
+  return o?.userData.id || null;
 }
 canvas.addEventListener('pointerdown', (e) => {
   if (state.mode !== 'edit') return;
