@@ -95,7 +95,7 @@ function applyMesh(rec) {
     rec.mesh.material.color?.set(s.color);
   }
   rec.mesh.position.set(s.pos[0], s.pos[1], s.pos[2]);
-  rec.mesh.rotation.y = s.rotY;
+  rec.mesh.rotation.set(s.rotX || 0, s.rotY || 0, s.rotZ || 0);
   const em = rec.spec.id === state.selected ? '#2f5a80' : (state.sel?.has(rec.spec.id) ? '#24425e' : '#000000');
   rec.mesh.traverse((o) => o.material?.emissive?.set(em));
   if (rec.mesh.material?.emissive) rec.mesh.material.emissive.set(em);
@@ -243,7 +243,10 @@ function refreshInspector() {
     <div class="field"><label>Shape</label><select data-shape>${SHAPES.map((sh) => `<option ${sh === s.shape ? 'selected' : ''}>${sh}</option>`).join('')}</select></div>
     ${numRow('Position (x y z)', s.pos, 'pos')}
     ${numRow('Size (x y z)', s.size, 'size')}
-    <div class="field"><label>Rotate Y (°)</label><input type="number" step="5" data-roty value="${Math.round(s.rotY * 180 / Math.PI)}"></div>
+    <div class="field"><label>Rotate (° x y z)</label><div class="row3">
+      <input type="number" step="15" data-rot="0" value="${Math.round((s.rotX || 0) * 180 / Math.PI)}">
+      <input type="number" step="15" data-rot="1" value="${Math.round((s.rotY || 0) * 180 / Math.PI)}">
+      <input type="number" step="15" data-rot="2" value="${Math.round((s.rotZ || 0) * 180 / Math.PI)}"></div></div>
     <div class="field"><label>Colour</label><input type="color" data-color value="${s.color}"></div>
     ${s.kind === 'flag' ? `<div class="field"><label>Handle colour</label><input type="color" data-color2 value="${s.color2 || '#8a6844'}"></div>` : ''}
     ${s.kind === 'fence' ? `<div class="field"><label>Wire colour</label><input type="color" data-color2 value="${s.color2 || '#8a5a2a'}"></div>` : ''}
@@ -258,7 +261,11 @@ function refreshInspector() {
   inspBody.querySelectorAll('[data-pos]').forEach((el) => el.oninput = () => { snapshot(true); s.pos[+el.dataset.pos] = +el.value; applyMesh(rec); syncSpawnIfNeeded(); });
   inspBody.querySelectorAll('[data-size]').forEach((el) => el.oninput = () => { snapshot(true); s.size[+el.dataset.size] = Math.max(0.1, +el.value); applyMesh(rec); });
   inspBody.querySelector('[data-shape]').onchange = (e) => { snapshot(true); s.shape = e.target.value; applyMesh(rec); };
-  inspBody.querySelector('[data-roty]').oninput = (e) => { snapshot(true); s.rotY = (+e.target.value) * Math.PI / 180; applyMesh(rec); };
+  inspBody.querySelectorAll('[data-rot]').forEach((el) => el.oninput = () => {
+    snapshot(true);
+    s[['rotX', 'rotY', 'rotZ'][+el.dataset.rot]] = (+el.value || 0) * Math.PI / 180;
+    applyMesh(rec);
+  });
   const rebuildPart = () => {
     snapshot(true);
     const cur = state.built.get(s.id);   // ALWAYS the live record — color drags fire many times
@@ -385,6 +392,34 @@ addEventListener('beforeunload', (e) => {
   return '';
 });
 
+// rotate every selected part around the selection's centre — a grouped object
+// turns as one piece instead of each part spinning where it stands
+function rotateSel(axis, deg) {
+  const specs = selSpecs();
+  if (!specs.length) return status('Select something to rotate');
+  snapshot(true);
+  const rad = deg * Math.PI / 180;
+  const key = ['rotX', 'rotY', 'rotZ'][axis];
+  const n = specs.length;
+  const cx = specs.reduce((a, p) => a + p.pos[0], 0) / n;
+  const cy = specs.reduce((a, p) => a + p.pos[1], 0) / n;
+  const cz = specs.reduce((a, p) => a + p.pos[2], 0) / n;
+  const c = Math.cos(rad), sn = Math.sin(rad);
+  for (const sp of specs) {
+    sp[key] = (sp[key] || 0) + rad;
+    if (n > 1) {                                   // orbit around the centre too
+      const dx = sp.pos[0] - cx, dy = sp.pos[1] - cy, dz = sp.pos[2] - cz;
+      if (axis === 1) { sp.pos[0] = cx + dx * c + dz * sn; sp.pos[2] = cz - dx * sn + dz * c; }
+      else if (axis === 0) { sp.pos[1] = cy + dy * c - dz * sn; sp.pos[2] = cz + dy * sn + dz * c; }
+      else { sp.pos[0] = cx + dx * c - dy * sn; sp.pos[1] = cy + dx * sn + dy * c; }
+    }
+    const r = state.built.get(sp.id); if (r) applyMesh(r);
+  }
+  refreshInspector();
+  status(`Rotated ${n > 1 ? n + ' parts ' : ''}${['X', 'Y', 'Z'][axis]} ${deg > 0 ? '+' : ''}${Math.round(deg)}°`);
+}
+const rotStep = () => (document.getElementById('snap')?.checked ? 15 : 5);
+
 let _gid = 0;
 function groupSel() {
   const specs = selSpecs();
@@ -459,8 +494,8 @@ function updateCamera() {
 
 // ---------- editor pointer (select / move / orbit) ----------
 const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
-let dragging = null;  // 'orbit' | 'move' | 'pan'
-let moveStart = null;
+let dragging = null;  // 'orbit' | 'move' | 'pan' | 'rot'
+let moveStart = null, rotateKey = false, rotAxis = 1;
 let last = { x: 0, y: 0 };
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function pickPart(e) {
@@ -474,6 +509,10 @@ function pickPart(e) {
 canvas.addEventListener('pointerdown', (e) => {
   if (state.mode !== 'edit') return;
   last = { x: e.clientX, y: e.clientY };
+  if (rotateKey && state.sel.size) {   // hold R and drag to spin the selection
+    dragging = 'rot'; rotAxis = e.shiftKey ? 0 : e.altKey ? 2 : 1;
+    e.preventDefault(); return;
+  }
   if (e.button === 1) { e.preventDefault(); dragging = 'pan'; return; }   // middle mouse = pan
   if (e.button === 2) { dragging = 'orbit'; return; }
   const id = pickPart(e);
@@ -491,6 +530,11 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 addEventListener('pointermove', (e) => {
   if (!dragging || state.mode !== 'edit') return;
+  if (dragging === 'rot') {
+    const d = e.clientX - last.x;
+    if (Math.abs(d) >= 4) { rotateSel(rotAxis, d > 0 ? rotStep() : -rotStep()); last = { x: e.clientX, y: e.clientY }; }
+    return;
+  }
   if (dragging === 'orbit') {
     orbit.yaw -= (e.clientX - last.x) * 0.006; orbit.pitch += (e.clientY - last.y) * 0.006;
     orbit.pitch = Math.max(0.05, Math.min(1.45, orbit.pitch));
@@ -568,8 +612,11 @@ addEventListener('keydown', (e) => {
   if (rec) {
     if (e.code === 'KeyQ') { snapshot(true); rec.spec.pos[1] -= 0.5; applyMesh(rec); refreshInspector(); }
     if (e.code === 'KeyE') { snapshot(true); rec.spec.pos[1] += 0.5; applyMesh(rec); refreshInspector(); }
-    if (e.code === 'BracketLeft') { snapshot(true); rec.spec.rotY -= Math.PI / 12; applyMesh(rec); refreshInspector(); }
-    if (e.code === 'BracketRight') { snapshot(true); rec.spec.rotY += Math.PI / 12; applyMesh(rec); refreshInspector(); }
+    if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      const dir = e.code === 'BracketRight' ? 1 : -1;
+      const axis = e.shiftKey ? 0 : e.altKey ? 2 : 1;             // Shift = X · Alt = Z · default Y
+      rotateSel(axis, dir * ((e.ctrlKey || e.metaKey) ? 90 : rotStep()));
+    }
   }
 });
 
@@ -718,9 +765,9 @@ addEventListener('keyup', (e) => play.keys.delete(e.code));
 const editKeys = new Set();
 addEventListener('keydown', (e) => {
   if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
-  if (state.mode === 'edit') editKeys.add(e.code);
+  if (state.mode === 'edit') { editKeys.add(e.code); if (e.code === 'KeyR') rotateKey = true; }
 });
-addEventListener('keyup', (e) => editKeys.delete(e.code));
+addEventListener('keyup', (e) => { editKeys.delete(e.code); if (e.code === 'KeyR') rotateKey = false; });
 addEventListener('blur', () => editKeys.clear());
 let lastCamT = performance.now() / 1000;
 function tickFreecam() {
