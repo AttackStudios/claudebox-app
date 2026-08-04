@@ -1694,9 +1694,19 @@ const CLASS_LABEL = { primary: 'Primary', secondary: 'Secondary', melee: 'Melee'
 function weaponsOfClass(cls) {
   return Object.entries(WEAPONS).filter(([, w]) => w.class === cls).map(([id, w]) => ({ id, w }));
 }
+function syncUtilCounts() {
+  // keep the local counters in step with the picked kit — otherwise picking the
+  // Jump Pad mid-freeze leaves you holding 0 of them
+  const lo = myLoadout();
+  const util = lo.find((id) => WEAPONS[id]?.class === 'utility');
+  me.grenades = util === 'grenade' ? WEAPONS.grenade.count : 0;
+  me.pads = util === 'jumppad' ? WEAPONS.jumppad.count : 0;
+  updateLoadoutHud();
+}
 function sendLoadout() {
   try { localStorage.setItem('rivals.loadout', JSON.stringify(myPickedLoadout)); } catch {}
   net.send({ t: 'loadout', ids: myPickedLoadout });
+  if (game.phase !== 'live') syncUtilCounts();
 }
 function buildLoadoutUI() {
   if (document.getElementById('ld-open')) return;
@@ -4133,6 +4143,7 @@ net.on('pad.remove', (msg) => {
 // server wipes deployed pads at round start / match end — mirror it on the client
 net.on('pad.clearall', () => clearPads());
 net.on('padcount', (msg) => { me.pads = msg.n | 0; updateLoadoutHud(); });
+net.on('utilcount', (msg) => { me.pads = msg.pads | 0; me.grenades = msg.nades | 0; updateLoadoutHud(); });
 
 function boomFx(x, y, z) {
   sfx.boom();

@@ -168,6 +168,8 @@ export function handleMessage(p, msg, ctx) {
       const f = m?.fighters.get(p.id);
       if (m && f && !f.dead && m.state === 'freeze' && m.mode !== 'wave') {
         applyLoadout(f, p.loadout);
+        // the client tracks its own utility counts — resync them after a re-pick
+        try { p.ws.send(JSON.stringify({ t: 'utilcount', pads: f.pads ?? 0, nades: f.grenades ?? 0 })); } catch {}
       }
       return;
     }
