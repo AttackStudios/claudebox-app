@@ -165,15 +165,27 @@ function groundTex(base, line, accent) {
 }
 
 // white tiled-panel texture with grid seams — the signature RIVALS-arena look
+// arena surfacing: clean white panels, faint seams, and a small cross mark
+// stamped at every tile intersection (drawn here, not an imported asset)
 const _gridBase = (() => {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const x = c.getContext('2d');
-  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128);
+  x.fillStyle = '#f4f5f7'; x.fillRect(0, 0, 128, 128);
   const gr = x.createLinearGradient(0, 0, 128, 128);
-  gr.addColorStop(0, 'rgba(0,0,0,0.015)'); gr.addColorStop(1, 'rgba(0,0,0,0.06)');
+  gr.addColorStop(0, 'rgba(0,0,0,0.012)'); gr.addColorStop(1, 'rgba(0,0,0,0.05)');
   x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
-  x.strokeStyle = 'rgba(96,106,122,0.4)'; x.lineWidth = 4;
-  x.strokeRect(0, 0, 128, 128);
+  // faint tile seam
+  x.strokeStyle = 'rgba(120,130,146,0.28)'; x.lineWidth = 2;
+  x.strokeRect(1, 1, 126, 126);
+  // corner cross marks (quarter of a plus at each corner = a full one when tiled)
+  x.strokeStyle = 'rgba(108,118,134,0.55)'; x.lineWidth = 3; x.lineCap = 'butt';
+  const arm = 11;
+  for (const [cx, cy] of [[0, 0], [128, 0], [0, 128], [128, 128]]) {
+    x.beginPath();
+    x.moveTo(cx - arm, cy); x.lineTo(cx + arm, cy);
+    x.moveTo(cx, cy - arm); x.lineTo(cx, cy + arm);
+    x.stroke();
+  }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
@@ -754,7 +766,7 @@ function stepMe(dt) {
   // ADS amount — any gun (non-melee, non-utility) can aim down sights
   const adsW = WEAPONS[me.weapon];
   const wantAds = rightDown && adsW && !adsW.melee && !adsW.utility && adsW.adsZoom && !me.reloading && !frozen;
-  me.ads += ((wantAds ? 1 : 0) - me.ads) * Math.min(1, dt * 12);
+  me.ads += ((wantAds ? 1 : 0) - me.ads) * Math.min(1, dt * 17);   // snappy sight-up like the original
   camera.fov = BASE_FOV / (1 + me.ads * ((WEAPONS[me.weapon]?.adsZoom || 1.3) - 1));
   camera.updateProjectionMatrix();
 
@@ -4448,7 +4460,7 @@ function frame() {
   const speed2d = Math.hypot(me.vel.x, me.vel.z);
   const moving = speed2d > 0.5 && me.grounded;
   const sprinting2 = moving && speed2d > MOVE.walk * 1.1 && !me.sliding;
-  vmBob += dt * (moving ? (sprinting2 ? 11.5 : 8.5) : 2);
+  vmBob += dt * (moving ? (sprinting2 ? 10 : 7.2) : 1.6);   // steadier cadence
   vmKick = Math.max(0, vmKick - dt * 8);
 
   // springs: look-lag sway (weapon trails your mouse), strafe roll, poses
@@ -4457,8 +4469,8 @@ function frame() {
     while (dRy > Math.PI) dRy -= Math.PI * 2; while (dRy < -Math.PI) dRy += Math.PI * 2;
     vmAnim.lastRy = me.ry; vmAnim.lastPitch = me.pitch;
     const k = 1 - Math.exp(-11 * dt);
-    vmAnim.swayYaw += (clamp(dRy * 2.4, -0.14, 0.14) - vmAnim.swayYaw) * k;
-    vmAnim.swayPitch += (clamp(dPitch * 2.2, -0.12, 0.12) - vmAnim.swayPitch) * k;
+    vmAnim.swayYaw += (clamp(dRy * 1.7, -0.095, 0.095) - vmAnim.swayYaw) * k;   // less noodly than before
+    vmAnim.swayPitch += (clamp(dPitch * 1.6, -0.085, 0.085) - vmAnim.swayPitch) * k;
     const rightVel = (me.vel.x * Math.cos(me.ry) - me.vel.z * Math.sin(me.ry)) / (MOVE.slideBurst || 19);
     vmAnim.roll += (clamp(-rightVel * 0.1, -0.09, 0.09) - vmAnim.roll) * k;
     vmAnim.sprintK += ((sprinting2 && me.ads < 0.3 ? 1 : 0) - vmAnim.sprintK) * (1 - Math.exp(-8 * dt));
@@ -4504,8 +4516,8 @@ function frame() {
     const loose = 1 - k * 0.85;                 // ADS tightens everything
     const bobAmt = (moving ? (sprinting2 ? 1.5 : 1) : 0) * loose;
     // figure-8 bob + idle breathing
-    const bobX = Math.sin(vmBob) * 0.013 * bobAmt;
-    const bobY = -Math.abs(Math.cos(vmBob)) * 0.016 * bobAmt + Math.sin(now * 1.6) * 0.0038 * loose;
+    const bobX = Math.sin(vmBob) * 0.009 * bobAmt;
+    const bobY = -Math.abs(Math.cos(vmBob)) * 0.012 * bobAmt + Math.sin(now * 1.5) * 0.0026 * loose;
 
     const HIP = VM_HIPS[vmKey] || VM_HIP;
     let px = HIP.x + (VM_ADS.x - HIP.x) * k + bobX + vmAnim.swayYaw * 0.16 * loose;
@@ -4517,7 +4529,7 @@ function frame() {
     let rz = vmAnim.roll * 1.5 * loose + vmAnim.swayYaw * 0.7 * loose - vmAnim.slideK * 0.38;
 
     // sprint: cant the weapon in and down (with a bit of run sway)
-    rx += vmAnim.sprintK * (0.14 + Math.sin(vmBob * 0.5) * 0.03);
+    rx += vmAnim.sprintK * (0.26 + Math.sin(vmBob * 0.5) * 0.02);   // gun carried lower/angled at a sprint
     ry2 += vmAnim.sprintK * 0.34;
     py -= vmAnim.sprintK * 0.03;
     px -= vmAnim.sprintK * 0.03;
