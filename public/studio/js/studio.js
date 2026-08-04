@@ -592,9 +592,15 @@ $('#level-name').oninput = (e) => { state.level.name = e.target.value; };
 $('#btn-save').onclick = async () => {
   state.level = sanitizeLevel(state.level);
   try {
-    const res = await fetch('/api/level/' + state.slug, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: state.level }) });
+    const res = await fetch('/api/level/' + state.slug, {
+      method: 'POST',
+      // the invite-code gate rejects mutating calls without this header — that's
+      // why saving worked locally but failed ("Save failed") on the locked cloud
+      headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' },
+      body: JSON.stringify({ level: state.level }),
+    });
     const d = await res.json();
-    status(d.ok ? `Saved to "${state.slug}" — it's live!` : 'Save failed');
+    status(d.ok ? `Saved to "${state.slug}" — it's live!` : ('Save failed — ' + (d.error || res.status)));
     if (d.ok) markClean();
     if (d.ok) window.ClaudeBox?.completeChallenge('studio-publish');
   } catch { status('Save failed (offline?)'); }
@@ -603,7 +609,7 @@ $('#btn-load').onclick = loadSlot;
 async function loadSlot() {
   $('#slot').value = state.slug;
   try {
-    const { level } = await (await fetch('/api/level/' + state.slug)).json();
+    const { level } = await (await fetch('/api/level/' + state.slug, { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } })).json();
     state.level = sanitizeLevel(level || { parts: [] });
   } catch { state.level = sanitizeLevel({ parts: [] }); }
   $('#level-name').value = state.level.name;
