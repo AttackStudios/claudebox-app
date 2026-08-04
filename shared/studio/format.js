@@ -63,6 +63,7 @@ export function newPart(over = {}) {
     kind: 'solid',
     texture: 'none',
     text: '',
+    group: '',          // parts sharing a group id move/select as one object
     solid: true,
     behaviors: [],
     ...over,
@@ -97,6 +98,7 @@ function sanitizePart(p = {}) {
     kind: KINDS.includes(p.kind) ? p.kind : 'solid',
     texture: TEXTURES.includes(p.texture) ? p.texture : 'none',
     text: (typeof p.text === 'string' ? p.text : '').slice(0, 80),
+    group: (typeof p.group === 'string' ? p.group : '').slice(0, 24),
     solid: p.solid !== false,
     behaviors: Array.isArray(p.behaviors) ? p.behaviors.filter((b) => BEHAVIORS[b?.type]).slice(0, 12).map(sanitizeBehavior) : [],
   };

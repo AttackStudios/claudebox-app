@@ -96,7 +96,7 @@ function applyMesh(rec) {
   }
   rec.mesh.position.set(s.pos[0], s.pos[1], s.pos[2]);
   rec.mesh.rotation.y = s.rotY;
-  const em = rec === state.built.get(state.selected) ? '#2a4a6a' : '#000000';
+  const em = rec.spec.id === state.selected ? '#2f5a80' : (state.sel?.has(rec.spec.id) ? '#24425e' : '#000000');
   rec.mesh.traverse((o) => o.material?.emissive?.set(em));
   if (rec.mesh.material?.emissive) rec.mesh.material.emissive.set(em);
 }
@@ -167,16 +167,56 @@ function rebuildAll() {
 }
 
 // ---------- selection + inspector ----------
-function select(id) {
-  state.selected = id;
+// selection is a SET. `state.selected` stays the "primary" (what the inspector edits).
+state.sel = new Set();
+function partsInGroup(g) {
+  return g ? state.level.parts.filter((p) => p.group === g).map((p) => p.id) : [];
+}
+function select(id, additive) {
+  if (!id) { state.sel.clear(); state.selected = null; }
+  else {
+    const spec = state.built.get(id)?.spec;
+    const ids = spec?.group ? partsInGroup(spec.group) : [id];   // clicking one grouped part takes the whole object
+    if (additive) {
+      const already = ids.every((i) => state.sel.has(i));
+      for (const i of ids) already ? state.sel.delete(i) : state.sel.add(i);
+      state.selected = state.sel.has(id) ? id : ([...state.sel][0] || null);
+    } else {
+      state.sel = new Set(ids);
+      state.selected = id;
+    }
+  }
   for (const rec of state.built.values()) applyMesh(rec);   // refresh emissive
   refreshInspector();
 }
+const selSpecs = () => [...state.sel].map((i) => state.built.get(i)?.spec).filter(Boolean);
 const inspBody = $('#insp-body'), inspEmpty = $('#insp-empty');
 function refreshInspector() {
   const rec = state.built.get(state.selected);
   if (!rec) { inspBody.classList.add('hidden'); inspEmpty.classList.remove('hidden'); return; }
   inspEmpty.classList.add('hidden'); inspBody.classList.remove('hidden');
+  if (state.sel.size > 1) {   // multi-selection: summary + the edits that make sense in bulk
+    const specs = selSpecs();
+    const grouped = specs.every((sp) => sp.group) && new Set(specs.map((sp) => sp.group)).size === 1;
+    inspBody.innerHTML = `
+      <div class="field"><label>Selection</label><b style="color:#eef2f8">${specs.length} parts${grouped ? ' · grouped' : ''}</b></div>
+      <div class="field"><label>Colour (all)</label><input type="color" data-multicolor value="${specs[0].color}"></div>
+      <div class="field"><label>Nudge Y (all)</label><div class="row3">
+        <button data-my="-0.5">−</button><button data-my="0.5">+</button></div></div>
+      <button data-group>${grouped ? 'Ungroup (Shift+Ctrl+G)' : 'Group (Ctrl+G)'}</button>
+      <p style="color:#7f8aa3;font-size:11px;margin-top:6px">Shift-click parts to add or remove them. Grouped parts always select and move together.</p>`;
+    inspBody.querySelector('[data-multicolor]').oninput = (e) => {
+      snapshot(true);
+      for (const sp of specs) { sp.color = e.target.value; const r = state.built.get(sp.id); if (r) { scene.remove(r.mesh); r.mesh.traverse?.((o) => o.geometry?.dispose()); state.built.delete(sp.id); addMesh(sp); } }
+      for (const r of state.built.values()) applyMesh(r);
+    };
+    inspBody.querySelectorAll('[data-my]').forEach((b) => b.onclick = () => {
+      snapshot();
+      for (const sp of specs) { sp.pos[1] += +b.dataset.my; const r = state.built.get(sp.id); if (r) applyMesh(r); }
+    });
+    inspBody.querySelector('[data-group]').onclick = () => (grouped ? ungroupSel() : groupSel());
+    return;
+  }
   const s = rec.spec;
   const numRow = (lbl, arr, idx, step = 0.5) => `<div class="field"><label>${lbl}</label><div class="row3">${
     [0, 1, 2].map((i) => `<input type="number" step="${step}" data-${idx}="${i}" value="${+arr[i].toFixed(2)}">`).join('')}</div></div>`;
@@ -250,6 +290,8 @@ PALETTE.forEach((p) => {
 });
 $('#btn-del').onclick = () => deleteSel();
 $('#btn-dupe').onclick = () => dupeSel();
+$('#btn-group') && ($('#btn-group').onclick = () => groupSel());
+$('#btn-ungroup') && ($('#btn-ungroup').onclick = () => ungroupSel());
 $('#btn-undo') && ($('#btn-undo').onclick = () => undo());
 $('#btn-redo') && ($('#btn-redo').onclick = () => redo());
 $('#btn-copy') && ($('#btn-copy').onclick = () => copySel());
@@ -261,8 +303,19 @@ $('#btn-spawn').onclick = () => {
   spawnMarker.position.set(state.level.spawn.x, state.level.spawn.y - 2.2, state.level.spawn.z); status('Spawn set');
 };
 function deleteSel() {
-  const rec = state.built.get(state.selected); if (!rec) return;
+  if (!state.sel.size) return;
   snapshot();
+  const ids = [...state.sel];
+  for (const id of ids) {
+    const r = state.built.get(id); if (!r) continue;
+    scene.remove(r.mesh); r.mesh.traverse?.((o) => o.geometry?.dispose()); state.built.delete(id);
+  }
+  state.level.parts = state.level.parts.filter((p) => !ids.includes(p.id));
+  select(null); status('Deleted ' + ids.length);
+  return;
+}
+function _deleteSelOld() {
+  const rec = state.built.get(state.selected); if (!rec) return;
   scene.remove(rec.mesh); rec.mesh.traverse?.((o) => o.geometry?.dispose()); rec.mesh.geometry?.dispose?.(); state.built.delete(rec.spec.id);
   state.level.parts = state.level.parts.filter((p) => p.id !== rec.spec.id);
   select(null); status('Deleted');
@@ -312,25 +365,56 @@ addEventListener('beforeunload', (e) => {
   return '';
 });
 
+let _gid = 0;
+function groupSel() {
+  const specs = selSpecs();
+  if (specs.length < 2) return status('Select 2+ parts (shift-click) to group');
+  snapshot();
+  const g = 'g' + Date.now().toString(36) + (_gid++).toString(36);
+  for (const sp of specs) sp.group = g;
+  select(specs[0].id);
+  status('Grouped ' + specs.length + ' parts — they now move as one');
+}
+function ungroupSel() {
+  const specs = selSpecs().filter((sp) => sp.group);
+  if (!specs.length) return status('Nothing grouped here');
+  snapshot();
+  for (const sp of specs) sp.group = '';
+  select(specs[0].id);
+  status('Ungrouped ' + specs.length + ' parts');
+}
+
 const CLIP_KEY = 'studio.clipboard';
 function copySel() {
-  const rec = state.built.get(state.selected);
-  if (!rec) return status('Select a part to copy');
-  const spec = JSON.parse(JSON.stringify(rec.spec));
-  try { localStorage.setItem(CLIP_KEY, JSON.stringify(spec)); } catch {}
-  status('Copied ' + (spec.kind !== 'solid' ? spec.kind : spec.shape));
+  const specs = selSpecs();
+  if (!specs.length) return status('Select a part to copy');
+  try { localStorage.setItem(CLIP_KEY, JSON.stringify(specs.map((sp) => JSON.parse(JSON.stringify(sp))))); } catch {}
+  status('Copied ' + specs.length + ' part' + (specs.length > 1 ? 's' : ''));
 }
 function pasteClip() {
   let src = null;
   try { src = JSON.parse(localStorage.getItem(CLIP_KEY) || 'null'); } catch {}
   if (!src) return status('Nothing copied yet');
+  const items = Array.isArray(src) ? src : [src];
+  if (!items.length) return status('Nothing copied yet');
   const t = camTarget();
   snapshot();
-  const { id: _drop, ...rest } = src;        // drop the source id — newPart mints a fresh one
-  const spec = newPart(rest);
-  spec.pos = [Math.round(t.x), src.pos[1], Math.round(t.z)];   // land it under the camera
-  state.level.parts.push(spec); addMesh(spec); select(spec.id);
-  status('Pasted ' + (spec.kind !== 'solid' ? spec.kind : spec.shape));
+  // paste around the camera, keeping the pieces' relative layout and regrouping them
+  const ax = items.reduce((a, p) => a + p.pos[0], 0) / items.length;
+  const az = items.reduce((a, p) => a + p.pos[2], 0) / items.length;
+  const regroup = {};
+  const made = [];
+  for (const it of items) {
+    const { id: _drop, ...rest } = it;
+    const spec = newPart(rest);
+    spec.pos = [Math.round(t.x) + (it.pos[0] - ax), it.pos[1], Math.round(t.z) + (it.pos[2] - az)];
+    if (it.group) spec.group = (regroup[it.group] ||= 'g' + Date.now().toString(36) + (_gid++).toString(36));
+    state.level.parts.push(spec); addMesh(spec); made.push(spec.id);
+  }
+  state.sel = new Set(made); state.selected = made[0];
+  for (const rec of state.built.values()) applyMesh(rec);
+  refreshInspector();
+  status('Pasted ' + made.length + ' part' + (made.length > 1 ? 's' : ''));
 }
 function dupeSel() {
   const rec = state.built.get(state.selected); if (!rec) return;
@@ -355,7 +439,8 @@ function updateCamera() {
 
 // ---------- editor pointer (select / move / orbit) ----------
 const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
-let dragging = null;  // 'orbit' | 'move'
+let dragging = null;  // 'orbit' | 'move' | 'pan'
+let moveStart = null;
 let last = { x: 0, y: 0 };
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function pickPart(e) {
@@ -372,7 +457,17 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button === 1) { e.preventDefault(); dragging = 'pan'; return; }   // middle mouse = pan
   if (e.button === 2) { dragging = 'orbit'; return; }
   const id = pickPart(e);
-  if (id) { snapshot(); select(id); dragging = 'move'; } else { select(null); dragging = 'orbit'; }
+  if (id) {
+    if (e.shiftKey) { select(id, true); dragging = null; return; }   // shift-click = add/remove
+    if (!state.sel.has(id)) select(id);
+    snapshot();
+    // remember where everything started so the whole selection moves together
+    const hit0 = new THREE.Vector3();
+    dragPlane.constant = -(state.built.get(id).spec.pos[1]);
+    ray.ray.intersectPlane(dragPlane, hit0);
+    moveStart = { hit: hit0.clone(), pos: selSpecs().map((sp) => ({ sp, x: sp.pos[0], z: sp.pos[2] })) };
+    dragging = 'move';
+  } else { select(null); dragging = 'orbit'; }
 });
 addEventListener('pointermove', (e) => {
   if (!dragging || state.mode !== 'edit') return;
@@ -387,20 +482,24 @@ addEventListener('pointermove', (e) => {
     orbit.target.z += -dx * sin + dy * cos * Math.sin(orbit.pitch);
     orbit.target.y = Math.max(0, orbit.target.y + dy * Math.cos(orbit.pitch));
   } else if (dragging === 'move') {
-    const rec = state.built.get(state.selected); if (!rec) return;
+    const rec = state.built.get(state.selected); if (!rec || !moveStart) return;
     ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    dragPlane.constant = -rec.spec.pos[1];   // plane y = part y
+    dragPlane.constant = -rec.spec.pos[1];
     const hitP = new THREE.Vector3();
     if (ray.ray.intersectPlane(dragPlane, hitP)) {
-      let x = hitP.x, z = hitP.z;
-      if ($('#snap').checked) { x = Math.round(x); z = Math.round(z); }
-      rec.spec.pos[0] = x; rec.spec.pos[2] = z; applyMesh(rec); refreshInspector();
+      let dx = hitP.x - moveStart.hit.x, dz = hitP.z - moveStart.hit.z;
+      if ($('#snap').checked) { dx = Math.round(dx); dz = Math.round(dz); }
+      for (const m of moveStart.pos) {         // every selected part shifts by the same delta
+        m.sp.pos[0] = m.x + dx; m.sp.pos[2] = m.z + dz;
+        const r2 = state.built.get(m.sp.id); if (r2) applyMesh(r2);
+      }
+      refreshInspector();
     }
   }
   last = { x: e.clientX, y: e.clientY };
 });
-addEventListener('pointerup', () => { dragging = null; });
+addEventListener('pointerup', () => { dragging = null; moveStart = null; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
@@ -434,6 +533,15 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dupeSel(); }
   if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redo(); return; }
+  if (e.code === 'KeyG' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.shiftKey ? ungroupSel() : groupSel(); return; }
+  if (e.code === 'KeyA' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    state.sel = new Set(state.level.parts.map((p) => p.id));
+    state.selected = state.level.parts[0]?.id || null;
+    for (const rec of state.built.values()) applyMesh(rec);
+    refreshInspector(); status('Selected all (' + state.sel.size + ')');
+    return;
+  }
   if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySel(); }
   if (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); pasteClip(); }
   if (e.code === 'KeyX' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySel(); deleteSel(); }
