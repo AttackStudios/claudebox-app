@@ -91,6 +91,15 @@ export function handleMessage(p, msg, ctx) {
       roomSend(room, { t: 'game.start', weather: { phase: 'fog', left: plan.fog } });
       break;
     }
+    case 'weather.set': {   // host forces the sky
+      if (!room || room.hostId !== p.id || !room.started) break;
+      const phase = ['fog', 'rain', 'sun'].includes(msg.phase) ? msg.phase : 'sun';
+      const plan = room.weather?.plan || { fog: 180, rain: 90 };
+      // a forced phase holds until the host changes it again
+      room.weather = { plan, phase, until: Infinity };
+      roomSend(room, { t: 'weather', phase, left: 0 });
+      break;
+    }
     case 'server.invite': {
       if (!room || room.hostId !== p.id) break;
       const who = String(msg.name || '').toLowerCase();

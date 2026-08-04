@@ -116,6 +116,37 @@ let waters = [];      // AABBs {x,y,z,w,h,d}
 let shelters = [];    // AABBs whose footprint blocks rain
 let beachSpawn = { x: 0, y: 2, z: -14 };
 let groundFn = () => 0;
+let colliders = [];        // AABBs you stand on / can't walk through: {x,y,z,w,h,d} (y = centre)
+const PLAYER_R = 0.45;     // how wide the guard is when bumping into things
+const STEP_UP = 0.65;      // curbs and low ledges you just walk up
+
+// highest solid surface under the player (falls back to the sand heightmap)
+function groundAt(x, z, fromY) {
+  let best = groundFn(x, z);
+  for (const c of colliders) {
+    if (Math.abs(x - c.x) > c.w / 2 + PLAYER_R * 0.6) continue;
+    if (Math.abs(z - c.z) > c.d / 2 + PLAYER_R * 0.6) continue;
+    const top = c.y + c.h / 2;
+    if (top > best && top <= fromY + STEP_UP) best = top;
+  }
+  return best;
+}
+// push the player out of anything they've walked into (ignoring what they're stood on)
+function resolveWalls(pos) {
+  for (const c of colliders) {
+    const top = c.y + c.h / 2, bottom = c.y - c.h / 2;
+    if (pos.y >= top - 0.06) continue;              // standing on it
+    if (pos.y + 1.7 <= bottom) continue;            // clean underneath
+    const dx = pos.x - c.x, dz = pos.z - c.z;
+    const ox = c.w / 2 + PLAYER_R - Math.abs(dx);
+    const oz = c.d / 2 + PLAYER_R - Math.abs(dz);
+    if (ox <= 0 || oz <= 0) continue;               // not overlapping
+    if (top - pos.y <= STEP_UP) { pos.y = top; continue; }   // low enough to step onto
+    if (ox < oz) pos.x = c.x + Math.sign(dx || 1) * (c.w / 2 + PLAYER_R);
+    else pos.z = c.z + Math.sign(dz || 1) * (c.d / 2 + PLAYER_R);
+  }
+}
+const addCollider = (x, y, z, w, h, d) => colliders.push({ x, y, z, w, h, d });
 
 // lobby: a sunny little staging plaza, separate from the beach
 function buildDefaultLobby() {
@@ -149,6 +180,7 @@ function buildDefaultBeach() {
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) pos.setY(i, sampleBeachHeight(pos.getX(i), pos.getZ(i)));
   geo.computeVertexNormals();
+  colliders = [];
   const sand = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: sandTexture(), color: '#f0dcae' }));
   sand.position.z = -8; beachG.add(sand);
   groundFn = (x, z) => sampleBeachHeight(x, z + 8);
@@ -169,6 +201,7 @@ function buildDefaultBeach() {
     beachG.add(house);
     beachG.add(box(13, 1, 10, '#f2ede2', x, 9.2, -47));
     beachG.add(box(12.6, 0.3, 3.4, '#fff', x, 6.8, -41.4));    // awning = shelter
+    addCollider(x, 5.2, -47, 12, 7, 9);                        // you can't walk through a house
     shelters.push({ x, y: 6.8, z: -41.4, w: 12.6, h: 0.3, d: 3.4 }, { x, y: 9.2, z: -47, w: 13, h: 1, d: 10 });
   });
   const sign = textPanel('CAPITOLA BEACH', '#ffe9b0'); sign.position.set(0, 8.5, -40); sign.rotation.y = 0; beachG.add(sign);
@@ -176,18 +209,21 @@ function buildDefaultBeach() {
   // wharf on the west side
   for (let i = 0; i < 9; i++) {
     beachG.add(box(6, 0.5, 8, '#b98c58', -66, 1.6, -6 + i * 8));
+    addCollider(-66, 1.6, -6 + i * 8, 6, 0.5, 8);              // wharf decking
     beachG.add(box(0.5, 4, 0.5, '#8a6844', -68.5, -0.2, -3 + i * 8));
     beachG.add(box(0.5, 4, 0.5, '#8a6844', -63.5, -0.2, -3 + i * 8));
   }
 
   // lifeguard tower + JG flags
   const tower = makeTower(); tower.position.set(14, groundFn(14, 2), 2); beachG.add(tower);
+  addCollider(14, groundFn(14, 2) + 3.1, 2, 3, 0.25, 3);       // the tower deck you climb to
   shelters.push({ x: 14, y: 4.75 + groundFn(14, 2), z: 2, w: 3.7, h: 0.22, d: 3.7 });
   // dune snow fencing along the back of the beach, the way Capitola runs it
   for (let i = 0; i < 7; i++) {
     const fx = -54 + i * 18;
     const fence = makeFence(16, 1.2);
     fence.position.set(fx, groundFn(fx, -30) - 0.05, -30);
+    addCollider(fx, groundFn(fx, -30) + 0.6, -30, 16, 1.2, 0.3);   // fencing blocks the dunes
     fence.rotation.y = 0.02 * (i % 2 ? 1 : -1);
     beachG.add(fence);
   }
@@ -196,7 +232,9 @@ function buildDefaultBeach() {
   beachSpawn = { x: 0, y: groundFn(0, -14) + 1.5, z: -14 };
 }
 function buildStudioWorld(w, G) {
-  for (const o of w.solids) { G.add(box(o.w, o.h, o.d, o.color, o.x, o.y, o.z, o.rotY)); }
+  colliders = [];
+  for (const o of w.solids) { G.add(box(o.w, o.h, o.d, o.color, o.x, o.y, o.z, o.rotY)); addCollider(o.x, o.y, o.z, o.w, o.h, o.d); }
+  for (const o of (w.sands || [])) addCollider(o.x, o.y, o.z, o.w, o.h, o.d);   // stand ON the sand, not in it
   for (const o of w.waters) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, o.d), new THREE.MeshLambertMaterial({ color: o.color, transparent: true, opacity: 0.8 }));
     m.position.set(o.x, o.y, o.z); G.add(m);
@@ -372,6 +410,7 @@ function clockText(now) {
 function applyWeather(phase) {
   weather.phase = phase;
   setClockForPhase(phase);
+  document.querySelectorAll('#host-weather button').forEach((b) => b.classList.toggle('on', b.dataset.w === phase));
   const chip = $('#weather-chip');
   chip.classList.remove('hidden');
   if (phase === 'fog') {
@@ -417,17 +456,18 @@ function isSheltered() {
 
 // ============================ world objects (packs/towels) ============================
 const packMeshes = new Map(), towelMeshes = new Map();
+const restY = (x, y, z) => Math.max(y, groundAt(x, z, y + 2));   // keep props on top of the sand
 function addPackMesh(pk) {
   const m = new THREE.Group();
   m.add(box(0.7, 0.8, 0.4, '#7a5c34', 0, 0.4, 0));
   m.add(box(0.5, 0.3, 0.44, '#5d452a', 0, 0.75, 0));
-  m.position.set(pk.x, pk.y, pk.z);
+  m.position.set(pk.x, restY(pk.x, pk.y, pk.z), pk.z);
   scene.add(m); packMeshes.set(pk.id, { m, pk });
 }
 function addTowelMesh(tw) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.2), new THREE.MeshLambertMaterial({ color: tw.color, side: THREE.DoubleSide }));
   m.rotation.x = -Math.PI / 2;
-  m.position.set(tw.x, tw.y + 0.06, tw.z);
+  m.position.set(tw.x, restY(tw.x, tw.y, tw.z) + 0.06, tw.z);
   scene.add(m); towelMeshes.set(tw.id, { m, tw });
 }
 
@@ -491,6 +531,9 @@ function enterWorld(zone) {
 }
 
 $('#host-start').addEventListener('click', () => net.send({ t: 'server.start' }));
+document.querySelectorAll('#host-weather button').forEach((b) => b.addEventListener('click', () => {
+  net.send({ t: 'weather.set', phase: b.dataset.w });
+}));
 $('#host-invite').addEventListener('click', () => {
   const who = prompt('Invite which friend? (exact name)');
   if (who) net.send({ t: 'server.invite', name: who });
@@ -613,6 +656,7 @@ net.on('room.joined', (m) => {
   $('#menu').classList.add('hidden'); $('#create').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   $('#host-bar').classList.toggle('hidden', !me.isHost || m.started);
+  $('#host-weather')?.classList.toggle('hidden', !(me.isHost && m.started));
   enterWorld(m.started ? 'beach' : 'lobby');
   if (m.started && m.weather) applyWeather(m.weather.phase);
   if (m.room.mode === 'rp') $('#rolepick').classList.remove('hidden');
@@ -627,6 +671,7 @@ net.on('game.start', (m) => {
   me.started = true;
   $('#host-bar').classList.toggle('hidden', !me.isHost);
   $('#host-start').classList.add('hidden');
+  $('#host-weather')?.classList.toggle('hidden', !me.isHost);
   enterWorld('beach');
   applyWeather(m.weather.phase);
   toast('🏖️ Welcome to Capitola Beach — line up for stretches!');
@@ -720,7 +765,8 @@ function stepMe(dt, now) {
   }
   me.pos.x += me.vel.x * dt; me.pos.z += me.vel.z * dt;
   me.pos.y += me.vel.y * dt;
-  const gy = me.zone === 'beach' ? groundFn(me.pos.x, me.pos.z) : 0;
+  if (!w) resolveWalls(me.pos);                       // don't walk through the world
+  const gy = me.zone === 'beach' ? groundAt(me.pos.x, me.pos.z, me.pos.y) : 0;
   if (!w && me.pos.y <= gy) { me.pos.y = gy; me.vel.y = 0; me.grounded = true; }
   if (me.zone === 'lobby') {
     const r = Math.hypot(me.pos.x, me.pos.z);
@@ -840,5 +886,7 @@ function frame() {
 window.__me = me; window.__cam = () => ({ yaw: camYaw });   // debug handles
 window.__jg = { scene, beachG, lobbyG, worldUpdates: 0 };
 window.__stretchAt = stretchPoseAt;   // debug: sample a stretch pose at time t
+window.__jgColliders = () => colliders.length;
+window.__groundAt = (x, z, y) => groundAt(x, z, y ?? 50);
 net.connect();
 frame();

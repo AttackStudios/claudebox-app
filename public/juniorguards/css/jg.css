@@ -72,3 +72,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Trebuchet MS', 'Comic
 
 #toasts { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 40; pointer-events: none; }
 .toast { background: rgba(16,20,28,.94); border: 2px solid rgba(255,255,255,.22); border-bottom: 5px solid rgba(0,0,0,.4); color: #fff; font-weight: 900; font-size: 14px; padding: 11px 20px; border-radius: 999px; box-shadow: 0 7px 0 rgba(0,0,0,.2); }
+
+/* host weather switcher */
+#host-weather { display: flex; gap: 6px; }
+#host-weather button { font-size: 18px; padding: 9px 12px; }
+#host-weather button.on { outline: 2px solid #6ee7ff; outline-offset: 2px; }
