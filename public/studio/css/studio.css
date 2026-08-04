@@ -88,3 +88,94 @@ button.primary:hover { background: #3a90ea; }
 
 /* RBLXS map designation */
 #btn-rblxs.active { background: #b8860b; border-color: #ffd24a; color: #fff; box-shadow: 0 0 0 2px rgba(255, 210, 74, .35); }
+
+
+/* ============ ClaudeBox house style (Rivals design language) ============ */
+:root { --spring: cubic-bezier(.34,1.56,.64,1); }
+#topbar, #left, #right, .help-card {
+  font-family: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Nunito', 'Trebuchet MS', sans-serif;
+}
+#topbar {
+  background: rgba(20, 24, 32, .93);
+  border-bottom: 3px solid rgba(0, 0, 0, .5);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, .2), 0 10px 24px rgba(0, 0, 0, .3);
+  backdrop-filter: blur(8px);
+}
+#topbar button, #left button, #right button, .pal-btn {
+  border: 2.5px solid rgba(255, 255, 255, .16) !important;
+  border-bottom: 5px solid rgba(0, 0, 0, .42) !important;
+  border-radius: 13px !important;
+  background: #232936;
+  color: #eef2f8;
+  font-weight: 900;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, .22);
+  transition: transform .12s var(--spring), border-color .12s, filter .12s;
+}
+#topbar button:hover, #left button:hover, #right button:hover, .pal-btn:hover {
+  transform: translateY(-3px) scale(1.03);
+  border-color: #6ee7ff !important;
+  filter: brightness(1.08);
+}
+#topbar button:active, .pal-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, .22); }
+#btn-save { background: linear-gradient(180deg, #48d98a, #2aa862) !important; color: #06301c !important; }
+#btn-play { background: linear-gradient(180deg, #46b0ff, #2b8de0) !important; color: #fff !important; }
+#btn-del { background: linear-gradient(180deg, #ff6b78, #d93a4a) !important; color: #fff !important; }
+#btn-rblxs.active { border-color: #ffc94a !important; box-shadow: 0 4px 0 rgba(0,0,0,.22), 0 0 14px rgba(255,201,74,.45); }
+#left, #right {
+  background: rgba(23, 27, 35, .95);
+  border: 2.5px solid rgba(255, 255, 255, .12);
+  border-bottom-width: 6px;
+  border-bottom-color: rgba(0, 0, 0, .45);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.2) transparent;
+}
+#left h3, #right h3, .insp-title {
+  font-size: 10.5px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .16em; color: #93a0b4;
+}
+.pal-btn .e { font-size: 21px; }
+.pal-btn .l { font-weight: 900; font-size: 11.5px; }
+.field label { font-size: 10.5px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em; color: #93a0b4; }
+.field input, .field select, #slot, #level-name {
+  background: #141922 !important;
+  border: 2.5px solid rgba(255, 255, 255, .16) !important;
+  border-radius: 11px !important;
+  color: #eef2f8 !important;
+  font-weight: 800;
+  transition: border-color .12s, box-shadow .12s;
+}
+.field input:focus, .field select:focus, #slot:focus, #level-name:focus {
+  border-color: #6ee7ff !important;
+  box-shadow: 0 0 0 3px rgba(110, 231, 255, .18);
+  outline: none;
+}
+.beh {
+  background: rgba(255, 255, 255, .05);
+  border: 2px solid rgba(255, 255, 255, .1);
+  border-bottom: 4px solid rgba(0, 0, 0, .34);
+  border-radius: 13px;
+}
+.beh-head { font-weight: 900; }
+#status {
+  background: rgba(16, 20, 28, .94);
+  border: 2px solid rgba(255, 255, 255, .2);
+  border-bottom: 5px solid rgba(0, 0, 0, .4);
+  border-radius: 999px;
+  font-weight: 900;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, .2);
+}
+.help-card {
+  background: #1b2029;
+  border: 3px solid rgba(255, 255, 255, .16);
+  border-bottom: 9px solid rgba(0, 0, 0, .45);
+  border-radius: 26px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+#play-banner {
+  background: rgba(16, 20, 28, .94);
+  border: 2px solid rgba(255, 255, 255, .2);
+  border-bottom: 5px solid rgba(0, 0, 0, .4);
+  border-radius: 999px;
+  font-weight: 900;
+}

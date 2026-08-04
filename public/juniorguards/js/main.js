@@ -28,7 +28,7 @@ const net = {
 
 function toast(t, ms = 2600) {
   const el = document.createElement('div');
-  el.className = 'toast'; el.textContent = t;
+  el.className = 'toast cbx-toast cbx-slide'; el.textContent = t;
   $('#toasts').appendChild(el);
   setTimeout(() => el.remove(), ms);
 }
@@ -383,10 +383,10 @@ function renderServers(list) {
   const host = $('#srv-list'); host.innerHTML = '';
   if (!list.length) { host.innerHTML = '<div class="empty">No servers yet — create one!</div>'; return; }
   for (const r of list) {
-    const row = document.createElement('div'); row.className = 'srv';
+    const row = document.createElement('div'); row.className = 'srv cbx-row';
     row.innerHTML = `<b>${r.name}</b><small>by ${r.host} · ${r.mode.toUpperCase()} · ${r.players} 🧍</small><span class="spacer"></span>` +
       (r.started ? '<span class="started">IN PROGRESS</span>' : '');
-    const btn = document.createElement('button'); btn.textContent = 'Join';
+    const btn = document.createElement('button'); btn.className = 'cbx-btn primary'; btn.textContent = 'Join';
     btn.addEventListener('click', () => net.send({ t: 'server.join', id: r.id }));
     row.appendChild(btn); host.appendChild(row);
   }
@@ -451,9 +451,9 @@ $('#act-pack').addEventListener('click', () => {
 function renderPack(pk) {
   const host = $('#pack-items'); host.innerHTML = '';
   for (const it of pk.items) {
-    const row = document.createElement('div'); row.className = 'item';
+    const row = document.createElement('div'); row.className = 'item cbx-row';
     row.innerHTML = `<span style="font-size:22px">${it.emoji}</span><b>${it.name}</b>`;
-    const mk = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', fn); row.appendChild(b); };
+    const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'cbx-btn'; b.textContent = label; b.addEventListener('click', fn); row.appendChild(b); };
     if (it.kind === 'equip') {
       const on = me.equip[it.id];
       mk(on ? 'Unequip' : 'Equip', () => {
@@ -479,7 +479,7 @@ $('#pack-close').addEventListener('click', () => $('#packui').classList.add('hid
 {
   const host = $('#stretch-list');
   for (const st of STRETCHES) {
-    const row = document.createElement('div'); row.className = 'stretchrow';
+    const row = document.createElement('div'); row.className = 'stretchrow cbx-row';
     row.innerHTML = `<b>${st.name}</b><small>${st.kind === 'reps' ? '× ' + st.reps : 'hold'}</small>`;
     row.addEventListener('click', () => startStretch(st.id));
     host.appendChild(row);
