@@ -290,16 +290,55 @@ const STRETCH_POSES = {
   cobra: { a: pose({ rootRx: 1.35, rootY: -0.58, torso: { x: -0.55 }, armL: { x: -0.5, z: 0.15 }, armR: { x: -0.5, z: 0.15 } }) },
   pushups: { a: pose({ rootRx: 1.42, rootY: -0.42, armL: { x: -1.5, z: 0.12 }, armR: { x: -1.5, z: 0.12 } }), b: pose({ rootRx: 1.42, rootY: -0.6, armL: { x: -0.7, z: 0.3 }, armR: { x: -0.7, z: 0.3 } }) },
 };
+// ---- pose blending: the stretches actually MOVE instead of snapping ----
+const POSE_KEYS = ['armL', 'armR', 'legL', 'legR', 'torso'];
+function lerpPose(A, B, t) {
+  const out = { rootRx: (A.rootRx || 0) + ((B.rootRx || 0) - (A.rootRx || 0)) * t,
+                rootY: (A.rootY || 0) + ((B.rootY || 0) - (A.rootY || 0)) * t };
+  for (const k of POSE_KEYS) {
+    const a = A[k] || {}, b = B[k] || {};
+    out[k] = {
+      x: (a.x || 0) + ((b.x || 0) - (a.x || 0)) * t,
+      z: (a.z || 0) + ((b.z || 0) - (a.z || 0)) * t,
+    };
+  }
+  return out;
+}
+// seconds per rep — a jumping jack snaps, a push-up grinds
+const REP_SECS = { jacks: 0.62, vups: 1.05, twistups: 1.05, curls: 0.95, pushups: 1.15 };
+// how the rep travels a→b→a: fast out of the bottom, controlled on the way back
+const repCurve = (u) => (u < 0.42
+  ? Math.sin((u / 0.42) * Math.PI / 2)                       // drive up (ease-out)
+  : 0.5 + 0.5 * Math.cos(((u - 0.42) / 0.58) * Math.PI));    // lower back (ease-in-out)
+
 function stretchPoseAt(id, elapsed) {
   const def = STRETCH_BY_ID[id]; if (!def) return null;
   const key = def.as || def.id;
   const ps = STRETCH_POSES[key]; if (!ps) return null;
+  const ENTRY = 0.5;                       // ease INTO the exercise from standing
+  const entry = Math.min(1, elapsed / ENTRY);
+  const ease = entry * entry * (3 - 2 * entry);
+
+  let pose, count;
   if (def.kind === 'reps' && ps.b) {
-    const cycle = Math.floor(elapsed / 0.9);
-    if (cycle >= def.reps * 2) return { pose: ps.a, done: true, count: def.reps };
-    return { pose: (cycle % 2 === 1) ? ps.b : ps.a, count: Math.floor(cycle / 2) };
+    const per = REP_SECS[key] || 0.9;
+    const t = Math.max(0, elapsed - ENTRY);
+    const rep = Math.floor(t / per);
+    if (rep >= def.reps) return { pose: ps.a, done: true, count: def.reps };
+    pose = lerpPose(ps.a, ps.b, repCurve((t % per) / per));
+    count = rep;
+  } else {
+    // holds breathe and settle deeper instead of freezing solid
+    const t = Math.max(0, elapsed - ENTRY);
+    const breath = Math.sin(t * 1.5) * 0.5 + 0.5;            // 0..1
+    const settle = Math.min(1, t / 4);                        // sink into it over 4s
+    const deep = lerpPose(ps.a, lerpPose(ps.a, ps.b || ps.a, 0.22), settle);
+    pose = lerpPose(deep, lerpPose(deep, ps.b || ps.a, 0.06), breath);
+    pose.rootY = (pose.rootY || 0) + Math.sin(t * 1.5) * 0.012;
+    pose.torso = { x: (pose.torso?.x || 0) + Math.sin(t * 1.5) * 0.02, z: 0 };
   }
-  return { pose: ps.a };
+  // blend out of the standing pose so nothing pops
+  return { pose: lerpPose(P0, pose, ease), count };
 }
 
 function startStretch(id) {
@@ -800,5 +839,6 @@ function frame() {
 }
 window.__me = me; window.__cam = () => ({ yaw: camYaw });   // debug handles
 window.__jg = { scene, beachG, lobbyG, worldUpdates: 0 };
+window.__stretchAt = stretchPoseAt;   // debug: sample a stretch pose at time t
 net.connect();
 frame();
