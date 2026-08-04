@@ -6,7 +6,13 @@ import { areFriends } from '../hub.js';
 // worlds designed in ClaudeBox Studio — slug 'juniorguards' = the beach,
 // sub-slot 'juniorguards-lobby' = the lobby. null = client builds the built-in map.
 const worlds = { beach: null, lobby: null };
-export function setWorld(which, w) { worlds[which] = w; }
+export function setWorld(which, w) {
+  worlds[which] = w;
+  // push it to everyone already playing — a Studio save should go live immediately
+  for (const p of state.players.values()) {
+    if (p.joined) { try { if (p.ws.readyState === 1) p.ws.send(JSON.stringify({ t: 'world.update', which, world: w })); } catch {} }
+  }
+}
 export function setBeachWorld(w) { worlds.beach = w; }
 
 const send = (p, msg) => { try { if (p.ws.readyState === 1) p.ws.send(JSON.stringify(msg)); } catch {} };

@@ -118,7 +118,7 @@ let beachSpawn = { x: 0, y: 2, z: -14 };
 let groundFn = () => 0;
 
 // lobby: a sunny little staging plaza, separate from the beach
-{
+function buildDefaultLobby() {
   const ground = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 40), lam('#7fbf6a'));
   ground.position.y = -0.5; lobbyG.add(ground);
   lobbyG.add(box(10, 0.2, 6, '#d9cba8', 0, 0.02, -6));
@@ -129,6 +129,8 @@ let groundFn = () => 0;
   const f = makeFlag('#e33d3d'); f.position.set(-7, 0, -8); lobbyG.add(f);
   const f2 = makeFlag('#f2c20c'); f2.position.set(7, 0, -8); lobbyG.add(f2);
 }
+buildDefaultLobby();
+lobbyG.userData.built = true;
 
 // the built-in Capitola beach (used unless a Studio level replaces it)
 function sampleBeachHeight(x, z) {
@@ -435,11 +437,13 @@ function enterWorld(zone) {
     }
     me.pos = { ...beachSpawn };
   } else {
-    if (studioLobby && !lobbyG.userData.built) {
+    if (!lobbyG.userData.built) {
       lobbyG.userData.built = true;
-      lobbyG.clear();
-      const r = buildStudioWorld(studioLobby, lobbyG);
-      lobbySpawn = r.spawn;
+      if (studioLobby) {
+        lobbyG.clear();
+        const r = buildStudioWorld(studioLobby, lobbyG);
+        lobbySpawn = r.spawn;
+      } else if (!lobbyG.children.length) { buildDefaultLobby(); lobbySpawn = null; }
     }
     me.pos = lobbySpawn ? { ...lobbySpawn } : { x: (Math.random() - 0.5) * 8, y: 1, z: (Math.random() - 0.5) * 6 };
     applyWeather('lobby');
@@ -550,6 +554,18 @@ setInterval(updateCtx, 500);
 
 // ============================ net handlers ============================
 net.on('welcome', (m) => { net.id = m.id; renderServers(m.servers); if (m.beach) studioBeach = m.beach; if (m.lobby) studioLobby = m.lobby; });
+// a Studio save just went live — swap the map in without a reload
+net.on('world.update', (m) => {
+  if (window.__jg) window.__jg.worldUpdates++;
+  if (m.which === 'beach') studioBeach = m.world; else studioLobby = m.world;
+  const G = m.which === 'beach' ? beachG : lobbyG;
+  G.clear();
+  G.userData.built = false;
+  if (m.which === 'beach') { waters = []; shelters = []; }
+  const wasHere = me.zone === m.which;
+  if (wasHere) enterWorld(m.which);      // rebuilds + drops you at the new spawn
+  toast(`🛠 ${m.which === 'beach' ? 'Beach' : 'Lobby'} updated from Studio`);
+});
 net.on('servers', (m) => renderServers(m.servers));
 net.on('jg.err', (m) => toast('⚠️ ' + m.err));
 net.on('jg.info', (m) => toast(m.info));
@@ -783,5 +799,6 @@ function frame() {
   renderer.render(scene, camera);
 }
 window.__me = me; window.__cam = () => ({ yaw: camYaw });   // debug handles
+window.__jg = { scene, beachG, lobbyG, worldUpdates: 0 };
 net.connect();
 frame();
