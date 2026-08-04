@@ -582,6 +582,10 @@ function setupMobile() {
   hold('#m-aim', () => { rightDown = true; onRightDown(); }, () => { rightDown = false; });
   hold('#m-jump', () => keys.add(binds.jump), () => keys.delete(binds.jump));
   hold('#m-crouch', () => tryCrouch(true), () => tryCrouch(false));
+  // top-left utility row
+  $('#mu-score')?.addEventListener('click', () => $('#lb-tasks')?.classList.toggle('hidden'));
+  $('#mu-keys')?.addEventListener('click', () => $('#kb-open')?.click());
+  $('#mu-skins')?.addEventListener('click', () => $('#sk-open')?.click());
   $b('#m-reload').addEventListener('touchstart', (e) => { e.preventDefault(); startReload(); }, { passive: false });
   $b('#m-play').addEventListener('touchstart', (e) => { e.preventDefault(); toggleModes(); }, { passive: false });
 }

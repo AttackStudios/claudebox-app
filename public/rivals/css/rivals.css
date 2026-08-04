@@ -476,3 +476,106 @@ html, body { height: 100%; overflow: hidden; background: #0b0d12; color: #eef1f6
   border: 2px solid var(--rv-ink); }
 #lb-bar .dot.hidden { display: none; }
 @media (max-width: 700px) { #lb-tasks { display: none; } #lb-play { bottom: 150px; } }
+
+
+/* ==================== mobile layout pass — round translucent controls,
+   a directional move wheel, big arrow jump, thumbnail weapon tiles ==================== */
+@media (pointer: coarse), (hover: none) {
+  /* --- utility row, top-left --- */
+  #m-util { position: fixed; left: 12px; top: 12px; z-index: 64; display: flex; gap: 9px; pointer-events: auto; }
+  #m-util button {
+    width: 46px; height: 46px; border-radius: 50%;
+    border: none; background: rgba(38, 42, 52, .55);
+    color: rgba(255, 255, 255, .92); font-size: 20px;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    transition: transform .06s, background .1s;
+  }
+  #m-util button:active { transform: scale(.9); background: rgba(70, 150, 230, .6); }
+
+  /* --- action buttons: flat translucent discs, no bright ring --- */
+  .mbtn {
+    border: none !important;
+    background: rgba(38, 42, 52, .5) !important;
+    color: rgba(255, 255, 255, .95);
+    box-shadow: none;
+  }
+  .mbtn:active { background: rgba(70, 150, 230, .62) !important; }
+  .mbtn.big {   /* fire — sits directly under the jump, clear of the weapon tiles */
+    width: 88px; height: 88px; font-size: 32px;
+    right: 26px; bottom: 148px;
+    background: rgba(48, 52, 64, .5) !important;
+  }
+  /* jump = the large up-arrow disc, upper right */
+  #m-jump {
+    right: 26px; bottom: 250px;
+    width: 84px; height: 84px; font-size: 40px;
+    background: rgba(44, 48, 60, .5) !important;
+  }
+  /* reload + dash sit as a pair under the jump */
+  #m-reload.small { right: 132px; bottom: 236px; width: 60px; height: 60px; font-size: 26px; }
+  #m-aim { right: 210px; bottom: 236px; width: 60px; height: 60px; font-size: 26px; }
+  #m-crouch { right: 132px; bottom: 152px; width: 62px; height: 62px; font-size: 26px; }
+  #m-chat.small { width: 50px; height: 50px; font-size: 22px; }
+
+  /* --- movement wheel: a segmented ring with direction arrows --- */
+  #joy {
+    width: 132px; height: 132px; margin: -66px 0 0 -66px;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(30,34,44,.0) 0 30%, rgba(38,42,52,.5) 30% 100%);
+    border: none;
+    backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+  }
+  /* four arrow marks around the rim, drawn with a repeating conic mask */
+  #joy::before {
+    content: '';
+    position: absolute; inset: 8px;
+    border-radius: 50%;
+    background:
+      conic-gradient(from 45deg,
+        rgba(255,255,255,.16) 0 2deg, rgba(255,255,255,0) 2deg 88deg,
+        rgba(255,255,255,.16) 88deg 92deg, rgba(255,255,255,0) 92deg 178deg,
+        rgba(255,255,255,.16) 178deg 182deg, rgba(255,255,255,0) 182deg 268deg,
+        rgba(255,255,255,.16) 268deg 272deg, rgba(255,255,255,0) 272deg 360deg);
+  }
+  #joy::after {
+    content: '▲▼◀▶';
+    position: absolute; inset: 0;
+    color: rgba(255, 255, 255, .34);
+    font-size: 0;   /* the glyphs are positioned by the knob instead — keeps the ring clean */
+  }
+  #joy-knob {
+    width: 58px; height: 58px; margin: -29px 0 0 -29px;
+    background: rgba(255, 255, 255, .42);
+    border: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+  }
+
+  /* --- weapon tiles: thumbnails, active one lit blue --- */
+  #loadout { gap: 7px; }
+  #loadout .slot {
+    width: 60px; height: 54px;
+    border-radius: 12px;
+    border: none;
+    background: rgba(38, 42, 52, .58);
+    font-size: 24px;
+    backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+    transition: background .1s, transform .1s;
+  }
+  #loadout .slot.active {
+    background: rgba(58, 158, 240, .85);
+    transform: translateY(-3px);
+    box-shadow: 0 4px 14px rgba(40, 130, 220, .5);
+  }
+  #loadout .slot small { color: rgba(255, 255, 255, .75); }
+
+  /* --- readouts in the corners; weapon tiles ride above the ammo --- */
+  #health-wrap { left: 14px; bottom: 22px; }
+  #ammo-wrap { right: 14px; bottom: 14px; }
+  #loadout {
+    position: fixed; right: 14px; bottom: 78px;
+    justify-content: flex-end;
+  }
+  #ammo-wrap { padding: 0; }   /* tiles are lifted out, so the wrap only holds the numerals */
+  #m-chat.small { left: 16px; bottom: 74px; }   /* clear of the health bar */
+}
