@@ -469,6 +469,7 @@ let rebinding = null;   // action id currently capturing a key
 let sprintToggle = (() => { try { return localStorage.getItem('rivals.sprintToggle') === '1'; } catch { return false; } })();
 let devTools = (() => { try { return localStorage.getItem('rivals.devtools') === '1'; } catch { return false; } })();
 let aimAssist = (() => { try { return localStorage.getItem('rivals.aimassist') === '1'; } catch { return false; } })();
+let aimStrength = (() => { try { const v = +localStorage.getItem('rivals.aimstrength'); return isFinite(v) && v > 0 ? Math.max(1, Math.min(100, v)) : 60; } catch { return 60; } })();
 let autoShoot = (() => { try { return localStorage.getItem('rivals.autoshoot') === '1'; } catch { return false; } })();
 let sprintOn = false, mobileSprint = false;
 const isSprinting = () => mobileSprint || (sprintToggle ? sprintOn : keys.has(binds.sprint));
@@ -582,9 +583,125 @@ function setupMobile() {
   hold('#m-aim', () => { rightDown = true; onRightDown(); }, () => { rightDown = false; });
   hold('#m-jump', () => keys.add(binds.jump), () => keys.delete(binds.jump));
   hold('#m-crouch', () => tryCrouch(true), () => tryCrouch(false));
+
+  // ============ customizable touch layout ============
+  // Every control can be dragged anywhere and resized; the layout is saved per
+  // device. Positions are stored as viewport FRACTIONS so they survive rotation
+  // and different phones.
+  const MOBILE_IDS = ['m-fire', 'm-jump', 'm-aim', 'm-reload', 'm-crouch', 'm-chat', 'm-util', 'loadout'];
+  const MOBILE_LABEL = { 'm-fire': 'Fire', 'm-jump': 'Jump', 'm-aim': 'Aim', 'm-reload': 'Reload', 'm-crouch': 'Crouch', 'm-chat': 'Chat', 'm-util': 'Top row', loadout: 'Weapons' };
+  let mLayout = {};
+  try { mLayout = JSON.parse(localStorage.getItem('rivals.mobileLayout') || '{}') || {}; } catch {}
+  const saveLayout = () => { try { localStorage.setItem('rivals.mobileLayout', JSON.stringify(mLayout)); } catch {} };
+  function applyLayout() {
+    for (const id of MOBILE_IDS) {
+      const el = document.getElementById(id); if (!el) continue;
+      const c = mLayout[id];
+      if (!c) { el.style.removeProperty('left'); el.style.removeProperty('top'); el.style.removeProperty('transform'); continue; }
+      const r = el.getBoundingClientRect();
+      const w = r.width / (c.s || 1), h = r.height / (c.s || 1);
+      el.style.position = 'fixed';
+      el.style.right = 'auto'; el.style.bottom = 'auto';
+      el.style.left = Math.round(c.fx * innerWidth - w / 2) + 'px';
+      el.style.top = Math.round(c.fy * innerHeight - h / 2) + 'px';
+      el.style.transformOrigin = 'center';
+      el.style.transform = 'scale(' + (c.s || 1) + ')';
+    }
+  }
+  addEventListener('resize', () => setTimeout(applyLayout, 60));
+
+  // ---- edit mode ----
+  let editing = false, editSel = null;
+  const editUi = document.createElement('div');
+  editUi.id = 'm-edit';
+  editUi.className = 'hidden';
+  editUi.innerHTML = `
+    <div id="me-bar">
+      <b id="me-what">Drag a control to move it</b>
+      <label>Size <input id="me-size" type="range" min="0.6" max="1.8" step="0.05" value="1"></label>
+      <button id="me-reset">Reset all</button>
+      <button id="me-done">Done</button>
+    </div>`;
+  document.body.appendChild(editUi);
+  const meWhat = editUi.querySelector('#me-what');
+  const meSize = editUi.querySelector('#me-size');
+
+  function setEditing(on) {
+    editing = on;
+    editUi.classList.toggle('hidden', !on);
+    for (const id of MOBILE_IDS) document.getElementById(id)?.classList.toggle('m-editable', on);
+    if (!on) { editSel = null; document.querySelectorAll('.m-selected').forEach((e) => e.classList.remove('m-selected')); }
+  }
+  function selectCtl(el) {
+    document.querySelectorAll('.m-selected').forEach((e) => e.classList.remove('m-selected'));
+    editSel = el; el.classList.add('m-selected');
+    meWhat.textContent = MOBILE_LABEL[el.id] || el.id;
+    meSize.value = (mLayout[el.id]?.s) || 1;
+  }
+  meSize.addEventListener('input', () => {
+    if (!editSel) return;
+    const id = editSel.id;
+    const r = editSel.getBoundingClientRect();
+    mLayout[id] = mLayout[id] || { fx: (r.left + r.width / 2) / innerWidth, fy: (r.top + r.height / 2) / innerHeight, s: 1 };
+    mLayout[id].s = +meSize.value;
+    applyLayout(); saveLayout();
+  });
+  editUi.querySelector('#me-reset').addEventListener('click', () => {
+    mLayout = {}; saveLayout();
+    for (const id of MOBILE_IDS) {
+      const el = document.getElementById(id); if (!el) continue;
+      el.style.removeProperty('position'); el.style.removeProperty('left'); el.style.removeProperty('top');
+      el.style.removeProperty('right'); el.style.removeProperty('bottom'); el.style.removeProperty('transform');
+    }
+    toast('Controls reset to default');
+  });
+  editUi.querySelector('#me-done').addEventListener('click', () => { setEditing(false); toast('Layout saved ✓'); });
+
+  // drag any control while editing
+  let drag = null;
+  const onDown = (e) => {
+    if (!editing) return;
+    const el = e.currentTarget;
+    const t = e.touches ? e.touches[0] : e;
+    const r = el.getBoundingClientRect();
+    selectCtl(el);
+    drag = { el, dx: t.clientX - (r.left + r.width / 2), dy: t.clientY - (r.top + r.height / 2) };
+    e.preventDefault(); e.stopPropagation();
+  };
+  const onMove = (e) => {
+    if (!drag) return;
+    const t = e.touches ? e.touches[0] : e;
+    const cx = Math.max(24, Math.min(innerWidth - 24, t.clientX - drag.dx));
+    const cy = Math.max(24, Math.min(innerHeight - 24, t.clientY - drag.dy));
+    const id = drag.el.id;
+    mLayout[id] = { fx: cx / innerWidth, fy: cy / innerHeight, s: mLayout[id]?.s || 1 };
+    applyLayout();
+    e.preventDefault();
+  };
+  const onUp = () => { if (drag) { saveLayout(); drag = null; } };
+  for (const id of MOBILE_IDS) {
+    const el = document.getElementById(id); if (!el) continue;
+    el.addEventListener('touchstart', onDown, { passive: false });
+    el.addEventListener('mousedown', onDown);
+  }
+  addEventListener('touchmove', onMove, { passive: false });
+  addEventListener('mousemove', onMove);
+  addEventListener('touchend', onUp);
+  addEventListener('mouseup', onUp);
+
+  window.__mobileEdit = { open: () => setEditing(true), close: () => setEditing(false), layout: () => mLayout };
+  applyLayout();
   // top-left utility row
   $('#mu-score')?.addEventListener('click', () => $('#lb-tasks')?.classList.toggle('hidden'));
-  $('#mu-keys')?.addEventListener('click', () => $('#kb-open')?.click());
+  {
+    const gear = $('#mu-keys'); let lp = 0;
+    const startLp = () => { lp = setTimeout(() => { lp = 0; window.__mobileEdit?.open(); toast('Drag controls to move · slider resizes'); }, 550); };
+    const endLp = () => { if (lp) { clearTimeout(lp); lp = 0; $('#kb-open')?.click(); } };
+    gear?.addEventListener('touchstart', startLp, { passive: true });
+    gear?.addEventListener('touchend', endLp);
+    gear?.addEventListener('mousedown', startLp);
+    gear?.addEventListener('mouseup', endLp);
+  }
   $('#mu-skins')?.addEventListener('click', () => $('#sk-open')?.click());
   $b('#m-reload').addEventListener('touchstart', (e) => { e.preventDefault(); startReload(); }, { passive: false });
   $b('#m-play').addEventListener('touchstart', (e) => { e.preventDefault(); toggleModes(); }, { passive: false });
@@ -2723,7 +2840,8 @@ function tickAimAssist(dt) {
   if ((!aimAssist && !autoShoot) || inLobbyMode() || me.dead || game.phase === 'freeze' || game.phase === 'podium') return;
   const w = WEAPONS[me.weapon];
   if (!w || !w.mag) return;   // guns only
-  let best = null, bestD = 0.12;   // ~7° magnet cone
+  const str = Math.max(1, Math.min(100, aimStrength)) / 100;
+  let best = null, bestD = 0.045 + 0.115 * str;   // cone widens with strength (~2.6° → ~9°)
   for (const [, o] of others) {
     const d = o.data;
     if (d.dead) continue;
@@ -2748,7 +2866,7 @@ function tickAimAssist(dt) {
   }
   if (!best) return;
   if (aimAssist) {   // smooth magnetism — eases toward the head, never snaps
-    const k = 1 - Math.exp(-6.5 * dt);
+    const k = 1 - Math.exp(-(1.2 + 9.5 * str) * dt);   // 1% barely nudges · 100% locks on
     me.ry += wrapA(best.wantYaw - me.ry) * k;
     me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch + (best.wantPitch - me.pitch) * k));
   }
@@ -4123,6 +4241,21 @@ function renderKeybinds() {
     aimAssist = !aimAssist;
     try { localStorage.setItem('rivals.aimassist', aimAssist ? '1' : '0'); } catch {}
   });
+  {   // strength: 1% = a faint nudge, 100% = a hard lock
+    const row = document.createElement('div'); row.className = 'kb-row';
+    const nm = document.createElement('span'); nm.className = 'kb-label';
+    const setLabel = () => { nm.textContent = `Aim Assist Strength — ${aimStrength}%`; };
+    setLabel();
+    const sl = document.createElement('input');
+    sl.type = 'range'; sl.min = '1'; sl.max = '100'; sl.step = '1'; sl.value = String(aimStrength);
+    sl.className = 'kb-slider'; sl.disabled = !aimAssist;
+    sl.addEventListener('input', () => {
+      aimStrength = Math.max(1, Math.min(100, +sl.value || 1));
+      try { localStorage.setItem('rivals.aimstrength', String(aimStrength)); } catch {}
+      setLabel();
+    });
+    row.append(nm, sl); host.appendChild(row);
+  }
   mkSwitch('Auto-Shoot (fire when on target)', () => autoShoot, () => {
     autoShoot = !autoShoot;
     try { localStorage.setItem('rivals.autoshoot', autoShoot ? '1' : '0'); } catch {}
