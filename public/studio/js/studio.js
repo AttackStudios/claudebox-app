@@ -140,6 +140,25 @@ function buildPartObject(spec) {
     g.add(pole, fabric);
     return g;
   }
+  if (spec.kind === 'fence') {
+    // vertical slats wired together, like real beach snow fencing
+    const g = new THREE.Group();
+    const [len, h, thk] = spec.size;
+    const slatW = 0.09, gap = 0.13;
+    const n = Math.max(2, Math.floor(len / (slatW + gap)));
+    const step = len / n;
+    for (let i = 0; i < n; i++) {
+      const sl = new THREE.Mesh(new THREE.BoxGeometry(slatW, h, Math.max(0.04, thk)), lam(spec.color));
+      sl.position.set(-len / 2 + step * (i + 0.5), 0, 0);
+      sl.rotation.z = (i % 3 - 1) * 0.012;          // a little lean, like weathered lath
+      g.add(sl);
+    }
+    for (const wy of [h * 0.3, -h * 0.28]) {         // the twisted wires holding it together
+      const wire = new THREE.Mesh(new THREE.BoxGeometry(len, 0.045, Math.max(0.05, thk * 1.2)), lam(spec.color2 || '#8a5a2a'));
+      wire.position.y = wy; g.add(wire);
+    }
+    return g;
+  }
   if (spec.kind === 'text') {
     return new THREE.Mesh(new THREE.PlaneGeometry(spec.size[0], spec.size[1]),
       new THREE.MeshBasicMaterial({ map: textTexture(spec.text, spec.color), transparent: true, side: THREE.DoubleSide }));
@@ -227,6 +246,7 @@ function refreshInspector() {
     <div class="field"><label>Rotate Y (°)</label><input type="number" step="5" data-roty value="${Math.round(s.rotY * 180 / Math.PI)}"></div>
     <div class="field"><label>Colour</label><input type="color" data-color value="${s.color}"></div>
     ${s.kind === 'flag' ? `<div class="field"><label>Handle colour</label><input type="color" data-color2 value="${s.color2 || '#8a6844'}"></div>` : ''}
+    ${s.kind === 'fence' ? `<div class="field"><label>Wire colour</label><input type="color" data-color2 value="${s.color2 || '#8a5a2a'}"></div>` : ''}
     ${s.kind === 'text' ? `<div class="field"><label>Text</label><input type="text" maxlength="80" data-text value="${(s.text || '').replace(/"/g, '&quot;')}"></div>` : ''}
     ${s.kind === 'solid' ? `<div class="field"><label>Texture</label><select data-texture>${TEXTURES.map((t2) => `<option ${t2 === (s.texture || 'none') ? 'selected' : ''}>${t2}</option>`).join('')}</select></div>` : ''}
     ${s.kind !== 'solid' ? `<div class="field"><label>Kind</label><b style="color:#7f8aa3">${s.kind}</b></div>` : ''}

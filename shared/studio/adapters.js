@@ -72,7 +72,7 @@ export function toWibitWorld(level) {
 // The spawn point is a part with the jgspawn trigger (falls back to level.spawn).
 export function toJuniorGuardsWorld(level) {
   if (!level || !Array.isArray(level.parts) || !level.parts.length) return null;
-  const solids = [], waters = [], sands = [], flags = [], texts = [], sits = [], shelters = [];
+  const solids = [], waters = [], sands = [], flags = [], texts = [], fences = [], sits = [], shelters = [];
   let spawn = { x: level.spawn?.x ?? 0, y: level.spawn?.y ?? 3, z: level.spawn?.z ?? 0 };
   for (const p of level.parts) {
     const has = (t) => p.behaviors?.some((b) => b.type === t);
@@ -82,7 +82,8 @@ export function toJuniorGuardsWorld(level) {
     else if (p.kind === 'sand') sands.push(o);
     else if (p.kind === 'flag') flags.push(o);
     else if (p.kind === 'text') texts.push(o);
+    else if (p.kind === 'fence') { fences.push(o); if (p.solid) solids.push(o); }
     else if (p.solid) { solids.push(o); if (has('jgshelter')) shelters.push(o); if (has('jgsit')) sits.push(o); }
   }
-  return { spawn, solids, waters, sands, flags, texts, sits, shelters, sky: level.sky || '#8fd6f2', name: level.name };
+  return { spawn, solids, waters, sands, flags, texts, fences, sits, shelters, sky: level.sky || '#8fd6f2', name: level.name };
 }

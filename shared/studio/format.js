@@ -9,7 +9,7 @@ export const SHAPES = ['box', 'ramp', 'cylinder', 'sphere'];
 //   sand  — textured sand with a real heightmap, not a flat plane
 //   flag  — a premade flag: color = fabric, color2 = pole/handle
 //   text  — floating text panel showing `text`
-export const KINDS = ['solid', 'water', 'sand', 'flag', 'text'];
+export const KINDS = ['solid', 'water', 'sand', 'flag', 'text', 'fence'];
 export const TEXTURES = ['none', 'wood', 'stripes', 'brick', 'dots', 'sand'];
 
 // Behaviors split into:
@@ -46,6 +46,8 @@ export const PALETTE = [
   { shape: 'box', label: 'Sand', emoji: '🏖️', size: [16, 1, 16], color: '#e8d29a', kind: 'sand' },
   { shape: 'box', label: 'Flag', emoji: '🚩', size: [0.4, 4, 0.4], color: '#e33d3d', color2: '#8a6844', kind: 'flag' },
   { shape: 'box', label: 'Text', emoji: '🔤', size: [6, 1.6, 0.2], color: '#ffffff', kind: 'text', text: 'Hello beach!' },
+  // beach snow fencing — slatted dune/crowd-control fence
+  { shape: 'box', label: 'Snow Fence', emoji: '🧱', size: [10, 1.2, 0.14], color: '#d4762a', color2: '#8a5a2a', kind: 'fence' },
 ];
 
 let _id = 0;

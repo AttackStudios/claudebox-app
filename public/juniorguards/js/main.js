@@ -85,6 +85,19 @@ function makeFlag(color = '#e33d3d', pole = '#8a6844', h = 4) {
   g.userData.fabric = fabric;
   return g;
 }
+function makeFence(len = 10, h = 1.2, slatColor = '#d4762a', wireColor = '#8a5a2a') {
+  const g = new THREE.Group();
+  const slatW = 0.09, gap = 0.13;
+  const n = Math.max(2, Math.floor(len / (slatW + gap)));
+  const step = len / n;
+  for (let i = 0; i < n; i++) {
+    const sl = box(slatW, h, 0.05, slatColor, -len / 2 + step * (i + 0.5), h / 2, 0);
+    sl.rotation.z = (i % 3 - 1) * 0.012;     // weathered lath leans a touch
+    g.add(sl);
+  }
+  for (const wy of [h * 0.78, h * 0.22]) g.add(box(len, 0.045, 0.06, wireColor, 0, wy, 0));
+  return g;
+}
 function makeTower() {
   const g = new THREE.Group();
   for (const [x, z] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) g.add(box(0.22, 3, 0.22, '#b98c58', x, 1.5, z));
@@ -168,6 +181,14 @@ function buildDefaultBeach() {
   // lifeguard tower + JG flags
   const tower = makeTower(); tower.position.set(14, groundFn(14, 2), 2); beachG.add(tower);
   shelters.push({ x: 14, y: 4.75 + groundFn(14, 2), z: 2, w: 3.7, h: 0.22, d: 3.7 });
+  // dune snow fencing along the back of the beach, the way Capitola runs it
+  for (let i = 0; i < 7; i++) {
+    const fx = -54 + i * 18;
+    const fence = makeFence(16, 1.2);
+    fence.position.set(fx, groundFn(fx, -30) - 0.05, -30);
+    fence.rotation.y = 0.02 * (i % 2 ? 1 : -1);
+    beachG.add(fence);
+  }
   const f1 = makeFlag('#e33d3d'); f1.position.set(10, groundFn(10, 6), 6); beachG.add(f1);
   const f2 = makeFlag('#35b24a'); f2.position.set(18, groundFn(18, 6), 6); beachG.add(f2);
   beachSpawn = { x: 0, y: groundFn(0, -14) + 1.5, z: -14 };
@@ -188,6 +209,10 @@ function buildStudioWorld(w, G) {
     m.position.set(o.x, o.y + o.h / 2, o.z); G.add(m);
   }
   for (const o of w.flags) { const f = makeFlag(o.color, o.color2, Math.max(2, o.h)); f.position.set(o.x, o.y - o.h / 2, o.z); G.add(f); }
+  for (const o of (w.fences || [])) {
+    const f = makeFence(o.w, o.h, o.color, o.color2);
+    f.position.set(o.x, o.y - o.h / 2, o.z); f.rotation.y = o.rotY || 0; G.add(f);
+  }
   for (const o of w.texts) { const t = textPanel(o.text || '·', o.color); t.position.set(o.x, o.y, o.z); t.rotation.y = o.rotY; G.add(t); }
   shelters = w.shelters.concat(w.solids.filter((s) => s.h > 0.5 && s.y > 2.5));
   return { spawn: { ...w.spawn }, sands: w.sands };
