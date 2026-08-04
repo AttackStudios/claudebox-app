@@ -3434,11 +3434,13 @@ net.on('round.freeze', (msg) => {
   $('#lobby-tip').classList.add('hidden');
   $('#kb-open')?.classList.add('hidden'); closeKeybinds();
   $('#freeze-count').classList.remove('hidden');
+  $('#key-hints')?.classList.remove('hidden');
   hud.scoreA.textContent = game.score[game.myTeam];
   hud.scoreB.textContent = game.score[game.myTeam === 'A' ? 'B' : 'A'];
   chipAvatars($('#chip-a-av'), game.roster, game.myTeam);
   chipAvatars($('#chip-b-av'), game.roster, game.myTeam === 'A' ? 'B' : 'A');
   updateHpHud(); updateAmmoHud();
+  if (msg.round === 1) { matchElims = 0; const ec0 = $('#elim-count'); if (ec0) { ec0.classList.add('hidden'); ec0.querySelector('b').textContent = '0'; } }
   if (msg.round === 1) {
     const card = $('#map-card');
     $('#map-card-name').textContent = (MAPS[game.mapId] || MAPS.arena).name;
@@ -3465,7 +3467,7 @@ net.on('round.end', (msg) => {
   hud.scoreA.textContent = game.score[game.myTeam];
   hud.scoreB.textContent = game.score[game.myTeam === 'A' ? 'B' : 'A'];
   const won = msg.winner === game.myTeam;
-  banner(msg.winner ? (won ? '✔ ROUND WON' : '✖ ROUND LOST') : 'ROUND DRAW', 1600);
+  if (msg.winner) resultBanner(won); else banner('ROUND DRAW', 1600);
   (won ? sfx.elim : sfx.hurt)();
 });
 net.on('match.end', (msg) => {
@@ -3879,11 +3881,11 @@ net.on('launch', (msg) => { // your own grenade rocket-jumps you
   me.grounded = false; me.sliding = false;
   sfx.dash();
 });
-let killStreak = 0, elimTimer = 0;
+let killStreak = 0, elimTimer = 0, matchElims = 0;
 function showElimBanner(name, streak) {
   const el = $('#elim-banner');
   if (!el) return;
-  el.innerHTML = `<small>ELIMINATED</small><b>${name}</b>` + (streak > 1 ? `<span class="streak">${streak} STREAK</span>` : '');
+  el.innerHTML = `<small>Eliminated</small><b>${name}</b>` + (streak > 1 ? `<span class="streak">${streak} STREAK</span>` : '');
   el.classList.remove('hidden', 'pop'); void el.offsetWidth; el.classList.add('pop');
   clearTimeout(elimTimer); elimTimer = setTimeout(() => el.classList.add('hidden'), 1900);
 }
@@ -3899,6 +3901,7 @@ net.on('elim', (msg) => {
     sfx.elim();
     killStreak++;
     if (!taskState.elim) { taskState.elim = true; saveTasks(); }
+    { const ec = $('#elim-count'); if (ec) { ec.classList.remove('hidden'); ec.querySelector('b').textContent = matchElims += 1; } }
     showElimBanner(victim?.name || 'enemy', killStreak);
     if (!game.gotFirstElim) { game.gotFirstElim = true; window.ClaudeBox?.completeChallenge('rivals-elim'); }
     const o = others.get(msg.victim);
@@ -4171,6 +4174,13 @@ $('#chat-input')?.addEventListener('keydown', (e) => {
 $('#m-chat')?.addEventListener('touchstart', (e) => { e.preventDefault(); openChat(); }, { passive: false });
 net.on('chat', (msg) => { addChatLine(msg.name, msg.text, msg.team, msg.id === net.id); });
 
+function resultBanner(won) {   // ROUND / WON — the reference's result slab
+  const el = $('#round-banner');
+  el.className = won ? 'won' : 'lost';
+  el.innerHTML = `<span class="eyebrow">ROUND</span>${won ? 'WON' : 'LOST'}`;
+  el.classList.remove('hidden');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 2200);
+}
 function banner(text, ms) {
   const el = $('#round-banner');
   el.textContent = text;
