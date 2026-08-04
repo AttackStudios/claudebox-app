@@ -195,11 +195,12 @@ function refreshInspector() {
     <select id="beh-add"><option value="">+ add trigger…</option>${Object.entries(BEHAVIORS).map(([k, b]) => `<option value="${k}">${b.emoji} ${b.label}</option>`).join('')}</select>
   `;
   // wire transform inputs
-  inspBody.querySelectorAll('[data-pos]').forEach((el) => el.oninput = () => { s.pos[+el.dataset.pos] = +el.value; applyMesh(rec); syncSpawnIfNeeded(); });
-  inspBody.querySelectorAll('[data-size]').forEach((el) => el.oninput = () => { s.size[+el.dataset.size] = Math.max(0.1, +el.value); applyMesh(rec); });
-  inspBody.querySelector('[data-shape]').onchange = (e) => { s.shape = e.target.value; applyMesh(rec); };
-  inspBody.querySelector('[data-roty]').oninput = (e) => { s.rotY = (+e.target.value) * Math.PI / 180; applyMesh(rec); };
+  inspBody.querySelectorAll('[data-pos]').forEach((el) => el.oninput = () => { snapshot(true); s.pos[+el.dataset.pos] = +el.value; applyMesh(rec); syncSpawnIfNeeded(); });
+  inspBody.querySelectorAll('[data-size]').forEach((el) => el.oninput = () => { snapshot(true); s.size[+el.dataset.size] = Math.max(0.1, +el.value); applyMesh(rec); });
+  inspBody.querySelector('[data-shape]').onchange = (e) => { snapshot(true); s.shape = e.target.value; applyMesh(rec); };
+  inspBody.querySelector('[data-roty]').oninput = (e) => { snapshot(true); s.rotY = (+e.target.value) * Math.PI / 180; applyMesh(rec); };
   const rebuildPart = () => {
+    snapshot(true);
     const cur = state.built.get(s.id);   // ALWAYS the live record — color drags fire many times
     if (cur) { scene.remove(cur.mesh); cur.mesh.traverse?.((o) => o.geometry?.dispose()); state.built.delete(s.id); }
     addMesh(s);
@@ -208,8 +209,8 @@ function refreshInspector() {
   inspBody.querySelector('[data-color2]') && (inspBody.querySelector('[data-color2]').oninput = (e) => { s.color2 = e.target.value; rebuildPart(); });
   inspBody.querySelector('[data-text]') && (inspBody.querySelector('[data-text]').oninput = (e) => { s.text = e.target.value; rebuildPart(); });
   inspBody.querySelector('[data-texture]') && (inspBody.querySelector('[data-texture]').onchange = (e) => { s.texture = e.target.value; rebuildPart(); });
-  inspBody.querySelector('[data-solid]').onchange = (e) => { s.solid = e.target.checked; };
-  inspBody.querySelector('#beh-add').onchange = (e) => { if (e.target.value) { s.behaviors.push(behDefaults(e.target.value)); refreshInspector(); } };
+  inspBody.querySelector('[data-solid]').onchange = (e) => { snapshot(true); s.solid = e.target.checked; };
+  inspBody.querySelector('#beh-add').onchange = (e) => { if (e.target.value) { snapshot(); s.behaviors.push(behDefaults(e.target.value)); refreshInspector(); } };
   renderBehaviors(s);
 }
 function behDefaults(type) { return { type, ...JSON.parse(JSON.stringify(BEHAVIORS[type].params)) }; }
@@ -225,7 +226,7 @@ function renderBehaviors(s) {
         if (typeof dv === 'string') return `<div class="field"><label>${k}</label><input type="text" data-k="${k}" value="${(b[k] || '').replace(/"/g, '&quot;')}"></div>`;
         return '';
       }).join('');
-    div.querySelector('[data-rm]').onclick = () => { s.behaviors.splice(i, 1); refreshInspector(); };
+    div.querySelector('[data-rm]').onclick = () => { snapshot(); s.behaviors.splice(i, 1); refreshInspector(); };
     div.querySelectorAll('[data-k]').forEach((el) => el.oninput = () => {
       b[el.dataset.k] = el.type === 'number' ? +el.value : el.value;
     });
@@ -241,6 +242,7 @@ PALETTE.forEach((p) => {
   b.innerHTML = `<span class="e">${p.emoji}</span><span class="l">${p.label}</span>`;
   b.onclick = () => {
     const t = camTarget();
+    snapshot();
     const spec = newPart({ shape: p.shape, size: [...p.size], color: p.color, kind: p.kind || 'solid', color2: p.color2 || '#8a6844', text: p.text || '', solid: p.kind !== 'water' && p.kind !== 'text', pos: [Math.round(t.x), p.size[1] / 2, Math.round(t.z)] });
     state.level.parts.push(spec); addMesh(spec); select(spec.id); status('Added ' + p.label);
   };
@@ -248,19 +250,68 @@ PALETTE.forEach((p) => {
 });
 $('#btn-del').onclick = () => deleteSel();
 $('#btn-dupe').onclick = () => dupeSel();
+$('#btn-undo') && ($('#btn-undo').onclick = () => undo());
+$('#btn-redo') && ($('#btn-redo').onclick = () => redo());
 $('#btn-copy') && ($('#btn-copy').onclick = () => copySel());
 $('#btn-paste') && ($('#btn-paste').onclick = () => pasteClip());
 $('#btn-spawn').onclick = () => {
   const rec = state.built.get(state.selected); if (!rec) return status('Select a part first');
+  snapshot();
   state.level.spawn = { x: rec.spec.pos[0], y: rec.spec.pos[1] + rec.spec.size[1] / 2 + 2, z: rec.spec.pos[2] };
   spawnMarker.position.set(state.level.spawn.x, state.level.spawn.y - 2.2, state.level.spawn.z); status('Spawn set');
 };
 function deleteSel() {
   const rec = state.built.get(state.selected); if (!rec) return;
+  snapshot();
   scene.remove(rec.mesh); rec.mesh.traverse?.((o) => o.geometry?.dispose()); rec.mesh.geometry?.dispose?.(); state.built.delete(rec.spec.id);
   state.level.parts = state.level.parts.filter((p) => p.id !== rec.spec.id);
   select(null); status('Deleted');
 }
+// ============ history + unsaved-changes guard ============
+const undoStack = [], redoStack = [];
+let dirty = false, lastSnapAt = 0;
+function markClean() { dirty = false; updateDirtyMark(); }
+function updateDirtyMark() {
+  const b = $('#btn-save');
+  if (b) b.textContent = dirty ? '● Save (live)' : 'Save (live)';
+}
+// snapshot BEFORE a change; `gesture` coalesces rapid edits (slider drags) into one step
+function snapshot(gesture) {
+  const now = performance.now();
+  if (gesture && now - lastSnapAt < 450) { lastSnapAt = now; dirty = true; updateDirtyMark(); return; }
+  lastSnapAt = now;
+  undoStack.push(JSON.stringify(state.level));
+  if (undoStack.length > 80) undoStack.shift();
+  redoStack.length = 0;
+  dirty = true; updateDirtyMark();
+}
+function restoreLevel(json) {
+  state.level = sanitizeLevel(JSON.parse(json));
+  state.selected = null;
+  $('#level-name').value = state.level.name;
+  rebuildAll();
+  dirty = true; updateDirtyMark();
+}
+function undo() {
+  if (!undoStack.length) return status('Nothing to undo');
+  redoStack.push(JSON.stringify(state.level));
+  restoreLevel(undoStack.pop());
+  status('Undo');
+}
+function redo() {
+  if (!redoStack.length) return status('Nothing to redo');
+  undoStack.push(JSON.stringify(state.level));
+  restoreLevel(redoStack.pop());
+  status('Redo');
+}
+// don't let a stray Cmd-W / tab close throw away unsaved work
+addEventListener('beforeunload', (e) => {
+  if (!dirty) return;
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+});
+
 const CLIP_KEY = 'studio.clipboard';
 function copySel() {
   const rec = state.built.get(state.selected);
@@ -274,6 +325,7 @@ function pasteClip() {
   try { src = JSON.parse(localStorage.getItem(CLIP_KEY) || 'null'); } catch {}
   if (!src) return status('Nothing copied yet');
   const t = camTarget();
+  snapshot();
   const { id: _drop, ...rest } = src;        // drop the source id — newPart mints a fresh one
   const spec = newPart(rest);
   spec.pos = [Math.round(t.x), src.pos[1], Math.round(t.z)];   // land it under the camera
@@ -282,6 +334,7 @@ function pasteClip() {
 }
 function dupeSel() {
   const rec = state.built.get(state.selected); if (!rec) return;
+  snapshot();
   const { id: _dup, ...copy } = JSON.parse(JSON.stringify(rec.spec));   // fresh id, else the clone shares the original's
   const spec = newPart(copy); spec.pos[0] += 3; spec.pos[2] += 3;
   state.level.parts.push(spec); addMesh(spec); select(spec.id); status('Duplicated');
@@ -319,7 +372,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button === 1) { e.preventDefault(); dragging = 'pan'; return; }   // middle mouse = pan
   if (e.button === 2) { dragging = 'orbit'; return; }
   const id = pickPart(e);
-  if (id) { select(id); dragging = 'move'; } else { select(null); dragging = 'orbit'; }
+  if (id) { snapshot(); select(id); dragging = 'move'; } else { select(null); dragging = 'orbit'; }
 });
 addEventListener('pointermove', (e) => {
   if (!dragging || state.mode !== 'edit') return;
@@ -379,14 +432,16 @@ addEventListener('keydown', (e) => {
   const rec = state.built.get(state.selected);
   if (e.code === 'Delete' || e.code === 'Backspace') deleteSel();
   if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dupeSel(); }
+  if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redo(); return; }
   if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySel(); }
   if (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); pasteClip(); }
   if (e.code === 'KeyX' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySel(); deleteSel(); }
   if (rec) {
-    if (e.code === 'KeyQ') { rec.spec.pos[1] -= 0.5; applyMesh(rec); refreshInspector(); }
-    if (e.code === 'KeyE') { rec.spec.pos[1] += 0.5; applyMesh(rec); refreshInspector(); }
-    if (e.code === 'BracketLeft') { rec.spec.rotY -= Math.PI / 12; applyMesh(rec); refreshInspector(); }
-    if (e.code === 'BracketRight') { rec.spec.rotY += Math.PI / 12; applyMesh(rec); refreshInspector(); }
+    if (e.code === 'KeyQ') { snapshot(true); rec.spec.pos[1] -= 0.5; applyMesh(rec); refreshInspector(); }
+    if (e.code === 'KeyE') { snapshot(true); rec.spec.pos[1] += 0.5; applyMesh(rec); refreshInspector(); }
+    if (e.code === 'BracketLeft') { snapshot(true); rec.spec.rotY -= Math.PI / 12; applyMesh(rec); refreshInspector(); }
+    if (e.code === 'BracketRight') { snapshot(true); rec.spec.rotY += Math.PI / 12; applyMesh(rec); refreshInspector(); }
   }
 });
 
@@ -412,6 +467,7 @@ $('#btn-save').onclick = async () => {
     const res = await fetch('/api/level/' + state.slug, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: state.level }) });
     const d = await res.json();
     status(d.ok ? `Saved to "${state.slug}" — it's live!` : 'Save failed');
+    if (d.ok) markClean();
     if (d.ok) window.ClaudeBox?.completeChallenge('studio-publish');
   } catch { status('Save failed (offline?)'); }
 };
@@ -423,7 +479,9 @@ async function loadSlot() {
     state.level = sanitizeLevel(level || { parts: [] });
   } catch { state.level = sanitizeLevel({ parts: [] }); }
   $('#level-name').value = state.level.name;
-  state.selected = null; rebuildAll(); frameCameraOnLevel(); status('Loaded "' + state.slug + '"');
+  state.selected = null; rebuildAll(); frameCameraOnLevel();
+  undoStack.length = 0; redoStack.length = 0; markClean();
+  status('Loaded "' + state.slug + '"');
 }
 $('#btn-export').onclick = () => {
   const blob = new Blob([JSON.stringify(sanitizeLevel(state.level), null, 2)], { type: 'application/json' });
