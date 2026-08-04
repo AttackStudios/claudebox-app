@@ -2725,10 +2725,18 @@ function tickAimAssist(dt) {
     if (d.dead) continue;
     if (d.team && game.myTeam && d.team === game.myTeam) continue;   // never on teammates
     const g = o.ctrl.group.position;
-    const dx = g.x - me.pos.x, dz = g.z - me.pos.z;
+    // PREDICTION: lead the target by its own velocity. Hitscan guns land instantly,
+    // so the lead exists to cancel the assist's own catch-up lag and the snapshot
+    // delay — it keeps the crosshair ON a strafing player instead of trailing them.
+    const v = o.vel || { x: 0, y: 0, z: 0 };
+    const rough = Math.hypot(g.x - me.pos.x, g.z - me.pos.z);
+    const w2 = WEAPONS[me.weapon];
+    const lead = Math.min(0.42, 0.13 + rough / 260 + (w2?.projectile ? rough / (w2.speed || 60) : 0));
+    const px = g.x + v.x * lead, py = g.y + v.y * lead, pz = g.z + v.z * lead;
+    const dx = px - me.pos.x, dz = pz - me.pos.z;
     const distXZ = Math.hypot(dx, dz);
     if (distXZ < 0.6 || distXZ > 90) continue;
-    const dy = (g.y + 1.55) - (me.pos.y + me.eye);   // the HEAD
+    const dy = (py + 1.55) - (me.pos.y + me.eye);   // the HEAD, led
     const wantYaw = Math.atan2(-dx, -dz);
     const wantPitch = Math.atan2(dy, distXZ);
     const ang = Math.hypot(wrapA(wantYaw - me.ry) * Math.cos(me.pitch), wantPitch - me.pitch);
@@ -3434,13 +3442,11 @@ net.on('round.freeze', (msg) => {
   $('#lobby-tip').classList.add('hidden');
   $('#kb-open')?.classList.add('hidden'); closeKeybinds();
   $('#freeze-count').classList.remove('hidden');
-  $('#key-hints')?.classList.remove('hidden');
   hud.scoreA.textContent = game.score[game.myTeam];
   hud.scoreB.textContent = game.score[game.myTeam === 'A' ? 'B' : 'A'];
   chipAvatars($('#chip-a-av'), game.roster, game.myTeam);
   chipAvatars($('#chip-b-av'), game.roster, game.myTeam === 'A' ? 'B' : 'A');
   updateHpHud(); updateAmmoHud();
-  if (msg.round === 1) { matchElims = 0; const ec0 = $('#elim-count'); if (ec0) { ec0.classList.add('hidden'); ec0.querySelector('b').textContent = '0'; } }
   if (msg.round === 1) {
     const card = $('#map-card');
     $('#map-card-name').textContent = (MAPS[game.mapId] || MAPS.arena).name;
@@ -3467,7 +3473,7 @@ net.on('round.end', (msg) => {
   hud.scoreA.textContent = game.score[game.myTeam];
   hud.scoreB.textContent = game.score[game.myTeam === 'A' ? 'B' : 'A'];
   const won = msg.winner === game.myTeam;
-  if (msg.winner) resultBanner(won); else banner('ROUND DRAW', 1600);
+  banner(msg.winner ? (won ? '✔ ROUND WON' : '✖ ROUND LOST') : 'ROUND DRAW', 1600);
   (won ? sfx.elim : sfx.hurt)();
 });
 net.on('match.end', (msg) => {
@@ -3831,6 +3837,16 @@ net.on('snap', (msg) => {
     }
     const o = others.get(f.id);
     if (!o) { addOther(f); continue; }
+    { // velocity estimate (smoothed) so aim assist can lead a strafing target
+      const tNow = clockNow(), prev = o.target, dt2 = tNow - (o.velAt || 0);
+      if (prev && dt2 > 0.02 && dt2 < 0.6) {
+        const vx = (f.pos.x - prev.x) / dt2, vy = (f.pos.y - prev.y) / dt2, vz = (f.pos.z - prev.z) / dt2;
+        o.vel = o.vel
+          ? { x: o.vel.x + (vx - o.vel.x) * 0.45, y: o.vel.y + (vy - o.vel.y) * 0.45, z: o.vel.z + (vz - o.vel.z) * 0.45 }
+          : { x: vx, y: vy, z: vz };
+      }
+      o.velAt = tNow;
+    }
     o.target = { ...f.pos, ry: f.ry };
     o.data.anim = f.dead ? 'death' : f.anim;
     o.data.dead = f.dead;
@@ -3881,11 +3897,11 @@ net.on('launch', (msg) => { // your own grenade rocket-jumps you
   me.grounded = false; me.sliding = false;
   sfx.dash();
 });
-let killStreak = 0, elimTimer = 0, matchElims = 0;
+let killStreak = 0, elimTimer = 0;
 function showElimBanner(name, streak) {
   const el = $('#elim-banner');
   if (!el) return;
-  el.innerHTML = `<small>Eliminated</small><b>${name}</b>` + (streak > 1 ? `<span class="streak">${streak} STREAK</span>` : '');
+  el.innerHTML = `<small>ELIMINATED</small><b>${name}</b>` + (streak > 1 ? `<span class="streak">${streak} STREAK</span>` : '');
   el.classList.remove('hidden', 'pop'); void el.offsetWidth; el.classList.add('pop');
   clearTimeout(elimTimer); elimTimer = setTimeout(() => el.classList.add('hidden'), 1900);
 }
@@ -3901,7 +3917,6 @@ net.on('elim', (msg) => {
     sfx.elim();
     killStreak++;
     if (!taskState.elim) { taskState.elim = true; saveTasks(); }
-    { const ec = $('#elim-count'); if (ec) { ec.classList.remove('hidden'); ec.querySelector('b').textContent = matchElims += 1; } }
     showElimBanner(victim?.name || 'enemy', killStreak);
     if (!game.gotFirstElim) { game.gotFirstElim = true; window.ClaudeBox?.completeChallenge('rivals-elim'); }
     const o = others.get(msg.victim);
@@ -4174,13 +4189,6 @@ $('#chat-input')?.addEventListener('keydown', (e) => {
 $('#m-chat')?.addEventListener('touchstart', (e) => { e.preventDefault(); openChat(); }, { passive: false });
 net.on('chat', (msg) => { addChatLine(msg.name, msg.text, msg.team, msg.id === net.id); });
 
-function resultBanner(won) {   // ROUND / WON — the reference's result slab
-  const el = $('#round-banner');
-  el.className = won ? 'won' : 'lost';
-  el.innerHTML = `<span class="eyebrow">ROUND</span>${won ? 'WON' : 'LOST'}`;
-  el.classList.remove('hidden');
-  clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 2200);
-}
 function banner(text, ms) {
   const el = $('#round-banner');
   el.textContent = text;
