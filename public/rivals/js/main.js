@@ -456,6 +456,8 @@ let rebinding = null;   // action id currently capturing a key
 // sprint mode: hold (default) vs toggle (press once to lock sprint on/off)
 let sprintToggle = (() => { try { return localStorage.getItem('rivals.sprintToggle') === '1'; } catch { return false; } })();
 let devTools = (() => { try { return localStorage.getItem('rivals.devtools') === '1'; } catch { return false; } })();
+let aimAssist = (() => { try { return localStorage.getItem('rivals.aimassist') === '1'; } catch { return false; } })();
+let autoShoot = (() => { try { return localStorage.getItem('rivals.autoshoot') === '1'; } catch { return false; } })();
 let sprintOn = false, mobileSprint = false;
 const isSprinting = () => mobileSprint || (sprintToggle ? sprintOn : keys.has(binds.sprint));
 
@@ -2699,6 +2701,35 @@ function finishReload() {
   updateAmmoHud();
 }
 
+// ---- aim assist + autoshoot (Settings toggles) ----
+const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+function tickAimAssist(dt) {
+  if ((!aimAssist && !autoShoot) || inLobbyMode() || me.dead || game.phase === 'freeze' || game.phase === 'podium') return;
+  const w = WEAPONS[me.weapon];
+  if (!w || !w.mag) return;   // guns only
+  let best = null, bestD = 0.12;   // ~7° magnet cone
+  for (const [, o] of others) {
+    const d = o.data;
+    if (d.dead) continue;
+    if (d.team && game.myTeam && d.team === game.myTeam) continue;   // never on teammates
+    const g = o.ctrl.group.position;
+    const dx = g.x - me.pos.x, dz = g.z - me.pos.z;
+    const distXZ = Math.hypot(dx, dz);
+    if (distXZ < 0.6 || distXZ > 90) continue;
+    const dy = (g.y + 1.55) - (me.pos.y + me.eye);   // the HEAD
+    const wantYaw = Math.atan2(-dx, -dz);
+    const wantPitch = Math.atan2(dy, distXZ);
+    const ang = Math.hypot(wrapA(wantYaw - me.ry) * Math.cos(me.pitch), wantPitch - me.pitch);
+    if (ang < bestD) { bestD = ang; best = { wantYaw, wantPitch, ang }; }
+  }
+  if (!best) return;
+  if (aimAssist) {   // smooth magnetism — eases toward the head, never snaps
+    const k = 1 - Math.exp(-6.5 * dt);
+    me.ry += wrapA(best.wantYaw - me.ry) * k;
+    me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch + (best.wantPitch - me.pitch) * k));
+  }
+  if (autoShoot && best.ang < 0.035 && !me.reloading) tryFire();   // crosshair ON them = fire
+}
 function tryFire() {
   vmAnim.bfInspectT = 1;   // any attack intent cancels an inspect
   if (inLobbyMode()) {
@@ -4044,6 +4075,24 @@ function renderKeybinds() {
     sfx.click?.(); renderKeybinds();
   });
   devRow.append(devName, dsw); host.appendChild(devRow);
+  // ---- aim assist + autoshoot ----
+  const mkSwitch = (label, getOn, toggle) => {
+    const row = document.createElement('div'); row.className = 'kb-row';
+    const nm = document.createElement('span'); nm.className = 'kb-label'; nm.textContent = label;
+    const sw2 = document.createElement('button');
+    sw2.className = 'kb-switch' + (getOn() ? ' on' : ''); sw2.setAttribute('role', 'switch');
+    sw2.setAttribute('aria-checked', String(getOn())); sw2.innerHTML = '<i></i>';
+    sw2.addEventListener('click', () => { toggle(); sfx.click?.(); renderKeybinds(); });
+    row.append(nm, sw2); host.appendChild(row);
+  };
+  mkSwitch('Aim Assist (magnet to heads)', () => aimAssist, () => {
+    aimAssist = !aimAssist;
+    try { localStorage.setItem('rivals.aimassist', aimAssist ? '1' : '0'); } catch {}
+  });
+  mkSwitch('Auto-Shoot (fire when on target)', () => autoShoot, () => {
+    autoShoot = !autoShoot;
+    try { localStorage.setItem('rivals.autoshoot', autoShoot ? '1' : '0'); } catch {}
+  });
   // ---- key rebinds ----
   for (const [id, label] of KB_ACTIONS) {
     const row = document.createElement('div'); row.className = 'kb-row';
@@ -4349,6 +4398,7 @@ function frame() {
 
   stepMe(dt);
   tickCharm(dt);
+  tickAimAssist(dt);
 
   // auto fire
   if (mouseDown && WEAPONS[me.weapon]?.auto) tryFire();
