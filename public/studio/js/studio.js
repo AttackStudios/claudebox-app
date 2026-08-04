@@ -248,6 +248,8 @@ PALETTE.forEach((p) => {
 });
 $('#btn-del').onclick = () => deleteSel();
 $('#btn-dupe').onclick = () => dupeSel();
+$('#btn-copy') && ($('#btn-copy').onclick = () => copySel());
+$('#btn-paste') && ($('#btn-paste').onclick = () => pasteClip());
 $('#btn-spawn').onclick = () => {
   const rec = state.built.get(state.selected); if (!rec) return status('Select a part first');
   state.level.spawn = { x: rec.spec.pos[0], y: rec.spec.pos[1] + rec.spec.size[1] / 2 + 2, z: rec.spec.pos[2] };
@@ -259,9 +261,29 @@ function deleteSel() {
   state.level.parts = state.level.parts.filter((p) => p.id !== rec.spec.id);
   select(null); status('Deleted');
 }
+const CLIP_KEY = 'studio.clipboard';
+function copySel() {
+  const rec = state.built.get(state.selected);
+  if (!rec) return status('Select a part to copy');
+  const spec = JSON.parse(JSON.stringify(rec.spec));
+  try { localStorage.setItem(CLIP_KEY, JSON.stringify(spec)); } catch {}
+  status('Copied ' + (spec.kind !== 'solid' ? spec.kind : spec.shape));
+}
+function pasteClip() {
+  let src = null;
+  try { src = JSON.parse(localStorage.getItem(CLIP_KEY) || 'null'); } catch {}
+  if (!src) return status('Nothing copied yet');
+  const t = camTarget();
+  const { id: _drop, ...rest } = src;        // drop the source id — newPart mints a fresh one
+  const spec = newPart(rest);
+  spec.pos = [Math.round(t.x), src.pos[1], Math.round(t.z)];   // land it under the camera
+  state.level.parts.push(spec); addMesh(spec); select(spec.id);
+  status('Pasted ' + (spec.kind !== 'solid' ? spec.kind : spec.shape));
+}
 function dupeSel() {
   const rec = state.built.get(state.selected); if (!rec) return;
-  const spec = newPart({ ...JSON.parse(JSON.stringify(rec.spec)) }); spec.pos[0] += 3; spec.pos[2] += 3;
+  const { id: _dup, ...copy } = JSON.parse(JSON.stringify(rec.spec));   // fresh id, else the clone shares the original's
+  const spec = newPart(copy); spec.pos[0] += 3; spec.pos[2] += 3;
   state.level.parts.push(spec); addMesh(spec); select(spec.id); status('Duplicated');
 }
 
@@ -357,6 +379,9 @@ addEventListener('keydown', (e) => {
   const rec = state.built.get(state.selected);
   if (e.code === 'Delete' || e.code === 'Backspace') deleteSel();
   if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); dupeSel(); }
+  if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySel(); }
+  if (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); pasteClip(); }
+  if (e.code === 'KeyX' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySel(); deleteSel(); }
   if (rec) {
     if (e.code === 'KeyQ') { rec.spec.pos[1] -= 0.5; applyMesh(rec); refreshInspector(); }
     if (e.code === 'KeyE') { rec.spec.pos[1] += 0.5; applyMesh(rec); refreshInspector(); }
