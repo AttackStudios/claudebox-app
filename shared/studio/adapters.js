@@ -76,7 +76,7 @@ export function toJuniorGuardsWorld(level) {
   let spawn = { x: level.spawn?.x ?? 0, y: level.spawn?.y ?? 3, z: level.spawn?.z ?? 0 };
   for (const p of level.parts) {
     const has = (t) => p.behaviors?.some((b) => b.type === t);
-    const o = { x: p.pos[0], y: p.pos[1], z: p.pos[2], w: p.size[0], h: p.size[1], d: p.size[2], rotY: p.rotY || 0, color: p.color, color2: p.color2, texture: p.texture || 'none', text: p.text || '' };
+    const o = { x: p.pos[0], y: p.pos[1], z: p.pos[2], w: p.size[0], h: p.size[1], d: p.size[2], rotX: p.rotX || 0, rotY: p.rotY || 0, rotZ: p.rotZ || 0, color: p.color, color2: p.color2, texture: p.texture || 'none', text: p.text || '' };
     if (has('jgspawn')) spawn = { x: o.x, y: o.y + o.h / 2 + 1, z: o.z };
     if (p.kind === 'water') waters.push(o);
     else if (p.kind === 'sand') sands.push(o);

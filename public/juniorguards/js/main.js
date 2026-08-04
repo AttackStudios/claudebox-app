@@ -53,7 +53,7 @@ function box(w, h, d, c, x, y, z, ry = 0) {
 }
 
 // speckled sand texture (drawn, not flat)
-function sandTexture() {
+function sandTexture(repX, repZ) {
   const cv = document.createElement('canvas'); cv.width = cv.height = 256;
   const x = cv.getContext('2d');
   x.fillStyle = '#e6cf9a'; x.fillRect(0, 0, 256, 256);
@@ -63,7 +63,8 @@ function sandTexture() {
     x.fillRect(Math.random() * 256, Math.random() * 256, 1.6, 1.6);
   }
   const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 6);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repX ? Math.max(1, repX / 6) : 10, repZ ? Math.max(1, repZ / 6) : 6);
   return t;
 }
 function textPanel(text, color = '#ffffff') {
@@ -147,6 +148,20 @@ function resolveWalls(pos) {
   }
 }
 const addCollider = (x, y, z, w, h, d) => colliders.push({ x, y, z, w, h, d });
+// a tilted piece needs a bounding box that actually covers where it ended up
+function addColliderRot(o) {
+  const rx = o.rotX || 0, ry = o.rotY || 0, rz = o.rotZ || 0;
+  if (!rx && !ry && !rz) return addCollider(o.x, o.y, o.z, o.w, o.h, o.d);
+  const e = new THREE.Euler(rx, ry, rz);
+  const m = new THREE.Matrix4().makeRotationFromEuler(e);
+  const hx = o.w / 2, hy = o.h / 2, hz = o.d / 2;
+  let bx = 0, by = 0, bz = 0;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const v = new THREE.Vector3(sx * hx, sy * hy, sz * hz).applyMatrix4(m);
+    bx = Math.max(bx, Math.abs(v.x)); by = Math.max(by, Math.abs(v.y)); bz = Math.max(bz, Math.abs(v.z));
+  }
+  addCollider(o.x, o.y, o.z, bx * 2, by * 2, bz * 2);
+}
 
 // lobby: a sunny little staging plaza, separate from the beach
 function buildDefaultLobby() {
@@ -233,7 +248,12 @@ function buildDefaultBeach() {
 }
 function buildStudioWorld(w, G) {
   colliders = [];
-  for (const o of w.solids) { G.add(box(o.w, o.h, o.d, o.color, o.x, o.y, o.z, o.rotY)); addCollider(o.x, o.y, o.z, o.w, o.h, o.d); }
+  for (const o of w.solids) {
+    const m = box(o.w, o.h, o.d, o.color, o.x, o.y, o.z);
+    m.rotation.set(o.rotX || 0, o.rotY || 0, o.rotZ || 0);   // slanted pieces keep their tilt
+    G.add(m);
+    addColliderRot(o);
+  }
   for (const o of (w.sands || [])) addCollider(o.x, o.y, o.z, o.w, o.h, o.d);   // stand ON the sand, not in it
   for (const o of w.waters) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, o.d), new THREE.MeshLambertMaterial({ color: o.color, transparent: true, opacity: 0.8 }));
@@ -241,19 +261,19 @@ function buildStudioWorld(w, G) {
   }
   waters = w.waters.map((o) => ({ x: o.x, y: o.y + o.h / 2, z: o.z, w: o.w, h: o.h, d: o.d }));
   for (const o of w.sands) {
-    const geo = new THREE.PlaneGeometry(o.w, o.d, 32, 32); geo.rotateX(-Math.PI / 2);
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) pos.setY(i, Math.sin(pos.getX(i) * 0.4) * 0.25 + Math.cos(pos.getZ(i) * 0.5) * 0.2);
-    geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: sandTexture(), color: o.color }));
-    m.position.set(o.x, o.y + o.h / 2, o.z); G.add(m);
+    // a real slab, exactly like the editor draws it — no hidden dunes for props to sink into
+    const m = new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, o.d),
+      new THREE.MeshLambertMaterial({ map: sandTexture(o.w, o.d), color: o.color }));
+    m.position.set(o.x, o.y, o.z);
+    m.rotation.set(o.rotX || 0, o.rotY || 0, o.rotZ || 0);
+    G.add(m);
   }
-  for (const o of w.flags) { const f = makeFlag(o.color, o.color2, Math.max(2, o.h)); f.position.set(o.x, o.y - o.h / 2, o.z); G.add(f); }
+  for (const o of w.flags) { const f = makeFlag(o.color, o.color2, Math.max(2, o.h)); f.position.set(o.x, o.y - o.h / 2, o.z); f.rotation.set(o.rotX || 0, o.rotY || 0, o.rotZ || 0); G.add(f); }
   for (const o of (w.fences || [])) {
     const f = makeFence(o.w, o.h, o.color, o.color2);
-    f.position.set(o.x, o.y - o.h / 2, o.z); f.rotation.y = o.rotY || 0; G.add(f);
+    f.position.set(o.x, o.y - o.h / 2, o.z); f.rotation.set(o.rotX || 0, o.rotY || 0, o.rotZ || 0); G.add(f);
   }
-  for (const o of w.texts) { const t = textPanel(o.text || '·', o.color); t.position.set(o.x, o.y, o.z); t.rotation.y = o.rotY; G.add(t); }
+  for (const o of w.texts) { const t = textPanel(o.text || '·', o.color); t.position.set(o.x, o.y, o.z); t.rotation.set(o.rotX || 0, o.rotY || 0, o.rotZ || 0); G.add(t); }
   shelters = w.shelters.concat(w.solids.filter((s) => s.h > 0.5 && s.y > 2.5));
   return { spawn: { ...w.spawn }, sands: w.sands };
 }

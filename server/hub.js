@@ -11,6 +11,7 @@ import { state, save as saveGame } from './state.js';
 import { applyCourse as obApplyCourse } from '../shared/obby/course.js';
 import { applyWorld as wbApplyWorld } from '../shared/wibit/park.js';
 import { toObbyCourse, toWibitWorld, toJuniorGuardsWorld } from '../shared/studio/adapters.js';
+import { sanitizeLevel } from '../shared/studio/format.js';
 import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID } from '../shared/rewards.js';
 import { SKIN_BY_ID, CASE_PRICE, rollCase } from '../shared/rivals/skins.js';
 
@@ -612,18 +613,21 @@ export function hubRouter() {
     const slug = levelSlug(req.params.slug);
     const level = req.body?.level;
     if (!level || typeof level !== 'object') return res.status(400).json({ ok: false, error: 'no level' });
+    // never trust the wire: fill defaults (kind/solid/rotation) so a malformed
+    // level can't reach a game half-formed
+    const clean = sanitizeLevel(level);
     try {
       fs.mkdirSync(LEVELS_DIR, { recursive: true });
       const tmp = path.join(LEVELS_DIR, slug + '.json.tmp');
-      fs.writeFileSync(tmp, JSON.stringify(level));
+      fs.writeFileSync(tmp, JSON.stringify(clean));
       fs.renameSync(tmp, path.join(LEVELS_DIR, slug + '.json'));
       // hot-reload the live world for games that consume Studio levels
       // (null/empty reverts that game to its built-in level)
-      if (slug === 'obby') { try { obApplyCourse(toObbyCourse(level)); } catch {} }
-      if (slug === 'wibit') { try { wbApplyWorld(toWibitWorld(level)); } catch {} }
+      if (slug === 'obby') { try { obApplyCourse(toObbyCourse(clean)); } catch {} }
+      if (slug === 'wibit') { try { wbApplyWorld(toWibitWorld(clean)); } catch {} }
       if (slug === 'juniorguards' || slug === 'juniorguards-lobby') {
         try {
-          import('./juniorguards/protocol.js').then((m) => m.setWorld(slug === 'juniorguards' ? 'beach' : 'lobby', toJuniorGuardsWorld(level)));
+          import('./juniorguards/protocol.js').then((m) => m.setWorld(slug === 'juniorguards' ? 'beach' : 'lobby', toJuniorGuardsWorld(clean)));
         } catch {}
       }
       res.json({ ok: true, slug });
