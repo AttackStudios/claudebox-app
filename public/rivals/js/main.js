@@ -58,6 +58,7 @@ window.__momentum = {
   },
   clearTune() { try { localStorage.removeItem('rivals.momentumTune'); } catch {} return 'reload to drop overrides'; },
   get cfg() { return MOMENTUM.mover.cfg; },
+  get mover() { return MOMENTUM.mover; },   // live instance, for probing slide/hop behaviour
   get state() { return { on: MOMENTUM.on, preset: MOMENTUM.preset }; },
   presets: Object.keys(PRESETS),
 };
@@ -771,13 +772,20 @@ function updateMobileHud() {
 // doubleJump (daggers, fists), gives one extra mid-air jump. Reset on landing.
 // Works under both movers — the momentum mover leaves vel.y alone mid-air
 // because jumpLock blocks its own jump until you touch ground.
+const AIR_JUMP_STACK = 2;   // daggers + fists = 2 airborne jumps, and that's the ceiling
 function tryAirJump() {
   if (me.grounded || me.dead) return;
   if (!WEAPONS[me.weapon]?.doubleJump) return;
-  if ((me.airJumps || 0) >= 1) return;
   const frozen = game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium';
   if (frozen) return;
-  me.airJumps = (me.airJumps || 0) + 1;
+  // Each double-jump weapon is worth ONE air jump per airtime, so swapping
+  // daggers -> fists (or the reverse) stacks a second one. Re-using the same
+  // weapon gives nothing, and the stack stops at two however you mix them.
+  me.airJumpUsed = me.airJumpUsed || [];
+  if (me.airJumpUsed.includes(me.weapon)) return;
+  if (me.airJumpUsed.length >= AIR_JUMP_STACK) return;
+  me.airJumpUsed.push(me.weapon);
+  me.airJumps = me.airJumpUsed.length;
   // match whichever mover is driving — the momentum preset has its own jumpVel
   const baseJump = MOMENTUM.on ? (MOMENTUM.mover.cfg.jumpVel || MOVE.jumpVel) : MOVE.jumpVel;
   me.vel.y = baseJump * 0.92;
@@ -1025,7 +1033,7 @@ function stepMe(dt) {
   const fallSpeed = -me.vel.y;
   if (me.pos.y <= g) {
     me.pos.y = g; me.vel.y = 0; me.grounded = true;
-    me.airJumps = 0;   // touching ground refreshes the double-jump
+    me.airJumps = 0; me.airJumpUsed = [];   // landing refreshes every weapon's air jump
     if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
     // CHAIN slide-hops: only if you PRESSED slide within the last moment (a
     // fresh tap buffered onto the landing) — NOT merely holding it. Holding
