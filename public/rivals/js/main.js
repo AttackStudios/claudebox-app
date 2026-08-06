@@ -805,7 +805,10 @@ function tryCrouch(on) {
   if (on) {
     // Momentum slides are COMMITTED — the mover owns entry and exit, and the
     // only way out is jumping. This check must come before the legacy cancel.
-    if (MOMENTUM.on) { me.slidePressAt = clockNow(); me.crouch = true; return; }
+    // Do NOT set me.crouch here. The mover arms a slide on the RISING EDGE
+    // (crouchHeld && !m.crouch); setting it now eats that edge and the slide
+    // never starts. The mover assigns m.crouch itself on its next step.
+    if (MOMENTUM.on) { me.slidePressAt = clockNow(); return; }
     // pressing slide AGAIN while already sliding cancels it early (stand up)
     if (me.sliding) { me.sliding = false; me.crouch = false; me.slideEndAt = clockNow(); crouchHeld = false; return; }
     me.slidePressAt = clockNow();   // fresh press — buffers a slide onto landing
