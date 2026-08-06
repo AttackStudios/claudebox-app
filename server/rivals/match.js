@@ -36,11 +36,18 @@ export function rayMapDist(boxes, ox, oy, oz, dx, dy, dz, maxDist) {
   return best;
 }
 
+// How much bigger than the collision body the SHOOTABLE box is. Generous on
+// purpose: at 12Hz snapshots a moving target is always a little behind where
+// the shooter saw it, so a tight box eats hits that looked dead-on.
+// Horizontal is per-side, so the box is (radius + pad) * 2 wide.
+export const HITBOX_PAD = 0.26;    // was 0.08 — half-width 0.50 -> 0.68
+export const HITBOX_PAD_Y = 0.10;  // a little forgiveness over the head / at the feet
+
 // ray vs one fighter's AABB; returns { dist, head } or null
 function rayFighter(f, ox, oy, oz, dx, dy, dz, maxDist) {
   const h = f.crouch ? MOVE.heightCrouch : MOVE.heightStand;
   const cx = f.pos.x, cz = f.pos.z, cy = f.pos.y + h / 2;
-  const ex = MOVE.radius + 0.08, ey = h / 2, ez = MOVE.radius + 0.08;
+  const ex = MOVE.radius + HITBOX_PAD, ey = h / 2 + HITBOX_PAD_Y, ez = MOVE.radius + HITBOX_PAD;
   let t0 = 0, t1 = maxDist;
   for (const [o, d, c, e] of [[ox, dx, cx, ex], [oy, dy, cy, ey], [oz, dz, cz, ez]]) {
     if (Math.abs(d) < 1e-9) { if (o < c - e || o > c + e) return null; continue; }
@@ -50,6 +57,8 @@ function rayFighter(f, ox, oy, oz, dx, dy, dz, maxDist) {
     if (t0 > t1) return null;
   }
   const hitY = oy + dy * t0;
+  // measured against the true body height so widening the box doesn't quietly
+  // shrink or grow the head band
   const head = hitY > f.pos.y + h * 0.78;
   return { dist: t0, head };
 }
