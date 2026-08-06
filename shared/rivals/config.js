@@ -56,6 +56,7 @@ export const WEAPONS = {
   fists: {
     slot: 6, name: 'Fists', class: 'melee', auto: true, melee: true,
     dmg: 18, rate: 0.26, range: 2.6, backstabMult: 2,
+    doubleJump: true,     // bare hands: punch off the air for an extra jump
   },
   grenade: {
     slot: 4, name: 'Grenade', class: 'utility', auto: false, utility: true,

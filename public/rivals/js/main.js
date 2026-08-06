@@ -12,8 +12,55 @@ import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
 import { SKINS, SKIN_BY_ID, SKINS_BY_WEAPON, SKIN_WEAPONS, RARITY_COLOR, CASE_PRICE } from '/shared/rivals/skins.js';
 import { MAPS, LOBBY, RANGE } from '/shared/rivals/maps.js';
 import { loadAudio, resumeAudio, playOne, playLoop, stopLoop } from './audio.js';
+import { createMover, tuning, PRESETS } from './movement.js';
 
 const $ = (s) => document.querySelector(s);
+
+// ---------------------------------------------------------------------------
+// MOMENTUM MOVEMENT (default ON)
+// The stock mover snaps velocity to your input every frame, which is why speed
+// can never accumulate. movement.js swaps that for accelerate/friction so
+// strafe-jumping and bunny-hopping work. ON by default; window.__momentum.off()
+// stores a sticky opt-out for anyone who wants the old stock mover back.
+//   window.__momentum.on('velocity')   // or quake / cpm / source / arcade
+//   window.__momentum.off()
+//   window.__momentum.set({ airWishCap: 0.8 })   // live tuning, no reload
+// Tune the numbers by feel at /rivals/movelab.html, then paste them into set().
+// ---------------------------------------------------------------------------
+const MOMENTUM = { on: true, preset: 'velocity', mover: createMover(tuning('velocity')) };
+let crouchHeld = false;   // real held-state of the slide key (mover input)
+try {
+  // ON for everyone by default. The stored value is a PRESET NAME to use, or the
+  // literal 'off' — an explicit opt-out has to survive the new default, so off()
+  // writes a marker instead of clearing the key.
+  const saved = localStorage.getItem('rivals.momentum');
+  if (saved === 'off') MOMENTUM.on = false;
+  else if (saved && PRESETS[saved]) { MOMENTUM.preset = saved; MOMENTUM.mover.set(tuning(saved)); }
+  const over = localStorage.getItem('rivals.momentumTune');
+  if (over) MOMENTUM.mover.set(JSON.parse(over));
+} catch {}
+window.__momentum = {
+  on(preset = 'velocity') {
+    if (!PRESETS[preset]) return 'unknown preset: ' + Object.keys(PRESETS).join(', ');
+    MOMENTUM.on = true; MOMENTUM.preset = preset; MOMENTUM.mover.set(tuning(preset));
+    try { localStorage.setItem('rivals.momentum', preset); } catch {}
+    return 'momentum movement ON (' + preset + ')';
+  },
+  off() {
+    MOMENTUM.on = false;
+    try { localStorage.setItem('rivals.momentum', 'off'); } catch {}   // sticky opt-out
+    return 'momentum movement OFF (stock mover)';
+  },
+  set(patch) {
+    MOMENTUM.mover.set(patch);
+    try { localStorage.setItem('rivals.momentumTune', JSON.stringify(patch)); } catch {}
+    return MOMENTUM.mover.cfg;
+  },
+  clearTune() { try { localStorage.removeItem('rivals.momentumTune'); } catch {} return 'reload to drop overrides'; },
+  get cfg() { return MOMENTUM.mover.cfg; },
+  get state() { return { on: MOMENTUM.on, preset: MOMENTUM.preset }; },
+  presets: Object.keys(PRESETS),
+};
 const status = (t) => { const el = $('#load-status'); if (el) el.textContent = t; };
 const clockNow = () => Date.now() / 1000;
 
@@ -76,6 +123,7 @@ window.__rivals = {
   get anim() { return vmAnim; },
   fns: {
     startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; },
+    tryAirJump: () => tryAirJump(),   // double-jump probe (daggers / fists)
     spawnDummy: (g, w, ry, dx, dz) => { const fid = 'dummy_' + g + '_' + (w || 'ar') + '_' + (ry || 0); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x + (dx || 0), y: 0, z: me.pos.z + (dz || 6) }, ry: ry || 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
   },
 };
@@ -450,7 +498,7 @@ document.addEventListener('mousemove', (e) => {
 // ---------------- rebindable keybinds ----------------
 const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
-  jump: 'Space', sprint: 'ShiftLeft', crouch: 'ControlLeft', reload: 'KeyR', queue: 'KeyE', inspect: 'KeyF',
+  jump: 'Space', sprint: 'ControlLeft', crouch: 'ShiftLeft', reload: 'KeyR', queue: 'KeyE', inspect: 'KeyF',
   weapon1: 'Digit1', weapon2: 'Digit2', weapon3: 'Digit3', weapon4: 'Digit4', weapon5: 'Digit5', weapon6: 'Digit6',
 };
 let binds = (() => {
@@ -485,7 +533,7 @@ addEventListener('keydown', (e) => {
   if (c === binds.reload) startReload();
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
   if (c === binds.sprint || c === binds.crouch) tryCrouch(true);   // Shift OR Ctrl = slide/crouch
-  if (c === binds.jump) tryAirJump();                              // Daggers: mid-air double jump
+  if (c === binds.jump) tryAirJump();                              // Daggers/Fists: mid-air double jump
   if (c === (binds.inspect || 'KeyF') && !me.dead && !me.reloading
       && vmAnim.bfInspectT >= 1 && vmAnim.swingT >= 1 && vmAnim.bfStabT >= 1 && vmAnim.equipT >= 1 && vmAnim.throwT >= 1) {
     { const icls = inspectClassFor(me.weapon); vmAnim.inspectDur = icls === 'butterfly' ? BF_DUR.inspect : INSPECT_DUR[icls]; }   // every weapon gets an inspect
@@ -719,8 +767,10 @@ function updateMobileHud() {
     $(id).style.display = lobby ? 'none' : 'flex';
 }
 
-// Daggers double-jump: a fresh jump PRESS while airborne (holding daggers) gives
-// one extra mid-air jump. Reset when you touch the ground.
+// Double-jump: a fresh jump PRESS while airborne, holding a weapon flagged
+// doubleJump (daggers, fists), gives one extra mid-air jump. Reset on landing.
+// Works under both movers — the momentum mover leaves vel.y alone mid-air
+// because jumpLock blocks its own jump until you touch ground.
 function tryAirJump() {
   if (me.grounded || me.dead) return;
   if (!WEAPONS[me.weapon]?.doubleJump) return;
@@ -728,14 +778,28 @@ function tryAirJump() {
   const frozen = game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium';
   if (frozen) return;
   me.airJumps = (me.airJumps || 0) + 1;
-  me.vel.y = MOVE.jumpVel * 0.92;
+  // match whichever mover is driving — the momentum preset has its own jumpVel
+  const baseJump = MOMENTUM.on ? (MOMENTUM.mover.cfg.jumpVel || MOVE.jumpVel) : MOVE.jumpVel;
+  me.vel.y = baseJump * 0.92;
   me.sliding = false;
-  sfx.dash?.();
+  // fists throw a punch on the way up; blades just get the whoosh
+  if (me.weapon === 'fists') {
+    vmAnim.swingT = 0; vmAnim.swingSide *= -1;   // the jab animation
+    vmAnim.bfInspectT = 1;                       // punching cancels an inspect
+    me.swingAt = clockNow();                     // keep the melee rate honest
+    playOne('fists', 0.8);
+  } else {
+    sfx.dash?.();
+  }
 }
 function tryCrouch(on) {
+  crouchHeld = !!on;
   if (on) {
+    // Momentum slides are COMMITTED — the mover owns entry and exit, and the
+    // only way out is jumping. This check must come before the legacy cancel.
+    if (MOMENTUM.on) { me.slidePressAt = clockNow(); me.crouch = true; return; }
     // pressing slide AGAIN while already sliding cancels it early (stand up)
-    if (me.sliding) { me.sliding = false; me.crouch = false; me.slideEndAt = clockNow(); return; }
+    if (me.sliding) { me.sliding = false; me.crouch = false; me.slideEndAt = clockNow(); crouchHeld = false; return; }
     me.slidePressAt = clockNow();   // fresh press — buffers a slide onto landing
     // SLIDE — crouch while moving on the ground bursts you forward, then decays
     const speed = Math.hypot(me.vel.x, me.vel.z);
@@ -909,6 +973,18 @@ function stepMe(dt) {
 
   if (now < me.dashUntil) {                     // dash overrides
     me.vel.x = me.dashVec.x; me.vel.z = me.dashVec.z;
+  } else if (MOMENTUM.on) {
+    // momentum model owns horizontal velocity, jumping and sliding
+    const r = MOMENTUM.mover.step(me, {
+      wishX: (mx || mz) ? wishX : 0,
+      wishZ: (mx || mz) ? wishZ : 0,
+      forwardOnly: mz !== 0 && mx === 0,
+      jumpHeld: keys.has(binds.jump),   // the mobile Jump button adds this key too
+      crouchHeld,
+      now, frozen,
+    }, dt);
+    if (r.slideStarted) { sfx.slide?.(); window.ClaudeBox?.completeChallenge('rivals-slide'); }
+    if (r.slideEnded) me.slideEndAt = now;
   } else if (me.sliding) {                       // slide decays slowly
     const l = Math.hypot(me.slideVel.x, me.slideVel.z);
     const nl = Math.max(0, l - MOVE.slideFriction * dt);
@@ -926,7 +1002,7 @@ function stepMe(dt) {
     const nn = Math.hypot(me.vel.x, me.vel.z);
     if (nn < cur) { me.vel.x *= cur / (nn || 1); me.vel.z *= cur / (nn || 1); }   // keep top speed
   }
-  if (keys.has(binds.jump) && me.grounded && !frozen) {
+  if (!MOMENTUM.on && keys.has(binds.jump) && me.grounded && !frozen) {
     me.vel.y = MOVE.jumpVel; me.grounded = false;
     // SLIDE-HOP: jump out of a slide (or within a moment of one) and carry its
     // momentum — this is what makes slide→jump fling you far
@@ -949,12 +1025,12 @@ function stepMe(dt) {
   const fallSpeed = -me.vel.y;
   if (me.pos.y <= g) {
     me.pos.y = g; me.vel.y = 0; me.grounded = true;
-    me.airJumps = 0;   // touching ground refreshes the daggers double-jump
+    me.airJumps = 0;   // touching ground refreshes the double-jump
     if (wasAirborne && fallSpeed > 5) vmAnim.landK = Math.min(1, fallSpeed / 16); // landing dip
     // CHAIN slide-hops: only if you PRESSED slide within the last moment (a
     // fresh tap buffered onto the landing) — NOT merely holding it. Holding
     // slide through a plain jump must not auto-slide every time you land.
-    if (wasAirborne && !me.sliding && !frozen && (now - (me.slidePressAt || -9) < 0.25)) {
+    if (!MOMENTUM.on && wasAirborne && !me.sliding && !frozen && (now - (me.slidePressAt || -9) < 0.25)) {
       const sp = Math.hypot(me.vel.x, me.vel.z);
       if (sp > MOVE.walk * 0.5) {
         me.sliding = true;
