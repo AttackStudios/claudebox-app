@@ -1163,6 +1163,7 @@ const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 function mkArm() {
   const g = new THREE.Group();
   const cube = new THREE.Mesh(roundedBoxGeo(0.18, 0.18, 0.78, 0.055), vmMat(VM_SHIRT));
+  cube.userData.isArm = true;   // skins must never repaint your hands
   cube.position.set(0, 0, 0.26);
   g.add(cube);
   return g;
@@ -1279,6 +1280,7 @@ function buildViewmodels() {
       arBolt,                                              // top rail
       box(0.02, 0.05, 0.02, DARK, 0, 0.085, -0.42),        // front post
     ], [0.06, -0.16, 0.22], [0.5, -0.12, 0], [-0.08, -0.1, -0.3], [0.35, 0.35, 0.1]);
+    arMag.userData.y0 = arMag.position.y;
     g.userData.fx = { bolt: arBolt, mag: arMag };
     viewmodels.ar = g;
   }
@@ -1588,11 +1590,23 @@ viewmodels.deagle = vmVariant('handgun', 1.12, '#c9a24a');
 let mySkins = { owned: [], equipped: {} };
 const skinMat = (m) => new THREE.MeshStandardMaterial({ color: m.color, metalness: m.metalness == null ? 0.4 : m.metalness, roughness: m.roughness == null ? 0.5 : m.roughness, emissive: m.emissive || '#000000', emissiveIntensity: m.emissiveIntensity || 0 });
 function applySkinToGroup(group, def) {
-  group.traverse((o) => { if (!o.isMesh) return; if (!o.userData._orig) o.userData._orig = o.material; o.material = def ? skinMat(def.mat) : o.userData._orig; });
+  group.traverse((o) => {
+    if (!o.isMesh || o.userData.isArm) return;   // arms keep your avatar's colour
+    if (!o.userData._orig) o.userData._orig = o.material;
+    o.material = def ? skinMat(def.mat) : o.userData._orig;
+  });
+}
+// belt-and-braces: whatever a skin/model swap did, your hands are your colour.
+function enforceArmColors() {
+  for (const g of Object.values(viewmodels)) {
+    for (const arm of [g?.userData?.rArm, g?.userData?.lArm]) {
+      arm?.traverse?.((o) => { if (o.isMesh && o.material?.color) { o.userData.isArm = true; o.material.color.set(VM_SHIRT); } });
+    }
+  }
 }
 function skinFor(equipped, weapon) { const id = equipped && equipped[weapon]; return id ? SKIN_BY_ID[id] : null; }
 // model skins swap the whole viewmodel (not a material tint) — skip tinting for those
-function applyMyViewmodelSkins() { for (const w of SKIN_WEAPONS) { const vm = viewmodels[w]; if (vm && vm.userData.gun) { const def = skinFor(mySkins.equipped, w); applySkinToGroup(vm.userData.gun, def && def.model ? null : def); } } }
+function applyMyViewmodelSkins() { for (const w of SKIN_WEAPONS) { const vm = viewmodels[w]; if (vm && vm.userData.gun) { const def = skinFor(mySkins.equipped, w); applySkinToGroup(vm.userData.gun, def && def.model ? null : def); } } enforceArmColors(); }
 const catpawEquipped = () => mySkins.equipped && mySkins.equipped.scythe === 'catpaw';
 // cat-paw hit: LOUD scratch + white claw slashes. returns true if it handled the sfx.
 function catpawHitFx() {
@@ -1695,7 +1709,7 @@ function tickCharm(dt) {
   if (hand) {
     if (charmRoot.parent !== hand) {
       hand.add(charmRoot);
-      charmRoot.position.set(0.15, -0.1, 0.1);      // off the outer edge of the fist
+      charmRoot.position.set(0.105, -0.055, 0.055);   // right on the outer edge of the fist
       charmRoot.scale.setScalar(1 / 0.68);          // undo the viewmodel shrink
     }
   } else if (charmRoot.parent !== viewRoot) {
@@ -5021,12 +5035,52 @@ function frame() {
         else if (wDef.mag) { P.gun.rotation.z += Math.sin(now * 1.2) * 0.008; P.gun.position.y += Math.sin(now * 1.7) * 0.003; P.lArm.rotation.z += Math.sin(now * 1.2) * 0.01; }
         else { P.gun.rotation.z += Math.sin(now * 1.4) * 0.012; P.gun.position.y += Math.sin(now * 1.9) * 0.005; }
       }
+      // ---- RELOAD: parts actually move — mag ejects, new one seats, action racks ----
+      if (me.reloading && WEAPONS[me.weapon]?.mag) {
+        const w2 = WEAPONS[me.weapon];
+        const rNow = clockNow();   // me.reloading is stamped with clockNow(), not the vm clock
+        const t = 1 - Math.max(0, Math.min(1, (me.reloading - rNow) / (w2.reload || 1)));   // 0..1
+        const FXr = vm.userData.fx;
+        // phases: 0-.22 tilt in & grab · .22-.42 mag falls away · .42-.72 seat a
+        // fresh mag · .72-.9 rack the action · .9-1 settle back to the aim
+        const tiltIn = sstep(0, 0.22, t) * (1 - sstep(0.82, 1, t));
+        P.gun.rotation.z += tiltIn * 0.55;          // roll the weapon toward you
+        P.gun.rotation.x += tiltIn * 0.22;
+        P.gun.position.y -= tiltIn * 0.1;
+        P.gun.position.x -= tiltIn * 0.05;
+        if (FXr?.mag) {
+          const drop = sstep(0.22, 0.42, t) * (1 - sstep(0.42, 0.62, t));   // out and gone
+          const seat = sstep(0.46, 0.72, t);                                // fresh one rises in
+          const outY = -0.34 * drop;
+          const inY = -0.3 * (1 - seat);
+          FXr.mag.position.y = (FXr.mag.userData.y0 ?? -0.12) + (drop > 0.02 ? outY : inY);
+          FXr.mag.rotation.z = drop * 0.5 - (1 - seat) * 0.25;
+          FXr.mag.visible = !(t > 0.42 && t < 0.5);   // the beat where it's fallen away
+        }
+        // left hand: down to the pouch, up with the mag, slaps it home, then racks
+        const fetch2 = sstep(0.1, 0.4, t) * (1 - sstep(0.4, 0.62, t));
+        const seatHand = sstep(0.46, 0.72, t) * (1 - sstep(0.72, 0.84, t));
+        P.lArm.position.y -= fetch2 * 0.42;
+        P.lArm.position.x -= fetch2 * 0.12;
+        P.lArm.rotation.x -= fetch2 * 0.7;
+        P.lArm.position.y -= seatHand * 0.12;
+        P.lArm.position.z += seatHand * 0.06;
+        const rack2 = Math.sin(sstep(0.74, 0.9, t) * Math.PI);
+        P.lArm.position.z += rack2 * 0.16;
+        P.lArm.position.y += rack2 * 0.05;
+        if (FXr?.bolt) FXr.bolt.position.z = (FXr.bolt.userData.z0 ?? 0) + rack2 * 0.12;
+        if (FXr?.slide) {
+          FXr.slide.position.z = (FXr.slide.userData.z0 ?? 0) + rack2 * 0.13;
+          if (FXr.serr) FXr.serr.position.z = (FXr.serr.userData.z0 ?? 0) + rack2 * 0.13;
+        }
+        P.gun.rotation.z -= rack2 * 0.1;             // the gun kicks as it chambers
+      }
       // ---- moving parts: slides/bolts kick with the shot ----
       const FX = vm.userData.fx;
       if (FX) {
-        if (FX.slide) { FX.slide.position.z = FX.slide.userData.z0 + vmKick * 0.11; FX.serr.position.z = FX.serr.userData.z0 + vmKick * 0.11; }
-        if (FX.bolt && vmKey === 'ar') FX.bolt.position.z = FX.bolt.userData.z0 + vmKick * 0.07;
-        if (FX.mag && vmAnim.bfInspectT >= 1) { FX.mag.position.y = -0.15; FX.mag.rotation.z = 0; }   // reset after mag-check inspect
+        if (FX.slide && !me.reloading) { FX.slide.position.z = FX.slide.userData.z0 + vmKick * 0.11; FX.serr.position.z = FX.serr.userData.z0 + vmKick * 0.11; }
+        if (FX.bolt && vmKey === 'ar' && !me.reloading) FX.bolt.position.z = FX.bolt.userData.z0 + vmKick * 0.07;   // reload owns the bolt while it runs
+        if (FX.mag && vmAnim.bfInspectT >= 1 && !me.reloading) { FX.mag.position.y = FX.mag.userData.y0 ?? -0.15; FX.mag.rotation.z = 0; FX.mag.visible = true; }   // reset after mag-check inspect
         // sniper: work the bolt between shots — hand comes up, bolt back + forward
         if (FX.bolt && vmKey === 'sniper') {
           if (vmAnim.boltT < 1 && !me.reloading) {
