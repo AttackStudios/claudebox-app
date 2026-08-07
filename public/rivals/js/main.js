@@ -10,6 +10,7 @@ import { makeR6, R6_DEFAULT, preloadR6 } from '/shared/r6.js';
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';
 import { SKINS, SKIN_BY_ID, SKINS_BY_WEAPON, SKIN_WEAPONS, RARITY_COLOR, CASE_PRICE } from '/shared/rivals/skins.js';
+import { recoilStep, spreadFor, feelFor } from '/shared/rivals/gunfeel.js';
 import { MAPS, LOBBY, RANGE } from '/shared/rivals/maps.js';
 import { loadAudio, resumeAudio, playOne, playLoop, stopLoop } from './audio.js';
 import { createMover, tuning, PRESETS } from './movement.js';
@@ -125,6 +126,7 @@ window.__rivals = {
   fns: {
     startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; },
     tryAirJump: () => tryAirJump(),   // double-jump probe (daggers / fists)
+    tryFire: () => tryFire(), gunshot: (id, v) => gunshot(id, v),   // shooting-feel probes
     spawnDummy: (g, w, ry, dx, dz) => { const fid = 'dummy_' + g + '_' + (w || 'ar') + '_' + (ry || 0); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x + (dx || 0), y: 0, z: me.pos.z + (dz || 6) }, ry: ry || 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
   },
 };
@@ -153,6 +155,81 @@ function noiseBurst(dur, vol = 0.15, freq = 1800, type = 'bandpass') {
   const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq;
   const g = c.createGain(); g.gain.value = vol;
   src.connect(f); f.connect(g); g.connect(c.destination); src.start();
+}
+// ============ procedural gunshots ============
+// Every shot is synthesised from four layers, so each weapon has a distinct
+// voice without shipping a single recorded sample:
+//   crack  — the sharp transient that says "close and dangerous"
+//   body   — filtered noise; the character of the powder
+//   thump  — the low end you feel more than hear
+//   tail   — a short decaying wash that reads as the room answering back
+const GUNVOICE = {
+  //          crackHz body(dur,cut,q,vol)  thumpHz thump  tail  bright
+  ar:        { crack: 3200, bd: 0.085, cut: 1750, q: 1.1, bv: 0.30, th: 118, tv: 0.24, tail: 0.20, glide: 62 },
+  carbine:   { crack: 3400, bd: 0.080, cut: 1900, q: 1.2, bv: 0.29, th: 126, tv: 0.22, tail: 0.18, glide: 66 },
+  battle:    { crack: 2700, bd: 0.110, cut: 1350, q: 0.9, bv: 0.36, th: 92,  tv: 0.32, tail: 0.28, glide: 48 },
+  burst:     { crack: 3300, bd: 0.078, cut: 1820, q: 1.2, bv: 0.28, th: 122, tv: 0.22, tail: 0.17, glide: 64 },
+  smg:       { crack: 3900, bd: 0.060, cut: 2350, q: 1.5, bv: 0.24, th: 150, tv: 0.16, tail: 0.12, glide: 82 },
+  uzi:       { crack: 4200, bd: 0.052, cut: 2600, q: 1.6, bv: 0.22, th: 162, tv: 0.14, tail: 0.10, glide: 90 },
+  minigun:   { crack: 3000, bd: 0.055, cut: 1600, q: 1.0, bv: 0.26, th: 104, tv: 0.20, tail: 0.11, glide: 58 },
+  handgun:   { crack: 3600, bd: 0.070, cut: 2100, q: 1.3, bv: 0.26, th: 138, tv: 0.19, tail: 0.16, glide: 74 },
+  revolver:  { crack: 2600, bd: 0.130, cut: 1180, q: 0.8, bv: 0.40, th: 80,  tv: 0.38, tail: 0.34, glide: 42 },
+  deagle:    { crack: 2500, bd: 0.140, cut: 1100, q: 0.8, bv: 0.42, th: 74,  tv: 0.40, tail: 0.36, glide: 40 },
+  shotgun:   { crack: 1900, bd: 0.170, cut: 780,  q: 0.6, bv: 0.46, th: 62,  tv: 0.46, tail: 0.42, glide: 32 },
+  shorty:    { crack: 2050, bd: 0.150, cut: 860,  q: 0.6, bv: 0.44, th: 68,  tv: 0.42, tail: 0.36, glide: 35 },
+  sniper:    { crack: 2200, bd: 0.200, cut: 900,  q: 0.7, bv: 0.50, th: 58,  tv: 0.50, tail: 0.55, glide: 28 },
+  autosniper:{ crack: 2400, bd: 0.150, cut: 1050, q: 0.8, bv: 0.42, th: 70,  tv: 0.40, tail: 0.36, glide: 36 },
+  dmr:       { crack: 2800, bd: 0.120, cut: 1400, q: 0.9, bv: 0.36, th: 88,  tv: 0.32, tail: 0.26, glide: 46 },
+};
+function gunshot(id, vol = 1) {
+  const c = A(); if (!c) return;
+  const V = GUNVOICE[id] || GUNVOICE.ar;
+  const t = c.currentTime;
+  const out = c.createGain(); out.gain.value = vol; out.connect(c.destination);
+  // 1) crack — a couple of milliseconds of very bright noise
+  {
+    const n = Math.floor(c.sampleRate * 0.012), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 1.5);
+    const src = c.createBufferSource(); src.buffer = b;
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = V.crack;
+    const g = c.createGain(); g.gain.value = 0.34;
+    src.connect(hp); hp.connect(g); g.connect(out); src.start(t);
+  }
+  // 2) body — the powder, a resonant noise burst that opens then shuts
+  {
+    const n = Math.floor(c.sampleRate * V.bd), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.2);
+    const src = c.createBufferSource(); src.buffer = b;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(V.cut * 1.6, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(120, V.cut * 0.5), t + V.bd);
+    f.Q.value = V.q;
+    const g = c.createGain(); g.gain.value = V.bv;
+    src.connect(f); f.connect(g); g.connect(out); src.start(t);
+  }
+  // 3) thump — pitch-dropping sine you feel in the chest
+  {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(V.th, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(24, V.glide * 0.5), t + V.bd * 1.6);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(V.tv, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + V.bd * 1.8);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + V.bd * 2 + 0.05);
+  }
+  // 4) tail — the room answering, quiet and low-passed
+  if (V.tail > 0.05) {
+    const n = Math.floor(c.sampleRate * V.tail), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2);
+    const src = c.createBufferSource(); src.buffer = b;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+    const g = c.createGain(); g.gain.value = 0.13;
+    src.connect(lp); lp.connect(g); g.connect(out); src.start(t + 0.012);
+  }
+}
+// dry mechanical click when the mag runs out
+function dryFire() {
+  const c = A(); if (!c) return;
+  tone(2200, 0.03, 'square', 0.05); tone(900, 0.04, 'square', 0.04, 0, 0.02);
 }
 const sfx = {
   shot(w) { if (w === 'handgun') { noiseBurst(0.09, 0.2, 2400); tone(320, 0.06, 'square', 0.1, 90); } else if (w === 'sniper') { noiseBurst(0.22, 0.32, 900, 'lowpass'); tone(140, 0.18, 'sawtooth', 0.2, 40); tone(1200, 0.05, 'square', 0.06); } else { noiseBurst(0.07, 0.18, 1900); tone(210, 0.05, 'sawtooth', 0.12, 70); } },
@@ -1127,7 +1204,7 @@ function stepMe(dt) {
     camera.rotateY(me.ry);
     camera.rotateX(me.pitch);
     camera.rotateZ(vmAnim.roll * 0.4);   // subtle strafe lean, like the original
-    // recoil kick decay
+    // recoil kick decay (the short visual punch)
     camera.rotateX(recoil); recoil *= Math.pow(0.0001, dt);
   }
   // my own R6 body: visible only in the third-person lobby
@@ -1144,6 +1221,9 @@ function stepMe(dt) {
 
 // ============================ weapons ============================
 let recoil = 0;
+// Recoil is a PATTERN you can learn, not a random shove: each shot walks the
+// aim along a repeatable path, then the view drifts back once you let off.
+const REC = { pitch: 0, yaw: 0, idx: 0, lastShot: -99, bloom: 0 };
 const viewRoot = new THREE.Group();
 camera.add(viewRoot);
 // hands/guns render in their OWN depth-cleared pass — they can never clip into walls
@@ -2983,6 +3063,20 @@ function tickAimAssist(dt) {
   }
   if (autoShoot && best.ang < 0.035 && !me.reloading) tryFire();   // crosshair ON them = fire
 }
+// Pull the view back toward where it started, and let the cone close again.
+function tickRecoil(dt) {
+  const F = feelFor(me.weapon);
+  const since = clockNow() - REC.lastShot;
+  if (since > 0.35) REC.idx = 0;                 // let off the trigger, pattern restarts
+  if (since > F.recoverDelay) {
+    const k = 1 - Math.exp(-F.recover * dt);
+    const dp = REC.pitch * k, dy = REC.yaw * k;
+    REC.pitch -= dp; REC.yaw -= dy;
+    me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - dp));   // give the aim back
+    me.ry -= dy;
+  }
+  REC.bloom = Math.max(0, REC.bloom - F.bloomDecay * dt);
+}
 function tryFire() {
   vmAnim.bfInspectT = 1;   // any attack intent cancels an inspect
   if (inLobbyMode()) {
@@ -3048,18 +3142,30 @@ function tryFire() {
   }
   if (me.reloading) return;
   const a = me.ammo[me.weapon];
-  if (a.mag <= 0) { startReload(); return; }
+  if (a.mag <= 0) { dryFire(); startReload(); return; }
   if (now - me.lastFire < w.rate) return;
   me.lastFire = now;
   if (game.phase === 'live') a.mag--;   // infinite ammo in the lobby shooting range
-  const spread = me.ads > 0.5 ? w.adsSpread : w.spread;
+  const F = feelFor(me.weapon);
+  const moving = Math.hypot(me.vel.x, me.vel.z) > 2.2;
+  const spread = spreadFor(me.weapon, me.ads > 0.5 ? w.adsSpread : w.spread, REC.bloom,
+    { ads: me.ads, moving, airborne: !me.grounded });
   const d = aimDir(spread);
-  recoil += me.weapon === 'sniper' ? 0.018 : 0.012 + (me.weapon === 'handgun' ? 0.008 : 0.004);
-  vmKick = me.weapon === 'sniper' ? 1.25 : 1;
+  // walk the aim along this weapon's pattern
+  {
+    const step = recoilStep(me.weapon, REC.idx++);
+    const mul = me.ads > 0.5 ? F.adsMul : 1;
+    const up = step.up * mul, side = step.side * mul;
+    REC.pitch += up; REC.yaw += side; REC.lastShot = clockNow();
+    me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch + up));
+    me.ry += side;
+    REC.bloom = Math.min(F.bloomMax, REC.bloom + F.bloom);
+    recoil += F.shake + up * 0.35;                 // the short visual punch
+  }
+  vmKick = F.kick;
   if (me.weapon === 'sniper') vmAnim.boltT = 0;   // cycle the bolt after the shot
   // AR fires a continuous loop (handled in the frame); other guns are one-shots.
-  if (me.weapon === 'handgun') playOne('handgun', 0.75);
-  else if (me.weapon === 'sniper') playOne('sniper', 1.6);   // sniper is loud
+  gunshot(me.weapon, me.ads > 0.5 ? 0.92 : 1);   // every weapon has its own voice now
   muzzleFlash();
   localTracer(d);
   if (game.phase === 'live') net.send({ t: 'fire', dx: d.x, dy: d.y, dz: d.z, weapon: me.weapon });
@@ -4676,14 +4782,16 @@ function frame() {
   const cn = clockNow();
 
   stepMe(dt);
+  tickRecoil(dt);
   tickCharm(dt);
   tickAimAssist(dt);
 
   // auto fire
   if (mouseDown && WEAPONS[me.weapon]?.auto) tryFire();
   // ---- real audio: AR fire loop (only while shooting) + footsteps ----
-  const firingAR = mouseDown && me.weapon === 'ar' && !me.reloading && !me.dead && me.ammo.ar.mag > 0 && (game.phase === 'live' || game.phase === 'lobby');
-  if (firingAR) playLoop('ar', 0.6); else stopLoop('ar');
+  // the AR used to run a looping sample; every shot now synthesises its own
+  // voice through gunshot(), so the loop would just smear on top of it
+  stopLoop('ar');
   const flatSpeed = Math.hypot(me.vel.x, me.vel.z);
   if (me.grounded && !me.dead && flatSpeed > 1.8) playLoop('foot', 0.4, isSprinting() ? 1.75 : 1.05);
   else stopLoop('foot');
