@@ -322,6 +322,7 @@ const keys = new Set();
 
 function setMode(m) {
   mode = m;
+  snapCamera();               // do not sweep the camera across the whole river
   $('#buildbar').classList.toggle('hidden', m !== 'build');
   $('#voyage').classList.toggle('hidden', m !== 'sail');
   $('#vitals').classList.toggle('hidden', m !== 'sail');
@@ -339,6 +340,7 @@ function launch() {
   stagesEntered = 0; lastStageIdx = -1; gotTreasure = false;
   // full health again for the new run
   for (const b of blocks.values()) b.hp = BLOCK_BY_ID[b.id].hp;
+  CAM.sail.yaw = Math.PI; lastLook = -99;   // always set off facing down-river
   setMode('sail');
   net.send({ t: 'launch' });
   window.ClaudeBox?.completeChallenge?.('bab-launch');
@@ -378,12 +380,26 @@ $('#sum-back').addEventListener('click', () => {
   refreshVitals();
 });
 
-// ---------------------------------------------------------------- build input
-// Orbit camera around the plot while building; chase the boat while sailing.
-// start looking DOWN the river from behind the dock, so the voyage ahead is
-// the first thing you see while building
-let camYaw = Math.PI, camPitch = 0.42, camDist = 19;
+// ---------------------------------------------------------------- camera rig
+// Building and sailing keep SEPARATE orbits. Sharing one yaw meant that
+// orbiting your boat on the plot — which the on-screen hint tells you to do —
+// left the chase camera pointing sideways the instant you launched.
+// yaw = Math.PI looks down the river (+Z), which is the default for both.
+const CAM = {
+  build: { yaw: Math.PI, pitch: 0.42, dist: 19 },
+  sail:  { yaw: Math.PI, pitch: 0.30, dist: 26 },
+};
+const cam = () => CAM[mode];
+let lastLook = -99;            // when the player last dragged, for auto-recentre
 let dragging = false, dragMoved = 0, lastX = 0, lastY = 0;
+
+// shortest-way-round interpolation, so recentring never spins the long way
+function angleLerp(a, b, t) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', (e) => {
@@ -395,8 +411,10 @@ canvas.addEventListener('pointermove', (e) => {
   const dx = e.clientX - lastX, dy = e.clientY - lastY;
   lastX = e.clientX; lastY = e.clientY;
   dragMoved += Math.abs(dx) + Math.abs(dy);
-  camYaw -= dx * 0.005;
-  camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.35);
+  const c = cam();
+  c.yaw -= dx * 0.005;
+  c.pitch = clamp(c.pitch + dy * 0.004, 0.05, 1.42);
+  lastLook = performance.now() / 1000;
 });
 canvas.addEventListener('pointerup', (e) => {
   dragging = false;
@@ -408,7 +426,9 @@ canvas.addEventListener('pointerup', (e) => {
   }
 });
 canvas.addEventListener('wheel', (e) => {
-  camDist = clamp(camDist + Math.sign(e.deltaY) * 2.5, 8, 70);
+  // zoom the orbit you are actually using — sailing used to clamp this away
+  const c = cam();
+  c.dist = clamp(c.dist + Math.sign(e.deltaY) * 2.5, 7, 90);
 }, { passive: true });
 
 addEventListener('keydown', (e) => {
@@ -624,6 +644,64 @@ function finishRun(treasure) {
   } else endRun(false);
 }
 
+// ---------------------------------------------------------------- camera
+// Smoothed orbit rig. Both modes place the camera on a sphere around a focus
+// point and ease toward it, so nothing ever snaps — including the long trip
+// back from the treasure to the dock.
+const camPos = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+let camReady = false;
+const snapCamera = () => { camReady = false; };
+
+// While building, frame the BOAT rather than a fixed spot in space, so a tall
+// or wide build stays centred instead of growing off the top of the screen.
+function buildFocus() {
+  const g = boatGroup.position;
+  if (!blocks.size) return new THREE.Vector3(g.x, 2.5, g.z);
+  let sx = 0, sy = 0, sz = 0, maxY = 0;
+  for (const b of blocks.values()) {
+    sx += b.gx; sy += b.gy; sz += b.gz;
+    if (b.gy > maxY) maxY = b.gy;
+  }
+  const n = blocks.size;
+  const l = localPos(sx / n, sy / n, sz / n);
+  return new THREE.Vector3(g.x + l.x, Math.max(2, l.y + maxY * 0.3), g.z + l.z);
+}
+
+function updateCamera(dt, now) {
+  const c = cam();
+
+  // sailing: once you stop looking around, drift back to behind the boat
+  if (mode === 'sail' && now - lastLook > 1.2 && !dragging) {
+    c.yaw = angleLerp(c.yaw, Math.PI, 1 - Math.exp(-2.4 * dt));
+  }
+
+  const focus = mode === 'build'
+    ? buildFocus()
+    : new THREE.Vector3(boat.x, boat.y + 3.2, boat.z);
+
+  // pure orbit around the focus — no world-space fudge, so rotating keeps the
+  // subject dead centre at every yaw
+  const want = new THREE.Vector3(
+    focus.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist,
+    focus.y + Math.sin(c.pitch) * c.dist,
+    focus.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
+  want.y = Math.max(want.y, 1.5);        // never duck below the waterline
+
+  // Look down the river so you can read what is coming — but only to the extent
+  // you are actually facing that way. Applying the full lead at every yaw shoved
+  // the boat off-centre whenever you looked at it side-on.
+  const look = focus.clone();
+  if (mode === 'sail') look.z += 10 * Math.max(0, -Math.cos(c.yaw));
+
+  if (!camReady) { camPos.copy(want); camLook.copy(look); camReady = true; }
+  const k = 1 - Math.exp(-10 * dt);
+  camPos.lerp(want, k);
+  camLook.lerp(look, k);
+  camera.position.copy(camPos);
+  camera.lookAt(camLook);
+}
+
 // ---------------------------------------------------------------- frame loop
 let lastT = performance.now() / 1000;
 function frame() {
@@ -636,15 +714,7 @@ function frame() {
 
   // place the boat + camera
   boatGroup.position.set(boat.x, boat.y, boat.z);
-  const focus = mode === 'build'
-    ? new THREE.Vector3(0, 2.5, HARBOUR_Z + 2)
-    : new THREE.Vector3(boat.x, boat.y + 4.5, boat.z);
-  const dist = mode === 'build' ? camDist : Math.max(camDist, 22);
-  camera.position.set(
-    focus.x + Math.sin(camYaw) * Math.cos(camPitch) * dist,
-    focus.y + Math.sin(camPitch) * dist,
-    focus.z + Math.cos(camYaw) * Math.cos(camPitch) * dist - (mode === 'sail' ? 6 : 0));
-  camera.lookAt(focus);
+  updateCamera(dt, now);
 
   // remote boats ride their own distance, nudged aside so they do not overlap
   for (const r of remotes.values()) {
@@ -693,6 +763,7 @@ async function boot() {
   requestAnimationFrame(frame);
 
   window.__bab = { boat, blocks, boatStats, hazards, launch, endRun, net, scene,
+    camera, CAM, buildFocus, THREE, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };
 
