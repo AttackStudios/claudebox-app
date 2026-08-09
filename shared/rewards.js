@@ -54,6 +54,11 @@ export const CHALLENGES = [
   { id: 'webrush-hero',  game: 'webrush',         emoji: '🦸', title: 'Neighborhood Hero',   hint: 'Stop a crime scene in Web Rush.',       stars: 120 },
   { id: 'webrush-city',  game: 'webrush',         emoji: '🌃', title: 'City Savior',         hint: 'Stop all crime scenes across the city.', stars: 300 },
 
+  // Build A Boat For Treasure
+  { id: 'bab-launch',   game: 'bab', emoji: '⛵', title: 'Maiden Voyage',   hint: 'Launch your first boat down the river.', stars: 50 },
+  { id: 'bab-red',      game: 'bab', emoji: '🌋', title: 'Into the Red',    hint: 'Reach a red-band stage in one run.',    stars: 150 },
+  { id: 'bab-treasure', game: 'bab', emoji: '🏆', title: 'Treasure Hunter', hint: 'Sail all the way to the treasure.',      stars: 300 },
+
   // Elemental Tycoon
   { id: 'tycoon-power',  game: 'tycoon',          emoji: '🔥', title: 'Awakened',           hint: 'Unlock your first elemental power.',    stars: 60 },
   { id: 'tycoon-elim',   game: 'tycoon',          emoji: '⚔️', title: 'Elemental Duelist',  hint: 'Defeat another player in the arena.',   stars: 120 },

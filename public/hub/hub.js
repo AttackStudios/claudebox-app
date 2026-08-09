@@ -220,6 +220,7 @@ const GAME_THEME = {
   'nds':             { emoji: '🌪️', from: '#5a6a7a', to: '#1a2230', accent: '#8fd0ff' },
   'brook':           { emoji: '🏘️', from: '#4fae6a', to: '#173a24', accent: '#7fe0a0' },
   'tycoon':          { emoji: '🔥', from: '#ff7a3a', to: '#2a1866', accent: '#ffb14a' },
+  'bab':             { emoji: '🚤', from: '#2fb0d0', to: '#0d3a5a', accent: '#6ee7ff' },
   'webrush':         { emoji: '🕸️', from: '#e0303c', to: '#1a2140', accent: '#ff5a6c' },
   'playground':      { emoji: '🎡', from: '#ff5ca8', to: '#661650', accent: '#ff8fd0' },
   'studio':          { emoji: '🛠️', from: '#5c72ff', to: '#161f66', accent: '#8ba3ff' },

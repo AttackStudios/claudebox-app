@@ -1,0 +1,103 @@
+/* Build A Boat For Treasure — dock-and-river UI.
+   Leans on the shared ClaudeBox house style (cbx-style.css) and only adds
+   what is specific to building and sailing. */
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
+#c { position: fixed; inset: 0; display: block; }
+.hidden { display: none !important; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#hud > * { pointer-events: auto; }
+
+/* ---- wallet ---- */
+#gold-chip { position: absolute; top: 14px; left: 14px; font-size: 16px; }
+#gold-chip b { color: var(--cbx-gold); }
+
+/* ---- voyage readout ---- */
+#voyage { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 7px; width: min(520px, 88vw); }
+#stage-name { font-size: 26px; color: #fff; }
+#progress-track { position: relative; width: 100%; height: 24px; border-radius: 999px;
+  background: rgba(10, 16, 24, .8); border: 2.5px solid rgba(255, 255, 255, .22);
+  border-bottom: 5px solid rgba(0, 0, 0, .42); overflow: hidden; }
+#progress-fill { position: absolute; inset: 0 100% 0 0; background: linear-gradient(180deg, #6ee7ff, #2b8de0);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .35); transition: right .12s linear; }
+#progress-label { position: absolute; inset: 0; display: grid; place-items: center;
+  font-weight: 900; font-size: 13px; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+/* one pip per stage, lit as you pass it */
+#stage-pips { display: flex; gap: 5px; }
+#stage-pips i { width: 22px; height: 7px; border-radius: 999px; background: rgba(255, 255, 255, .2);
+  border: 1.5px solid rgba(0, 0, 0, .35); transition: background .2s; }
+
+/* ---- vitals ---- */
+#vitals { position: absolute; top: 14px; right: 14px; font-size: 15px; }
+#vitals.sinking { border-color: var(--cbx-red); box-shadow: 0 0 16px rgba(255, 93, 108, .5); }
+#float-state { color: var(--cbx-green); font-weight: 900; }
+#vitals.sinking #float-state { color: var(--cbx-red); }
+
+/* ---- build bar ---- */
+#buildbar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#palette { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; max-width: 92vw; }
+.slot { position: relative; width: 62px; height: 62px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px; font-size: 22px; }
+.slot small { font-size: 9px; font-weight: 900; color: var(--cbx-dim); letter-spacing: .02em; }
+.slot .key { position: absolute; top: 2px; left: 5px; font-size: 9px; color: var(--cbx-dim); font-weight: 900; }
+#build-actions { display: flex; gap: 8px; }
+
+#hints { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  color: rgba(255, 255, 255, .75); font-weight: 700; font-size: 11.5px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .7); white-space: nowrap; }
+
+/* ---- modals ---- */
+.scrim { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 9, 14, .62); backdrop-filter: blur(4px); z-index: 30; }
+.panel { padding: 24px; width: min(520px, 92vw); display: flex; flex-direction: column; gap: 13px; }
+.panel h2 { color: var(--cbx-gold); font-size: 24px; }
+.panel .sub { color: var(--cbx-dim); font-weight: 800; font-size: 13px; margin-top: -6px; }
+
+#shop-list { display: flex; flex-direction: column; gap: 7px; max-height: 52vh; overflow-y: auto; }
+.shop-row { display: flex; align-items: center; gap: 11px; background: rgba(255, 255, 255, .05);
+  border: 2px solid rgba(255, 255, 255, .09); border-bottom: 4px solid rgba(0, 0, 0, .32);
+  border-radius: 13px; padding: 10px 13px; }
+.shop-row .ico { font-size: 24px; width: 32px; text-align: center; }
+.shop-row .who { flex: 1; }
+.shop-row b { display: block; color: var(--cbx-text); font-size: 14.5px; }
+.shop-row small { color: var(--cbx-dim); font-weight: 800; font-size: 11.5px; }
+.shop-row .buy { min-width: 92px; }
+.shop-row.owned { opacity: .62; }
+
+/* ---- run summary ---- */
+#sum-rows { display: flex; flex-direction: column; gap: 5px; }
+.sum-row { display: flex; justify-content: space-between; font-weight: 800; font-size: 14px; color: var(--cbx-dim); }
+.sum-row b { color: var(--cbx-text); }
+#sum-total { font-size: 21px; font-weight: 900; color: var(--cbx-gold); text-align: center;
+  padding: 11px; background: rgba(255, 201, 74, .1); border-radius: 14px; }
+#sum-stage { align-self: flex-start; }
+
+/* ---- treasure flourish ---- */
+#treasure { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center;
+  pointer-events: none; background: radial-gradient(circle at 50% 45%, rgba(255, 214, 100, .35), transparent 60%); }
+.t-burst { font-size: clamp(90px, 22vw, 220px); animation: tpop .7s cubic-bezier(.34, 1.56, .64, 1); }
+.t-word { font-size: clamp(38px, 9vw, 86px); color: #ffe9a8; margin-top: -14px; }
+@keyframes tpop { from { transform: scale(.2) rotate(-25deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---- toasts ---- */
+#toasts { position: fixed; top: 84px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 6px; z-index: 41; pointer-events: none; }
+.toast { background: rgba(16, 20, 28, .94); border: 2px solid rgba(255, 255, 255, .22);
+  border-bottom: 5px solid rgba(0, 0, 0, .4); color: #fff; font-weight: 900; font-size: 14px;
+  padding: 11px 20px; border-radius: 999px; animation: cbxSlide .16s ease-out; }
+
+/* ---- loading ---- */
+#loading { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 16px;
+  background: #0d2a3a; color: #cfe8ff; font-weight: 900; align-content: center; }
+.spinner { width: 46px; height: 46px; border-radius: 50%; border: 5px solid rgba(255, 255, 255, .18);
+  border-top-color: #6ee7ff; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .slot { width: 52px; height: 52px; font-size: 19px; }
+  #hints { display: none; }
+  #stage-name { font-size: 20px; }
+}

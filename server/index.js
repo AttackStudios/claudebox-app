@@ -37,6 +37,8 @@ import { state as ndsState, genId as ndsGenId } from './nds/state.js';
 import { handleMessage as ndsHandle, onDisconnect as ndsDisconnect, tickNds, snapshotNds } from './nds/game.js';
 import { state as bkState, genId as bkGenId, publicPlayer as bkPublicPlayer, clock as bkClock } from './brook/state.js';
 import { handleMessage as bkHandle, onDisconnect as bkDisconnect, makeBroadcaster as bkBroadcaster } from './brook/protocol.js';
+import { state as babState, makePlayer as babMakePlayer } from './bab/state.js';
+import { handleMessage as babHandle, onDisconnect as babDisconnect, makeBroadcaster as babBroadcaster, snapshot as babSnapshot } from './bab/protocol.js';
 import { state as tyState, makePlayer as tyMakePlayer } from './tycoon/state.js';
 import { handleMessage as tyHandle, onDisconnect as tyDisconnect, makeBroadcaster as tyBroadcaster, simulate as tySimulate, snapshot as tySnapshot } from './tycoon/protocol.js';
 import { state as wrState, genId as wrGenId, publicPlayer as wrPublicPlayer, clock as wrClock } from './webrush/state.js';
@@ -84,6 +86,7 @@ app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'r
 app.get('/games/nds', (req, res) => res.sendFile(path.join(ROOT, 'public', 'nds', 'index.html')));
 app.get('/games/brook', (req, res) => res.sendFile(path.join(ROOT, 'public', 'brook', 'index.html')));
 app.get('/games/tycoon', (req, res) => res.sendFile(path.join(ROOT, 'public', 'tycoon', 'index.html')));
+app.get('/games/bab', (req, res) => res.sendFile(path.join(ROOT, 'public', 'bab', 'index.html')));
 app.get('/games/webrush', (req, res) => res.sendFile(path.join(ROOT, 'public', 'webrush', 'index.html')));
 app.get('/games/pizza', (req, res) => res.sendFile(path.join(ROOT, 'public', 'pizza', 'index.html')));
 app.get('/mod', (req, res) => res.sendFile(path.join(ROOT, 'public', 'mod', 'index.html')));
@@ -105,6 +108,7 @@ const jgWss = new WebSocketServer({ noServer: true });
 const rvWss = new WebSocketServer({ noServer: true });
 const bkWss = new WebSocketServer({ noServer: true });
 const tyWss = new WebSocketServer({ noServer: true });
+const babWss = new WebSocketServer({ noServer: true });
 const wrWss = new WebSocketServer({ noServer: true });
 const pzWss = new WebSocketServer({ noServer: true });
 const ndsWss = new WebSocketServer({ noServer: true });
@@ -123,6 +127,7 @@ server.on('upgrade', (req, socket, head) => {
   else if (pathname === '/rivals-ws') rvWss.handleUpgrade(req, socket, head, (ws) => rvWss.emit('connection', ws, req));
   else if (pathname === '/brook-ws') bkWss.handleUpgrade(req, socket, head, (ws) => bkWss.emit('connection', ws, req));
   else if (pathname === '/tycoon-ws') tyWss.handleUpgrade(req, socket, head, (ws) => tyWss.emit('connection', ws, req));
+  else if (pathname === '/bab-ws') babWss.handleUpgrade(req, socket, head, (ws) => babWss.emit('connection', ws, req));
   else if (pathname === '/webrush-ws') wrWss.handleUpgrade(req, socket, head, (ws) => wrWss.emit('connection', ws, req));
   else if (pathname === '/pizza-ws') pzWss.handleUpgrade(req, socket, head, (ws) => pzWss.emit('connection', ws, req));
   else if (pathname === '/nds-ws') ndsWss.handleUpgrade(req, socket, head, (ws) => ndsWss.emit('connection', ws, req));
@@ -461,6 +466,23 @@ tyWss.on('connection', (ws) => {
 });
 setInterval(() => { tySimulate(tyCtx); }, 1000 / 30);      // projectiles + hits + respawns
 setInterval(() => { tyBroadcast(tySnapshot()); }, 1000 / 18); // positions + projectiles
+
+// ============ Build A Boat For Treasure (build, launch, survive) ============
+const babJoined = () => [...babState.players.values()].filter((p) => p.joined);
+const babBroadcast = babBroadcaster(babJoined);
+babWss.on('connection', (ws) => {
+  const p = babMakePlayer(ws);
+  babState.players.set(p.id, p);
+  const ctx = { broadcast: babBroadcast, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
+  ws.on('message', (raw) => {
+    if (raw.length > 65536) return;              // a big boat is a big message
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    try { babHandle(p, msg, ctx); } catch (err) { console.error('[bab]', msg?.t, err); }
+  });
+  ws.on('close', () => babDisconnect(p, ctx));
+  ws.on('error', () => {});
+});
+setInterval(() => { if (babJoined().length) babBroadcast(babSnapshot()); }, 1000 / 10);
 
 // ====================== Pizza Works (co-op pizzeria) ======================
 const pzJoined = () => [...pzState.players.values()].filter((p) => p.joined);

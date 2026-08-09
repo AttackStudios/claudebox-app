@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d2a3a">
+<title>Build A Boat For Treasure — ClaudeBox</title>
+<link rel="stylesheet" href="/bab/css/bab.css">
+<link rel="stylesheet" href="/css/cbx-style.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body class="cbx-ui">
+<canvas id="c"></canvas>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <!-- top-left: wallet -->
+  <div id="gold-chip" class="cbx-chip">🪙 <b id="gold">0</b></div>
+
+  <!-- top-centre: the voyage readout, only while sailing -->
+  <div id="voyage" class="hidden">
+    <div id="stage-name" class="cbx-loud">The Dock</div>
+    <div id="progress-track"><i id="progress-fill"></i><span id="progress-label">0m</span></div>
+    <div id="stage-pips"></div>
+  </div>
+
+  <!-- top-right: boat vitals -->
+  <div id="vitals" class="cbx-chip hidden">🧱 <b id="block-count">0</b> · <span id="float-state">afloat</span></div>
+
+  <!-- build-mode bottom bar -->
+  <div id="buildbar">
+    <div id="palette"></div>
+    <div id="build-actions">
+      <button id="btn-shop" class="cbx-btn">🛒 Shop</button>
+      <button id="btn-clear" class="cbx-btn ghost">🗑️ Clear</button>
+      <button id="btn-launch" class="cbx-btn go">🌊 Launch</button>
+    </div>
+  </div>
+
+  <div id="hints">Click to place · Right-click / Shift-click to remove · Drag to orbit · Scroll to zoom · 1-9 pick block</div>
+</div>
+
+<!-- ============ SHOP ============ -->
+<div id="shop" class="scrim hidden">
+  <div class="panel cbx-panel cbx-pop">
+    <h2>🛒 Block Shop</h2>
+    <p class="sub">Buy a block once and you can place as many as you like.</p>
+    <div id="shop-list" class="cbx-scroll"></div>
+    <button id="shop-close" class="cbx-btn ghost">Close</button>
+  </div>
+</div>
+
+<!-- ============ RUN SUMMARY ============ -->
+<div id="summary" class="scrim hidden">
+  <div class="panel cbx-panel cbx-pop">
+    <h2 id="sum-title">Your boat sank!</h2>
+    <div id="sum-stage" class="cbx-chip"></div>
+    <div id="sum-rows"></div>
+    <div id="sum-total">🪙 <b id="sum-gold">0</b> earned</div>
+    <button id="sum-back" class="cbx-btn primary">⚓ Back to the dock</button>
+  </div>
+</div>
+
+<!-- ============ TREASURE ============ -->
+<div id="treasure" class="hidden">
+  <div class="t-burst">🏆</div>
+  <div class="t-word cbx-loud">TREASURE!</div>
+</div>
+
+<div id="toasts"></div>
+<div id="loading"><div class="spinner"></div><p id="load-msg">Sawing the planks…</p></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/js/voice.js"></script>
+<script type="module" src="/bab/js/main.js"></script>
+</body>
+</html>

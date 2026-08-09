@@ -32,6 +32,16 @@ export const BP_MAINTENANCE = false;
 
 const GAMES = [
   {
+    id: 'bab',
+    title: 'Build A Boat For Treasure',
+    tagline: 'Bolt a boat together, ride the river, survive eleven stages to the treasure',
+    art: '/icons/game-bab.svg',
+    url: '/games/bab',
+    creators: ['ClaudeBox Studios'],
+    tags: ['Building', 'Adventure', 'Multiplayer', 'Sandbox'],
+    playable: true,
+  },
+  {
     id: 'juniorguards',
     title: 'Junior Guards Simulator',
     tagline: 'Capitola Junior Guards — beach mornings, stretches, and salt water',
