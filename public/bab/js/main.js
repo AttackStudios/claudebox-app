@@ -189,6 +189,79 @@ function removeBlock(k, refund = false) {
   blocks.delete(k);
 }
 
+// ---- structural support ------------------------------------------------
+// A block only stays attached if you can walk face-to-face from it down to the
+// waterline layer (gy 0). Knock out what was holding a tower up and the tower
+// comes off with it, instead of hanging in mid-air.
+const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const _wp = new THREE.Vector3();
+const falling = [];        // detached pieces tumbling into the water
+
+function detachBlock(k, b, refund) {
+  const m = b.mesh;
+  m.getWorldPosition(_wp);
+  boatGroup.remove(m);
+  m.position.copy(_wp);
+  m.rotation.copy(boatGroup.rotation);
+  scene.add(m);
+  falling.push({
+    mesh: m, vy: 1.5,
+    vx: (Math.random() - 0.5) * 3, vz: (Math.random() - 0.5) * 3,
+    sx: (Math.random() - 0.5) * 6, sz: (Math.random() - 0.5) * 6, t: 0,
+  });
+  blocks.delete(k);
+  if (refund) inv[b.id] = have(b.id) + 1;   // your mistake on the plot is not a punishment
+}
+
+// Returns how many blocks came away. `refund` is true on the plot, false at sea.
+function settleStructure(refund) {
+  if (!blocks.size) return 0;
+  const seen = new Set();
+  const queue = [];
+  for (const b of blocks.values()) {
+    if (b.gy === 0) { const k = key(b.gx, b.gy, b.gz); seen.add(k); queue.push(b); }
+  }
+  while (queue.length) {
+    const b = queue.pop();
+    for (const [dx, dy, dz] of NEIGHBOURS) {
+      const k = key(b.gx + dx, b.gy + dy, b.gz + dz);
+      if (seen.has(k)) continue;
+      const nb = blocks.get(k);
+      if (!nb) continue;
+      seen.add(k); queue.push(nb);
+    }
+  }
+  let dropped = 0;
+  for (const [k, b] of [...blocks.entries()]) {
+    if (seen.has(k)) continue;
+    detachBlock(k, b, refund);
+    dropped++;
+  }
+  return dropped;
+}
+
+function stepFalling(dt) {
+  for (let i = falling.length - 1; i >= 0; i--) {
+    const f = falling[i];
+    f.t += dt;
+    f.vy -= 22 * dt;
+    f.mesh.position.x += f.vx * dt;
+    f.mesh.position.y += f.vy * dt;
+    f.mesh.position.z += f.vz * dt;
+    f.mesh.rotation.x += f.sx * dt;
+    f.mesh.rotation.z += f.sz * dt;
+    // splash as it hits the water, then sink out of sight
+    if (f.mesh.position.y < WATER_TOP && !f.splashed) {
+      f.splashed = true;
+      parts.burst(f.mesh.position, '#bfe6ff', 5, { spread: 3, up: 3, size: 0.7, life: 0.5 });
+    }
+    if (f.t > 2.2 || f.mesh.position.y < -8) {
+      scene.remove(f.mesh);
+      falling.splice(i, 1);
+    }
+  }
+}
+
 // clearing on the plot hands every block back; wiping after a run does not
 function clearBoat(refund = false) { for (const k of [...blocks.keys()]) removeBlock(k, refund); refreshVitals(); }
 
@@ -822,7 +895,12 @@ function updateGhost(clientX, clientY) {
 function tryBuild(clientX, clientY, remove) {
   const t = pickTarget(clientX, clientY, remove);
   if (!t) return;
-  if (t.remove) { removeBlock(key(t.gx, t.gy, t.gz), true); sfx.remove(); afterEdit(); return; }
+    if (t.remove) {
+    removeBlock(key(t.gx, t.gy, t.gz), true);
+    const dropped = settleStructure(true);      // refunded: a build mistake costs nothing
+    if (dropped) toast(`${dropped} unsupported block${dropped === 1 ? '' : 's'} came off`);
+    sfx.remove(); afterEdit(); return;
+  }
   if (addBlock(selected, t.gx, t.gy, t.gz)) { sfx.place(selected); afterEdit(); return; }
   sfx.deny();
   if (!inPlot(t)) atCapToast();                                   // outside the cube
@@ -1060,6 +1138,12 @@ function applyHazards(dt, t) {
         parts.burst(wp, '#bfe6ff', 6, { spread: 5, up: 5, size: 0.8 });
         sfx.breakBlock();
         removeBlock(hitK);
+        // whatever that block was holding up is no longer attached
+        const dropped = settleStructure(false);
+        if (dropped) {
+          shake = Math.min(1, shake + 0.35);
+          if (dropped > 2) toast(`${dropped} blocks broke away!`);
+        }
         shake = Math.min(1, shake + 0.55);
       } else {
         tintDamaged(b.mesh, b.hp / maxHp);
@@ -1163,6 +1247,7 @@ function frame() {
   // place the boat + camera
   boatGroup.position.set(boat.x, boat.y, boat.z);
   parts.step(dt);
+  stepFalling(dt);
   cullHazards();
   shake = Math.max(0, shake - dt * 2.6);
   updateCamera(dt, now);
@@ -1232,7 +1317,8 @@ async function boot() {
     camera, CAM, buildFocus, THREE, addBlock, removeBlock, limit, limitOf: limit,
     get rank() { return rank; }, get inv() { return inv; }, get mapId() { return mapId; },
     get plotSize() { return PS; }, get pad() { return pad; },
-    setMap, stages: () => stagesOf(mapId), treasureAt: () => treasureAt(mapId), buildPalette, renderer, ghost, pickTarget, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
+    setMap, stages: () => stagesOf(mapId), treasureAt: () => treasureAt(mapId), buildPalette, renderer, ghost, pickTarget,
+    settleStructure, falling, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };
 
