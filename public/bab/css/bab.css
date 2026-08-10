@@ -10,7 +10,9 @@ html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
 #hud > * { pointer-events: auto; }
 
 /* ---- wallet ---- */
-#gold-chip { position: absolute; top: 14px; left: 14px; font-size: 16px; }
+/* The hub's menu / reset / mic buttons live in the top-left corner, so the
+   wallet sits below them rather than underneath. */
+#gold-chip { position: absolute; top: 66px; left: 14px; font-size: 16px; }
 #gold-chip b { color: var(--cbx-gold); }
 
 /* ---- voyage readout ---- */
@@ -106,7 +108,7 @@ html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
   #build-actions { flex-wrap: wrap; justify-content: center; padding: 0 8px; }
   #build-actions .cbx-btn { font-size: 12.5px; padding: 9px 12px; border-radius: 13px; }
   /* clear the hub/voice buttons that live in the top-left corner */
-  #gold-chip { top: 62px; font-size: 14px; }
+  #gold-chip { top: 62px; font-size: 14px; }   /* same idea, tighter */
   #vitals { top: 62px; font-size: 13px; }
   #voyage { top: 8px; width: 96vw; }
   /* while sailing the stage pips need the full width: your wallet cannot change
