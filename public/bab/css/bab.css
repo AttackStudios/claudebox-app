@@ -187,3 +187,12 @@ html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
   background: linear-gradient(90deg, rgba(110, 231, 255, .12), rgba(255, 255, 255, .05)); }
 /* the block counter turns amber once the build limit is reached */
 #boatstats.atcap #st-count { color: var(--cbx-gold); }
+
+/* ---- Legend rank (outranks Champion) ---- */
+.stab[data-cat="champion"] { color: #ffc107; }
+body.legend .stab[data-cat="champion"] { color: #c46bff; }
+body.legend .stab[data-cat="champion"].on {
+  background: linear-gradient(180deg, #c46bff, #7c3aed); color: #fff; border-color: #fff; }
+body.legend .shop-row.champ { border-color: rgba(196, 107, 255, .45);
+  background: linear-gradient(90deg, rgba(196, 107, 255, .14), rgba(255, 255, 255, .05)); }
+body.legend .champ-star { color: #c46bff; }

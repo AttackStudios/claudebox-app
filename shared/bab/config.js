@@ -117,8 +117,17 @@ export const goldForRun = (dist, stagesEntered, gotTreasure) =>
 // Boats are capped so a run stays readable (and so the shop still matters).
 // Champions get a bigger allowance as one of the perks of the rank.
 export const MAX_BLOCKS = 75;
-export const CHAMPION_BONUS_BLOCKS = 15;
-export const blockLimit = (champion) => MAX_BLOCKS + (champion ? CHAMPION_BONUS_BLOCKS : 0);
+export const CHAMPION_BONUS_BLOCKS = 15;   // Champion -> 90
+export const LEGEND_BONUS_BLOCKS = 65;     // Legend  -> 140 (50 more than Champion)
+// `rank` is 'legend' | 'champion' | '' — a bare `true` is still read as Champion
+// so older callers keep working.
+export const blockLimit = (rank) => {
+  if (rank === 'legend') return MAX_BLOCKS + LEGEND_BONUS_BLOCKS;
+  if (rank === 'champion' || rank === true) return MAX_BLOCKS + CHAMPION_BONUS_BLOCKS;
+  return MAX_BLOCKS;
+};
+// both ranks unlock the premium stock
+export const isPremiumRank = (rank) => rank === 'champion' || rank === 'legend';
 
 // Buying gold with the platform's premium currency.
 export const GOLD_PACK = { cost: 5, gold: 1000 };   // 5 ClaudeBux -> 1,000 gold

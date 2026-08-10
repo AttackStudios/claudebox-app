@@ -240,19 +240,31 @@ function creatorVisits(nameLower) {
 function badgeFor(name) {
   const nl = String(name || '').toLowerCase();
   if (nl === OWNER_NAME) return 'owner';
+  if (isLegend(nl)) return 'legend';
   if (isChampion(nl)) return 'champion';
   if (nl === OFFICIAL_NAME) return 'verified';
   return creatorVisits(nl) >= 150 ? 'verified' : null;
 }
+export function isLegend(name) {
+  const u = platform.users[String(name || '').toLowerCase()];
+  return !!(u && u.legend);
+}
+// Legend inherits every Champion perk, so anything gated on "is a Champion"
+// must answer yes for Legends too.
 export function isChampion(name) {
   const u = platform.users[String(name || '').toLowerCase()];
-  return !!(u && u.champion);
+  return !!(u && (u.champion || u.legend));
+}
+export function rankOf(name) {
+  const u = platform.users[String(name || '').toLowerCase()];
+  if (!u) return '';
+  return u.legend ? 'legend' : u.champion ? 'champion' : '';
 }
 // Champions collect a free daily stipend. Called whenever a wallet is read, so
 // it lands the first time they open the hub on a new day.
 const CHAMPION_DAILY = 15;
 function claimChampionDaily(u) {
-  if (!u || !u.champion) return 0;
+  if (!u || !(u.champion || u.legend)) return 0;
   const today = new Date().toISOString().slice(0, 10);
   if (u.championDaily === today) return 0;
   u.championDaily = today;
@@ -481,6 +493,7 @@ function ensureWallet(u) {
   if (typeof u.stars !== 'number') u.stars = 0;
   if (typeof u.cubes !== 'number') u.cubes = 0;
   if (typeof u.champion !== 'boolean') u.champion = false;   // granted by the owner only
+  if (typeof u.legend !== 'boolean') u.legend = false;       // Legend outranks Champion
   if (typeof u.championDaily !== 'string') u.championDaily = '';
   if (!u.challenges || typeof u.challenges !== 'object') u.challenges = {};
   if (!Array.isArray(u.owned)) u.owned = [];
@@ -514,7 +527,8 @@ function walletOf(u) {
   ensureWallet(u);
   const dailyGranted = claimChampionDaily(u);
   return {
-    champion: !!u.champion, dailyGranted,
+    champion: !!(u.champion || u.legend), legend: !!u.legend,
+    rank: u.legend ? 'legend' : u.champion ? 'champion' : '', dailyGranted,
     stars: u.stars, cubes: u.cubes,
     challenges: u.challenges, owned: u.owned, ownedAvatar: u.ownedAvatar,
     title: u.title, nameColor: u.nameColor,
@@ -963,8 +977,25 @@ export function hubRouter() {
   // ---- Champion rank: granted by hand, by the owner, and nobody else ----
   r.get('/champion/list', (req, res) => {
     if (badgeFor(clean(req.query.name)) !== 'owner') return res.status(403).json({ error: 'owner only' });
-    const champs = Object.values(platform.users).filter((u) => u.champion).map((u) => ({ name: u.name }));
-    res.json({ champions: champs });
+    const ranked = Object.values(platform.users)
+      .filter((u) => u.champion || u.legend)
+      .map((u) => ({ name: u.name, rank: u.legend ? 'legend' : 'champion' }));
+    res.json({ champions: ranked });
+  });
+  // set any rank in one call: 'legend' | 'champion' | 'none'
+  r.post('/rank/set', (req, res) => {
+    if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false, error: 'owner only' });
+    const target = clean(req.body?.target);
+    const rank = String(req.body?.rank || 'none');
+    if (!target) return res.status(400).json({ ok: false, error: 'target required' });
+    const u = platform.users[target.toLowerCase()];
+    if (!u) return res.status(404).json({ ok: false, error: 'no such player' });
+    ensureWallet(u);
+    u.legend = rank === 'legend';
+    u.champion = rank === 'champion';
+    if (!u.legend && !u.champion) u.championDaily = '';
+    save();
+    res.json({ ok: true, name: u.name, rank: u.legend ? 'legend' : u.champion ? 'champion' : 'none' });
   });
   r.post('/champion/set', (req, res) => {
     if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false, error: 'owner only' });
@@ -983,7 +1014,12 @@ export function hubRouter() {
     const nl = clean(req.query.name).toLowerCase();
     const u = platform.users[nl];
     if (u) ensureWallet(u), claimChampionDaily(u);
-    res.json({ champion: !!(u && u.champion), cubes: u ? u.cubes : 0 });
+    res.json({
+      champion: !!(u && (u.champion || u.legend)),
+      legend: !!(u && u.legend),
+      rank: u ? (u.legend ? 'legend' : u.champion ? 'champion' : '') : '',
+      cubes: u ? u.cubes : 0,
+    });
   });
 
   // Spend ClaudeBux for in-game gold in Build A Boat. Done server-side so the

@@ -632,6 +632,18 @@ function showSkeletons() {
 function badgeSvg(badge) {
   // Champion: a plain gold disc with a white star, so it reads differently
   // from the scalloped verification badge at a glance.
+  // Legend outranks Champion: a violet disc with a white crown, so the two
+  // never read as the same thing at small sizes.
+  if (badge === 'legend') {
+    return '<svg class="vbadge legend" viewBox="0 0 22 22" role="img" aria-label="Legend">'
+      + '<title>Legend</title>'
+      + '<defs><linearGradient id="lgg" x1="0" y1="0" x2="1" y2="1">'
+      + '<stop offset="0" stop-color="#c46bff"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>'
+      + '<circle cx="11" cy="11" r="10" fill="url(#lgg)" stroke="#5b21b6" stroke-width="1"/>'
+      + '<path fill="#fff" d="M5.2 14.6l-1-6.2 3.5 2.3L11 6.2l3.3 4.5 3.5-2.3-1 6.2z"/>'
+      + '<rect x="5.2" y="15.2" width="11.6" height="1.7" rx=".6" fill="#fff"/>'
+      + '</svg>';
+  }
   if (badge === 'champion') {
     return '<svg class="vbadge champion" viewBox="0 0 22 22" role="img" aria-label="Champion">'
       + '<title>Champion</title>'

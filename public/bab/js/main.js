@@ -15,7 +15,7 @@ import {
   BLOCKS, BLOCK_BY_ID, STARTER_BLOCKS, PLOT, RIVER,
   STAGES, STAGE_LEN, STAGE_GOLD, TREASURE_GOLD, TOTAL_LEN, TREASURE_AT,
   HAZARDS, hazardsFor, stageIndexAt, BAND_COLOR, goldForRun, DEFAULT_SAVE,
-  blockLimit, CHAMPION_ONLY, GOLD_PACK,
+  blockLimit, CHAMPION_ONLY, GOLD_PACK, isPremiumRank,
 } from '/shared/bab/config.js';
 
 const $ = (s) => document.querySelector(s);
@@ -177,9 +177,10 @@ let gold = 60;
 let owned = new Set(STARTER_BLOCKS);
 let best = 0, runs = 0;
 let myName = null;
-let champion = false;      // granted by the owner; unlocks the Champion Shop
+let rank = '';             // '' | 'champion' | 'legend' — granted by the owner
 let myBux = 0;
-const limit = () => blockLimit(champion);
+const champion = () => isPremiumRank(rank);   // both ranks get the premium shop
+const limit = () => blockLimit(rank);
 
 const codeHdr = () => ({ 'x-cbx-code': localStorage.getItem('claudebox.code') || '' });
 
@@ -220,8 +221,8 @@ let capToastAt = 0;
 function atCapToast() {
   if (clockNowMs() - capToastAt < 2500) return;    // do not spam on held taps
   capToastAt = clockNowMs();
-  toast(champion ? `Build limit reached (${limit()} blocks)`
-                 : `Build limit reached (${limit()}) — Champions get +15`);
+  toast(champion() ? `Build limit reached (${limit()} blocks)`
+                   : `Build limit reached (${limit()}) — Champions get +15, Legends +65`);
 }
 const clockNowMs = () => performance.now();
 
@@ -231,11 +232,14 @@ async function refreshChampion() {
   try {
     const r = await fetch('/api/champion/me?name=' + encodeURIComponent(myName), { headers: codeHdr() });
     const j = await r.json();
-    champion = !!j.champion;
+    rank = j.rank || (j.champion ? 'champion' : '');
     myBux = j.cubes || 0;
-  } catch { champion = false; }
-  document.body.classList.toggle('champion', champion);
-  $('#champ-tab').classList.toggle('hidden', !champion);
+  } catch { rank = ''; }
+  document.body.classList.toggle('champion', champion());
+  document.body.classList.toggle('legend', rank === 'legend');
+  const tab = $('#champ-tab');
+  tab.classList.toggle('hidden', !champion());
+  tab.textContent = rank === 'legend' ? '👑 Legend' : '★ Champion';
   refreshVitals();
 }
 
@@ -311,7 +315,7 @@ function buildShop() {
   list.appendChild(ex);
   const ability = new Set(['balloon', 'thruster', 'sail', 'seat']);
   const shown = BLOCKS.filter((b) => {
-    if (CHAMPION_ONLY.has(b.id)) return champion && (shopCat === 'champion' || shopCat === 'all');
+    if (CHAMPION_ONLY.has(b.id)) return champion() && (shopCat === 'champion' || shopCat === 'all');
     if (shopCat === 'champion') return false;
     return shopCat === 'all' || (shopCat === 'ability' ? ability.has(b.id) : !ability.has(b.id));
   });
@@ -333,7 +337,7 @@ function buildShop() {
     btn.disabled = has;
     btn.addEventListener('click', () => {
       if (owned.has(b.id)) return;
-      if (CHAMPION_ONLY.has(b.id) && !champion) { sfx.deny(); toast('Champions only'); return; }
+      if (CHAMPION_ONLY.has(b.id) && !champion()) { sfx.deny(); toast('Champions only'); return; }
       if (gold < b.cost) { sfx.deny(); toast('Not enough gold — sail further!'); return; }
       setGold(gold - b.cost); owned.add(b.id); sfx.buy();
       toast(`Bought ${b.name}!`);
@@ -995,7 +999,7 @@ async function boot() {
   requestAnimationFrame(frame);
 
   window.__bab = { boat, blocks, boatStats, hazards, launch, endRun, net, scene,
-    camera, CAM, buildFocus, THREE, addBlock, limit, get champion() { return champion; }, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
+    camera, CAM, buildFocus, THREE, addBlock, limit, get rank() { return rank; }, limitOf: limit, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };
 

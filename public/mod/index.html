@@ -89,31 +89,33 @@ const banBox = `<div class="top"><h3>🔨 Ban a player</h3>
 const champBox = `<div class="top"><h3>&#11088; Champion rank</h3>
     <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input id="ch-name" placeholder="Player name" list="all-users" style="flex:1;min-width:160px">
-      <button class="btn" id="ch-give">&#11088; Make Champion</button>
+      <button class="btn" id="ch-give">&#11088; Champion</button>
+      <button class="btn" id="ch-legend">&#128081; Legend</button>
       <button class="btn danger" id="ch-take">Remove</button>
     </div>
-    <div class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px">Champions get the gold star after their name, 15 ClaudeBux a day, the Champion Shop in Build A Boat, and a build limit 15 blocks higher.</div>
+    <div class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px">Champions get a gold star, 15 ClaudeBux a day, the Champion Shop in Build A Boat and +15 build limit. Legends get a purple crown and all the same perks with +65 build limit.</div>
     <div id="ch-list" class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px"></div></div>`;
 async function loadChampions() {
   const el = document.getElementById('ch-list'); if (!el) return;
   try {
     const j = await api('/champion/list?name=' + encodeURIComponent(me())).then((r) => r.json());
     const list = j.champions || [];
-    el.textContent = list.length ? 'Champions: ' + list.map((c) => c.name).join(', ') : 'No Champions yet.';
+    el.textContent = list.length ? list.map((c) => c.name + ' (' + c.rank + ')').join(', ') : 'Nobody ranked yet.';
   } catch { el.textContent = ''; }
 }
 function wireChampBox() {
-  const set = async (on) => {
+  const set = async (rank) => {
     const box = document.getElementById('ch-name');
     const target = box ? box.value.trim() : '';
     if (!target) return;
-    const j = await api('/champion/set', { method: 'POST', body: JSON.stringify({ name: me(), target, on }) }).then((r) => r.json());
-    alert(j.ok ? (j.name + (j.champion ? ' is now a Champion' : ' is no longer a Champion')) : (j.error || 'failed'));
+    const j = await api('/rank/set', { method: 'POST', body: JSON.stringify({ name: me(), target, rank }) }).then((r) => r.json());
+    alert(j.ok ? (j.name + ' rank: ' + j.rank) : (j.error || 'failed'));
     loadChampions();
   };
-  const g = document.getElementById('ch-give'), t = document.getElementById('ch-take');
-  if (g) g.onclick = () => set(true);
-  if (t) t.onclick = () => set(false);
+  const g = document.getElementById('ch-give'), l = document.getElementById('ch-legend'), t = document.getElementById('ch-take');
+  if (g) g.onclick = () => set('champion');
+  if (l) l.onclick = () => set('legend');
+  if (t) t.onclick = () => set('none');
   loadChampions();
 }
 function wireBanBox() {
