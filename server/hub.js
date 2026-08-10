@@ -1043,7 +1043,7 @@ export function hubRouter() {
     res.json({ ok: true, cubes: u.cubes, gold: sv.gold, payout: PAYOUT });
   });
 
-  // Finishing the Legend Gauntlet pays real ClaudeBux: 50 the first time, 25 the
+  // Finishing the Legend Stage pays real ClaudeBux: 50 the first time, 25 the
   // second, then 5 forever after. Counted server-side so it cannot be replayed.
   r.post('/bab/legendwin', (req, res) => {
     const name = clean(req.body?.name);

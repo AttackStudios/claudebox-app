@@ -98,8 +98,8 @@ const withExtras = (extra) => {
 
 export const MAPS = {
   standard: { id: 'standard', name: 'The River',        emoji: '🌊', rank: '',         stages: BASE_STAGES,                                  dmgMul: 1,   densityMul: 1 },
-  champion: { id: 'champion', name: 'Champion Run',     emoji: '⭐', rank: 'champion', stages: withExtras(CHAMPION_EXTRA),                   dmgMul: 1.6, densityMul: 1.45 },
-  legend:   { id: 'legend',   name: 'Legend Gauntlet',  emoji: '👑', rank: 'legend',   stages: withExtras([...CHAMPION_EXTRA, ...LEGEND_EXTRA]), dmgMul: 2.3, densityMul: 1.9 },
+  champion: { id: 'champion', name: 'Champion Stage',   emoji: '⭐', rank: 'champion', stages: withExtras(CHAMPION_EXTRA),                   dmgMul: 1.6, densityMul: 1.45 },
+  legend:   { id: 'legend',   name: 'Legend Stage',     emoji: '👑', rank: 'legend',   stages: withExtras([...CHAMPION_EXTRA, ...LEGEND_EXTRA]), dmgMul: 2.3, densityMul: 1.9 },
 };
 export const mapFor = (id) => MAPS[id] || MAPS.standard;
 // which maps a rank may enter (Legend can still play the easier runs)
@@ -114,7 +114,7 @@ export const treasureAt = (mapId) => totalLen(mapId) - STAGE_LEN * 0.45;
 export const TOTAL_LEN = totalLen('standard');
 export const TREASURE_AT = treasureAt('standard');
 
-// ClaudeBux paid for finishing the Legend Gauntlet: big the first time, then
+// ClaudeBux paid for finishing the Legend Stage: big the first time, then
 // it tapers so it cannot be farmed.
 export const LEGEND_WIN_BUX = [50, 25];      // 1st, 2nd
 export const LEGEND_WIN_BUX_AFTER = 5;       // 3rd and every one after

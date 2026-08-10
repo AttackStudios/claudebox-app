@@ -544,7 +544,7 @@ async function endRun(treasure) {
   best = Math.max(best, Math.round(dist)); runs++;
   net.send({ t: treasure ? 'finish' : 'sunk', dist });
 
-  // Beating the Legend Gauntlet pays real ClaudeBux, tapering 50 / 25 / 5.
+  // Beating the Legend Stage pays real ClaudeBux, tapering 50 / 25 / 5.
   let buxLine = '';
   if (treasure && mapId === 'legend') {
     try {
