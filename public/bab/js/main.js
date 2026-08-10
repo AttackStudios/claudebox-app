@@ -9,6 +9,8 @@
 
 import * as THREE from 'three';
 import { Net } from './net.js';
+import { makeBlockMesh, makeHazardMesh, tintDamaged, Particles, waterTexture, blockMaterial } from './art.js';
+import * as sfx from './sfx.js';
 import {
   BLOCKS, BLOCK_BY_ID, STARTER_BLOCKS, PLOT, RIVER,
   STAGES, STAGE_LEN, STAGE_GOLD, TREASURE_GOLD, TOTAL_LEN, TREASURE_AT,
@@ -48,7 +50,9 @@ const WATER_TOP = 0;
 const HARBOUR_Z = -18;
 
 // water: one big plane we scroll a subtle ripple across
-const waterMat = new THREE.MeshLambertMaterial({ color: '#2f9fd0', transparent: true, opacity: 0.92 });
+const waterTex = waterTexture();
+waterTex.repeat.set(60, 120);
+const waterMat = new THREE.MeshLambertMaterial({ color: '#2f9fd0', map: waterTex, transparent: true, opacity: 0.92 });
 const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 1800, 1, 1), waterMat);
 water.rotation.x = -Math.PI / 2; water.position.set(0, WATER_TOP, 300);
 scene.add(water);
@@ -121,15 +125,6 @@ const boatGroup = new THREE.Group();
 scene.add(boatGroup);
 
 const key = (x, y, z) => `${x},${y},${z}`;
-const geoCache = new THREE.BoxGeometry(1, 1, 1);
-const matCache = new Map();
-function matFor(id) {
-  if (!matCache.has(id)) {
-    const def = BLOCK_BY_ID[id];
-    matCache.set(id, new THREE.MeshLambertMaterial({ color: def?.color || '#b3803f' }));
-  }
-  return matCache.get(id);
-}
 
 // grid -> local position inside the boat group
 const localPos = (gx, gy, gz) => new THREE.Vector3(
@@ -142,12 +137,8 @@ function addBlock(id, gx, gy, gz) {
   const k = key(gx, gy, gz);
   if (blocks.has(k)) return false;
   const def = BLOCK_BY_ID[id]; if (!def) return false;
-  const mesh = new THREE.Mesh(geoCache, matFor(id));
+  const mesh = makeBlockMesh(id);     // textured cube, or a small assembly
   mesh.position.copy(localPos(gx, gy, gz));
-  // balloons and thrusters read better as non-cubes
-  if (def.kind === 'balloon') mesh.scale.set(0.9, 1.15, 0.9);
-  if (def.kind === 'thruster') mesh.scale.set(0.8, 0.8, 1);
-  if (def.kind === 'sail') mesh.scale.set(0.12, 1.6, 1.2);
   mesh.userData.k = k;
   boatGroup.add(mesh);
   blocks.set(k, { id, gx, gy, gz, hp: def.hp, mesh });
@@ -235,36 +226,54 @@ function buildPalette() {
     const el = document.createElement('button');
     el.className = 'slot cbx-tile' + (b.id === selected ? ' on' : '');
     el.innerHTML = `<span class="key">${i < 9 ? i + 1 : ''}</span>${b.emoji}<small>${b.name.split(' ')[0]}</small>`;
-    el.addEventListener('click', () => { selected = b.id; buildPalette(); });
+    el.addEventListener('click', () => { selected = b.id; sfx.pick(); buildPalette(); });
     pal.appendChild(el);
   });
 }
 
 function refreshVitals() {
   const s = boatStats();
-  $('#block-count').textContent = s.count;
   const sinking = s.float < 1;
+  $('#block-count').textContent = s.count;
   $('#vitals').classList.toggle('sinking', sinking);
   $('#float-state').textContent = sinking ? 'SINKING' : 'afloat';
+
+  // build-mode readout: the actual numbers, so "why did I sink" is answerable
+  $('#st-count').textContent = s.count;
+  $('#st-weight').textContent = s.weight.toFixed(1);
+  $('#st-buoy').textContent = s.buoy.toFixed(1);
+  $('#st-float').textContent = s.count ? s.float.toFixed(2) : '—';
+  $('#boatstats').classList.toggle('sinking', sinking && s.count > 0);
+  // the meter tops out at 1.5 so the 1.0 waterline notch sits at two thirds
+  const pct = clamp(s.float / 1.5, 0, 1);
+  $('#float-fill').style.right = `${(1 - pct) * 100}%`;
 }
 
+let shopCat = 'all';
 function buildShop() {
   const list = $('#shop-list'); list.innerHTML = '';
-  for (const b of BLOCKS) {
+  const ability = new Set(['balloon', 'thruster', 'sail', 'seat']);
+  const shown = BLOCKS.filter((b) => shopCat === 'all'
+    || (shopCat === 'ability' ? ability.has(b.id) : !ability.has(b.id)));
+  // cheapest affordable upgrades first — the useful ones surface on top
+  shown.sort((a, b) => (owned.has(a.id) - owned.has(b.id)) || (a.cost - b.cost));
+  for (const b of shown) {
     const has = owned.has(b.id);
+    const short = !has && gold < b.cost;
     const row = document.createElement('div');
-    row.className = 'shop-row' + (has ? ' owned' : '');
+    row.className = 'shop-row' + (has ? ' owned' : '') + (short ? ' cant' : '');
     row.innerHTML = `
       <span class="ico">${b.emoji}</span>
       <span class="who"><b>${b.name}</b><small>${b.hp} hp · ${b.weight} weight · ${b.buoy} float${b.thrust ? ` · ${b.thrust} thrust` : ''}</small></span>`;
     const btn = document.createElement('button');
     btn.className = 'cbx-btn buy ' + (has ? 'ghost' : 'go');
     btn.textContent = has ? 'Owned' : `🪙 ${b.cost.toLocaleString()}`;
+    if (short) btn.className = 'cbx-btn buy ghost';
     btn.disabled = has;
     btn.addEventListener('click', () => {
       if (owned.has(b.id)) return;
-      if (gold < b.cost) { toast('Not enough gold — sail further!'); return; }
-      setGold(gold - b.cost); owned.add(b.id);
+      if (gold < b.cost) { sfx.deny(); toast('Not enough gold — sail further!'); return; }
+      setGold(gold - b.cost); owned.add(b.id); sfx.buy();
       toast(`Bought ${b.name}!`);
       buildShop(); buildPalette(); saveSoon();
     });
@@ -273,8 +282,15 @@ function buildShop() {
   }
 }
 
-$('#btn-shop').addEventListener('click', () => { buildShop(); $('#shop').classList.remove('hidden'); });
-$('#shop-close').addEventListener('click', () => $('#shop').classList.add('hidden'));
+$('#btn-shop').addEventListener('click', () => { sfx.unlock(); sfx.pick(); buildShop(); $('#shop').classList.remove('hidden'); });
+$('#shop-close').addEventListener('click', () => { sfx.pick(); $('#shop').classList.add('hidden'); });
+for (const t of document.querySelectorAll('.stab')) {
+  t.addEventListener('click', () => {
+    shopCat = t.dataset.cat; sfx.pick();
+    for (const o of document.querySelectorAll('.stab')) o.classList.toggle('on', o === t);
+    buildShop();
+  });
+}
 $('#btn-clear').addEventListener('click', () => { clearBoat(); publishBoat(); saveSoon(); });
 // Build/erase toggle — the only way to remove a block on a touchscreen.
 $('#btn-erase').addEventListener('click', () => {
@@ -291,14 +307,7 @@ function buildHazards() {
   for (let si = 0; si < STAGES.length; si++) {
     for (const h of hazardsFor(si)) {
       const def = HAZARDS[h.kind];
-      const mesh = new THREE.Mesh(
-        h.kind === 'saw' ? new THREE.CylinderGeometry(def.r, def.r, 0.5, 16)
-        : h.kind === 'whirl' ? new THREE.CylinderGeometry(def.r, def.r * 0.3, 1.4, 18)
-        : h.kind === 'laser' ? new THREE.BoxGeometry(0.6, 0.6, RIVER.width)
-        : new THREE.SphereGeometry(def.r * 0.8, 10, 8),
-        new THREE.MeshLambertMaterial({ color: def.color }));
-      if (h.kind === 'saw') mesh.rotation.z = Math.PI / 2;
-      if (h.kind === 'whirl') mesh.rotation.x = Math.PI;
+      const mesh = makeHazardMesh(h.kind);
       // Seat it in its own stage straight away. Only hazards near the boat get
       // their position stepped each frame, so without this every distant hazard
       // would sit at the world origin — right on top of the harbour.
@@ -324,6 +333,18 @@ function hazardPos(h, t) {
 }
 
 // ---------------------------------------------------------------- game state
+const parts = new Particles(scene);
+let shake = 0;             // impact kick, decays every frame
+let bobT = 0;              // drives the idle bob/roll of a floating hull
+
+// foam trail left behind the hull
+const wake = new THREE.Mesh(
+  new THREE.PlaneGeometry(6, 26),
+  new THREE.MeshBasicMaterial({ color: '#dff4ff', transparent: true, opacity: 0.3 }));
+wake.rotation.x = -Math.PI / 2;
+wake.visible = false;
+scene.add(wake);
+
 let mode = 'build';        // 'build' | 'sail'
 const boat = { x: 0, y: 0, z: HARBOUR_Z, vy: 0, sunkT: 0 };
 let stagesEntered = 0, lastStageIdx = -1, gotTreasure = false;
@@ -334,8 +355,11 @@ function setMode(m) {
   snapCamera();               // do not sweep the camera across the whole river
   $('#buildbar').classList.toggle('hidden', m !== 'build');
   $('#voyage').classList.toggle('hidden', m !== 'sail');
+  if (m !== 'sail') $('#stage-banner').classList.add('hidden');
   $('#vitals').classList.toggle('hidden', m !== 'sail');
   pad.visible = m === 'build';
+  // lets the stylesheet declutter the top HUD on small screens while sailing
+  document.body.classList.toggle('sailing', m === 'sail');
   // the steer arrows belong to sailing only; in build mode they overlapped the
   // Shop / Erase / Clear row on a phone
   $('#tilt').classList.toggle('hidden', !(isTouch && m === 'sail'));
@@ -347,13 +371,14 @@ function setMode(m) {
 }
 
 function launch() {
-  if (blocks.size === 0) { toast('Build something first!'); return; }
+  if (blocks.size === 0) { sfx.deny(); toast('Build something first!'); return; }
   const s = boatStats();
   if (s.count && s.float < 0.6) toast('That is very heavy… good luck.');
   boat.x = 0; boat.y = 0; boat.z = 0; boat.vy = 0; boat.sunkT = 0;
   stagesEntered = 0; lastStageIdx = -1; gotTreasure = false;
   // full health again for the new run
   for (const b of blocks.values()) b.hp = BLOCK_BY_ID[b.id].hp;
+  sfx.unlock(); sfx.startAmbience(); sfx.launch();
   CAM.sail.yaw = Math.PI; lastLook = -99;   // always set off facing down-river
   setMode('sail');
   net.send({ t: 'launch' });
@@ -390,6 +415,7 @@ $('#sum-back').addEventListener('click', () => {
   for (const d of design) addBlock(d.b, d.x, d.y, d.z);
   if (blocks.size === 0) starterRaft();
   boat.x = 0; boat.y = 0; boat.z = HARBOUR_Z;
+  boatGroup.rotation.set(0, 0, 0);
   setMode('build');
   refreshVitals();
 });
@@ -434,6 +460,7 @@ function twoFingerDist() {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  sfx.unlock();
   canvas.setPointerCapture?.(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 1) { gestureMoved = 0; gestureStart = performance.now(); }
@@ -507,15 +534,19 @@ function tryBuild(clientX, clientY, remove) {
   ray.setFromCamera(ndc, camera);
 
   const meshes = [...blocks.values()].map((b) => b.mesh);
-  const hits = ray.intersectObjects(meshes, false);
+  // recurse: balloons/thrusters/sails/seats are groups, so the hit is a child
+  const hits = ray.intersectObjects(meshes, true);
   if (hits.length) {
     const hit = hits[0];
-    const b = blocks.get(hit.object.userData.k);
+    let root = hit.object;
+    while (root && root.userData.k === undefined) root = root.parent;
+    const b = root && blocks.get(root.userData.k);
     if (!b) return;
-    if (remove) { removeBlock(b.mesh.userData.k); afterEdit(); return; }
-    // place against the face we hit
+    if (remove) { removeBlock(b.mesh.userData.k); sfx.remove(); afterEdit(); return; }
+    // place against the face we hit (in the block's own space)
     const n = hit.face.normal;
-    if (addBlock(selected, b.gx + n.x, b.gy + n.y, b.gz + n.z)) afterEdit();
+    if (addBlock(selected, b.gx + n.x, b.gy + n.y, b.gz + n.z)) { sfx.place(selected); afterEdit(); }
+    else sfx.deny();
     return;
   }
   if (remove) return;
@@ -525,7 +556,8 @@ function tryBuild(clientX, clientY, remove) {
   const local = boatGroup.worldToLocal(padHit.point.clone());
   const gx = Math.round(local.x + (PLOT.w - 1) / 2);
   const gz = Math.round(local.z + (PLOT.d - 1) / 2);
-  if (addBlock(selected, gx, 0, gz)) afterEdit();
+  if (addBlock(selected, gx, 0, gz)) { sfx.place(selected); afterEdit(); }
+  else sfx.deny();
 }
 
 function afterEdit() { refreshVitals(); publishBoat(); saveSoon(); }
@@ -626,11 +658,34 @@ function stepSail(dt, t) {
     stagesEntered = si + 1;
     $('#stage-name').textContent = STAGES[si].name;
     $('#stage-name').style.color = BAND_COLOR[STAGES[si].band];
+    announceStage(STAGES[si]);
+    if (si > 0) sfx.stageUp();
     scene.background = new THREE.Color(STAGES[si].sky);
     scene.fog.color = new THREE.Color(STAGES[si].sky);
     updatePips(si);
     if (STAGES[si].band === 'red') window.ClaudeBox?.completeChallenge?.('bab-red');
   }
+
+  // a floating hull rides the swell; a sinking one lists heavily
+  bobT += dt * (1.6 + speed * 0.05);
+  const heel = s.float >= 1 ? Math.sin(bobT * 0.7) * 0.045 : -0.35;
+  boatGroup.rotation.z = lerp(boatGroup.rotation.z, heel + steer * -0.12, 1 - Math.exp(-4 * dt));
+  boatGroup.rotation.x = lerp(boatGroup.rotation.x, Math.sin(bobT) * 0.03, 1 - Math.exp(-4 * dt));
+
+  // foam trail behind the hull
+  wake.visible = true;
+  wake.position.set(boat.x, WATER_TOP + 0.05, boat.z - 13);
+  wake.material.opacity = 0.14 + Math.min(0.3, speed * 0.02);
+  wake.scale.x = 0.6 + Math.min(1.6, s.count / 22);
+
+  // light the thruster flames in proportion to the power actually installed
+  for (const b of blocks.values()) {
+    if (BLOCK_BY_ID[b.id]?.kind !== 'thruster') continue;
+    const f = b.mesh.getObjectByName?.('flame');
+    if (f) { f.visible = true; f.scale.setScalar(0.8 + Math.sin(t * 26 + b.gx) * 0.22); }
+  }
+  sfx.setRiver(Math.min(1, speed / 26));
+  sfx.setThruster(s.thrust);
 
   applyHazards(dt, t);
 
@@ -642,6 +697,21 @@ function stepSail(dt, t) {
   $('#progress-label').textContent = `${Math.round(boat.z)}m`;
   refreshVitals();
   net.send({ t: 'progress', dist: boat.z, blocks: s.count });
+}
+
+let bannerTimer = null;
+function announceStage(st) {
+  const el = $('#stage-banner');
+  $('#sb-name').textContent = st.name;
+  $('#sb-band').textContent = st.band === 'end' ? 'FINAL STRETCH' : st.band + ' zone';
+  $('#sb-name').style.color = BAND_COLOR[st.band];
+  el.classList.remove('hidden', 'out');
+  void el.offsetWidth;                     // restart the entrance animation
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => el.classList.add('hidden'), 480);
+  }, 1600);
 }
 
 function updatePips(si) {
@@ -684,8 +754,21 @@ function applyHazards(dt, t) {
       const b = blocks.get(hitK);
       b.hp -= h.def.dmg;
       h.nextHit = t + 0.55;
-      if (b.hp <= 0) removeBlock(hitK);
-      else b.mesh.material = b.mesh.material.clone(), b.mesh.material.color.offsetHSL(0, -0.2, -0.08);
+      const maxHp = BLOCK_BY_ID[b.id]?.hp || 1;
+      const wp = new THREE.Vector3(
+        boat.x + (b.gx - (PLOT.w - 1) / 2), boat.y + b.gy + 0.5, boat.z + (b.gz - (PLOT.d - 1) / 2));
+      if (b.hp <= 0) {
+        parts.burst(wp, BLOCK_BY_ID[b.id]?.color || '#b3803f', 12, { spread: 7, up: 6 });
+        parts.burst(wp, '#bfe6ff', 6, { spread: 5, up: 5, size: 0.8 });
+        sfx.breakBlock();
+        removeBlock(hitK);
+        shake = Math.min(1, shake + 0.55);
+      } else {
+        tintDamaged(b.mesh, b.hp / maxHp);
+        parts.burst(wp, '#ffd9a0', 5, { spread: 4, up: 4, size: 0.7, life: 0.5 });
+        sfx.hit(b.id);
+        shake = Math.min(1, shake + 0.3);
+      }
     }
   }
 }
@@ -693,11 +776,14 @@ function applyHazards(dt, t) {
 function finishRun(treasure) {
   if (mode !== 'sail') return;
   setMode('build');
+  wake.visible = false;
+  sfx.setThruster(0);
   if (treasure) {
+    sfx.treasure();
     $('#treasure').classList.remove('hidden');
     window.ClaudeBox?.completeChallenge?.('bab-treasure');
     setTimeout(() => endRun(true), 1500);
-  } else endRun(false);
+  } else { sfx.sink(); endRun(false); }
 }
 
 // ---------------------------------------------------------------- camera
@@ -755,6 +841,12 @@ function updateCamera(dt, now) {
   camPos.lerp(want, k);
   camLook.lerp(look, k);
   camera.position.copy(camPos);
+  // impact kick — small, and always decaying, so it reads as a thump not a wobble
+  if (shake > 0.001) {
+    const k = shake * shake * 0.7;
+    camera.position.x += (Math.random() - 0.5) * k;
+    camera.position.y += (Math.random() - 0.5) * k;
+  }
   camera.lookAt(camLook);
 }
 
@@ -770,6 +862,8 @@ function frame() {
 
   // place the boat + camera
   boatGroup.position.set(boat.x, boat.y, boat.z);
+  parts.step(dt);
+  shake = Math.max(0, shake - dt * 2.6);
   updateCamera(dt, now);
 
   // remote boats ride their own distance, nudged aside so they do not overlap
@@ -780,6 +874,7 @@ function frame() {
   }
 
   // gentle water shimmer
+  waterTex.offset.y = (now * 0.06) % 1;    // the current, visibly running
   water.position.z = 300 + Math.sin(now * 0.3) * 0.5;
   treasureChest.rotation.y = now * 0.5;
 

@@ -30,8 +30,19 @@
   <!-- top-right: boat vitals -->
   <div id="vitals" class="cbx-chip hidden">🧱 <b id="block-count">0</b> · <span id="float-state">afloat</span></div>
 
+  <!-- big stage call-out when you cross into a new one -->
+  <div id="stage-banner" class="hidden"><b id="sb-name"></b><small id="sb-band"></small></div>
+
   <!-- build-mode bottom bar -->
   <div id="buildbar">
+    <!-- the numbers that decide whether you float -->
+    <div id="boatstats">
+      <span class="stat">🧱 <b id="st-count">0</b></span>
+      <span class="stat">⚖️ <b id="st-weight">0</b></span>
+      <span class="stat">🎈 <b id="st-buoy">0</b></span>
+      <span id="st-float">1.00</span>
+      <span id="float-meter"><i id="float-fill"></i><em></em></span>
+    </div>
     <div id="palette"></div>
     <div id="build-actions">
       <button id="btn-shop" class="cbx-btn">🛒 Shop</button>
@@ -55,6 +66,11 @@
   <div class="panel cbx-panel cbx-pop">
     <h2>🛒 Block Shop</h2>
     <p class="sub">Buy a block once and you can place as many as you like.</p>
+    <div id="shop-tabs">
+      <button class="stab on" data-cat="all">All</button>
+      <button class="stab" data-cat="solid">🧱 Material</button>
+      <button class="stab" data-cat="ability">⚡ Ability</button>
+    </div>
     <div id="shop-list" class="cbx-scroll"></div>
     <button id="shop-close" class="cbx-btn ghost">Close</button>
   </div>

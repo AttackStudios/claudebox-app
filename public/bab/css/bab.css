@@ -108,7 +108,11 @@ html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
   /* clear the hub/voice buttons that live in the top-left corner */
   #gold-chip { top: 62px; font-size: 14px; }
   #vitals { top: 62px; font-size: 13px; }
-  #voyage { top: 8px; }
+  #voyage { top: 8px; width: 96vw; }
+  /* while sailing the stage pips need the full width: your wallet cannot change
+     mid-run, so it steps aside and the vitals drop below the progress bar */
+  body.sailing #gold-chip { display: none; }
+  body.sailing #vitals { top: 116px; }
   /* steering sits above the hints line, clear of everything else */
   #tilt { bottom: 22px; }
   #tilt button { width: 60px; height: 60px; font-size: 23px; }
@@ -124,3 +128,47 @@ html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
   border: 2.5px solid rgba(255,255,255,.2); border-bottom: 6px solid rgba(0,0,0,.42);
   background: rgba(28,34,44,.9); color: #eef2f8; font-weight: 900; }
 #tilt button:active { transform: translateY(3px); border-color: var(--cbx-cyan); }
+
+/* ---- boat stats + float meter ---- */
+#boatstats { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+  background: rgba(20, 24, 32, .88); border: 2px solid rgba(255, 255, 255, .16);
+  border-bottom: 4px solid rgba(0, 0, 0, .4); border-radius: 999px; padding: 7px 15px;
+  font-weight: 900; font-size: 12.5px; color: var(--cbx-text); backdrop-filter: blur(6px); }
+#boatstats .stat b { color: var(--cbx-cyan); }
+#st-float { font-weight: 900; color: var(--cbx-green); min-width: 38px; text-align: right; }
+#boatstats.sinking #st-float { color: var(--cbx-red); }
+/* the bar fills to 1.0 = the waterline; the notch marks where you start to sink */
+#float-meter { position: relative; width: 92px; height: 12px; border-radius: 999px;
+  background: #141922; border: 2px solid rgba(255, 255, 255, .18); overflow: hidden; }
+#float-fill { position: absolute; inset: 0 100% 0 0; border-radius: 999px;
+  background: linear-gradient(180deg, #6ee7a0, #2fae68); transition: right .18s ease-out, background .18s; }
+#boatstats.sinking #float-fill { background: linear-gradient(180deg, #ff8a94, #d93a4a); }
+#float-meter em { position: absolute; left: 66.6%; top: 0; bottom: 0; width: 2px;
+  background: rgba(255, 255, 255, .65); }
+
+/* ---- stage banner ---- */
+#stage-banner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none;
+  animation: sbIn .45s cubic-bezier(.34, 1.56, .64, 1); }
+#stage-banner b { font-size: clamp(30px, 7vw, 58px); font-weight: 900; color: #fff;
+  text-shadow: -3px 0 0 rgba(10,14,20,.6), 3px 0 0 rgba(10,14,20,.6),
+               0 -3px 0 rgba(10,14,20,.6), 0 4px 0 rgba(10,14,20,.7), 0 10px 30px rgba(0,0,0,.5); }
+#stage-banner small { font-size: 12px; font-weight: 900; letter-spacing: .28em;
+  text-transform: uppercase; color: #fff; opacity: .9; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+#stage-banner.out { animation: sbOut .5s ease-in forwards; }
+@keyframes sbIn { from { opacity: 0; transform: translateX(-50%) scale(.7); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes sbOut { to { opacity: 0; transform: translateX(-50%) translateY(-24px) scale(.94); } }
+
+/* ---- shop tabs ---- */
+#shop-tabs { display: flex; gap: 6px; }
+.stab { flex: 1; border: 2px solid rgba(255,255,255,.14); border-bottom: 4px solid rgba(0,0,0,.4);
+  border-radius: 12px; background: rgba(255,255,255,.05); color: var(--cbx-dim);
+  font-weight: 900; font-size: 12.5px; padding: 9px 6px; cursor: pointer; transition: all .12s; }
+.stab.on { background: linear-gradient(180deg,#46b0ff,#2b8de0); color: #fff; border-color: #fff; }
+.shop-row.cant b { color: var(--cbx-dim); }
+.shop-row .cost-short { color: var(--cbx-red); font-size: 11px; font-weight: 900; }
+
+@media (max-width: 640px) {
+  #boatstats { font-size: 11px; gap: 7px; padding: 6px 11px; }
+  #float-meter { width: 66px; }
+}
