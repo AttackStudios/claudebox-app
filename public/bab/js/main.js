@@ -20,14 +20,26 @@ import {
   MAPS, mapFor, mapsForRank, stagesOf, totalLen, treasureAt,
 } from '/shared/bab/config.js';
 
-const $ = (s) => document.querySelector(s);
+// Memoised: the HUD ran ~12 querySelector calls per frame, and every
+// textContent write forced a style recalculation. These nodes never change.
+const _els = new Map();
+const $ = (sel) => {
+  let e = _els.get(sel);
+  if (e === undefined || !e.isConnected) { e = document.querySelector(sel); _els.set(sel, e); }
+  return e;
+};
+// only touch the DOM when the value actually changed
+const setText = (el, v) => { if (el && el.__v !== v) { el.__v = v; el.textContent = v; } };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ---------------------------------------------------------------- renderer
 const canvas = $('#c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Phones are fill-rate bound long before they are geometry bound. Capping the
+// pixel ratio at 1.5 on touch devices roughly halves the pixels drawn.
+const COARSE = matchMedia('(pointer: coarse)').matches;
+renderer.setPixelRatio(Math.min(devicePixelRatio, COARSE ? 1.5 : 2));
 renderer.shadowMap.enabled = false;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#8fd2ff');
@@ -55,7 +67,7 @@ const HARBOUR_Z = -18;
 // water: one big plane we scroll a subtle ripple across
 const waterTex = waterTexture();
 waterTex.repeat.set(60, 120);
-const waterMat = new THREE.MeshLambertMaterial({ color: '#2f9fd0', map: waterTex, transparent: true, opacity: 0.92 });
+const waterMat = new THREE.MeshLambertMaterial({ color: '#2f9fd0', map: waterTex });
 const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 1800, 1, 1), waterMat);
 water.rotation.x = -Math.PI / 2; water.position.set(0, WATER_TOP, 300);
 scene.add(water);
@@ -257,8 +269,8 @@ async function refreshChampion() {
   tab.classList.toggle('hidden', !champion());
   $('#legend-tab').classList.toggle('hidden', rank !== 'legend');
   if (!mapsForRank(rank).some((m) => m.id === mapId)) mapId = 'standard';   // rank removed
-  buildMapPicker();
-  buildRiver();
+  // boot() builds the river once after the save loads — doing it here too meant
+  // constructing all 452 hazards twice on startup
   refreshVitals();
 }
 
@@ -299,7 +311,7 @@ function buildPalette() {
     const n = have(b.id);
     el.className = 'slot cbx-tile' + (b.id === selected ? ' on' : '') + (n <= 5 ? ' low' : '');
     el.innerHTML = `<span class="key">${i < 9 ? i + 1 : ''}</span>${b.emoji}<small>${b.name.split(' ')[0]}</small><span class="qty">${n}</span>`;
-    el.addEventListener('click', () => { selected = b.id; sfx.pick(); buildPalette(); });
+    el.addEventListener('click', () => { selected = b.id; sfx.pick(); buildPalette(); refreshGhost(); });
     pal.appendChild(el);
   });
 }
@@ -307,20 +319,21 @@ function buildPalette() {
 function refreshVitals() {
   const s = boatStats();
   const sinking = s.float < 1;
-  $('#block-count').textContent = s.count;
+  setText($('#block-count'), String(s.count));
   $('#vitals').classList.toggle('sinking', sinking);
-  $('#float-state').textContent = sinking ? 'SINKING' : 'afloat';
+  setText($('#float-state'), sinking ? 'SINKING' : 'afloat');
 
   // build-mode readout: the actual numbers, so "why did I sink" is answerable
-  $('#st-count').textContent = s.count + '/' + limit();
+  setText($('#st-count'), s.count + '/' + limit());
   $('#boatstats').classList.toggle('atcap', s.count >= limit());
-  $('#st-weight').textContent = s.weight.toFixed(1);
-  $('#st-buoy').textContent = s.buoy.toFixed(1);
-  $('#st-float').textContent = s.count ? s.float.toFixed(2) : '—';
+  setText($('#st-weight'), s.weight.toFixed(1));
+  setText($('#st-buoy'), s.buoy.toFixed(1));
+  setText($('#st-float'), s.count ? s.float.toFixed(2) : '—');
   $('#boatstats').classList.toggle('sinking', sinking && s.count > 0);
   // the meter tops out at 1.5 so the 1.0 waterline notch sits at two thirds
-  const pct = clamp(s.float / 1.5, 0, 1);
-  $('#float-fill').style.right = `${(1 - pct) * 100}%`;
+  const right = `${(1 - clamp(s.float / 1.5, 0, 1)) * 100}%`;
+  const fill = $('#float-fill');
+  if (fill.__r !== right) { fill.__r = right; fill.style.right = right; }
 }
 
 let shopCat = 'all';
@@ -394,6 +407,7 @@ $('#btn-erase').addEventListener('click', () => {
   eraser = !eraser;
   $('#btn-erase').classList.toggle('on', eraser);
   $('#btn-erase').textContent = eraser ? '🧨 Erasing' : '🧱 Building';
+  refreshGhost();
 });
 
 // ---------------------------------------------------------------- hazards
@@ -437,6 +451,7 @@ function hazardPos(h, t) {
 const parts = new Particles(scene);
 let shake = 0;             // impact kick, decays every frame
 let bobT = 0;              // drives the idle bob/roll of a floating hull
+let hudT = 0;              // HUD refresh accumulator (10Hz, not every frame)
 
 // foam trail left behind the hull
 const wake = new THREE.Mesh(
@@ -459,6 +474,7 @@ function setMode(m) {
   if (m !== 'sail') $('#stage-banner').classList.add('hidden');
   $('#vitals').classList.toggle('hidden', m !== 'sail');
   pad.visible = m === 'build';
+  ghost.visible = false;
   // lets the stylesheet declutter the top HUD on small screens while sailing
   document.body.classList.toggle('sailing', m === 'sail');
   // the steer arrows belong to sailing only; in build mode they overlapped the
@@ -481,7 +497,7 @@ function buildRiver() {
   for (let i = 0; i < stages.length; i++) {
     const strip = new THREE.Mesh(
       new THREE.PlaneGeometry(RIVER.width, STAGE_LEN),
-      new THREE.MeshLambertMaterial({ color: stages[i].water, transparent: true, opacity: 0.85 }));
+      new THREE.MeshLambertMaterial({ color: stages[i].water }));
     strip.rotation.x = -Math.PI / 2;
     strip.position.set(0, WATER_TOP + 0.02, i * STAGE_LEN + STAGE_LEN / 2);
     stripGroup.add(strip);
@@ -635,17 +651,25 @@ function twoFingerDist() {
   return Math.hypot(a.x - b.x, a.y - b.y) || 1;
 }
 
+let lastPX = null, lastPY = null;
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock();
+  lastPX = e.clientX; lastPY = e.clientY;
+  updateGhost(e.clientX, e.clientY);
   canvas.setPointerCapture?.(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 1) { gestureMoved = 0; gestureStart = performance.now(); }
   if (pointers.size === 2) pinchDist = twoFingerDist();
 });
 
+// hovering with a mouse previews continuously; touch has no hover, so the
+// preview follows your finger while the gesture could still become a tap
 canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId);
-  if (!p) return;
+  if (!p) {
+    if (!isTouch) { lastPX = e.clientX; lastPY = e.clientY; updateGhost(e.clientX, e.clientY); }
+    return;
+  }
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
   p.x = e.clientX; p.y = e.clientY;
   const c = cam();
@@ -661,6 +685,9 @@ canvas.addEventListener('pointermove', (e) => {
   }
 
   gestureMoved += Math.abs(dx) + Math.abs(dy);
+  lastPX = e.clientX; lastPY = e.clientY;
+  if (gestureMoved < TAP_SLOP) updateGhost(e.clientX, e.clientY);   // still a tap
+  else ghost.visible = false;                                       // now an orbit
   c.yaw -= dx * 0.006;
   c.pitch = clamp(c.pitch + dy * 0.005, 0.05, 1.42);
   lastLook = performance.now() / 1000;
@@ -668,6 +695,7 @@ canvas.addEventListener('pointermove', (e) => {
 
 function endPointer(e, cancelled) {
   const wasSingle = pointers.size === 1;
+  if (isTouch) ghost.visible = false;
   pointers.delete(e.pointerId);
   canvas.releasePointerCapture?.(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
@@ -701,47 +729,92 @@ addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
+const _nrm = new THREE.Matrix3();
+const _wn = new THREE.Vector3();
+const _lp = new THREE.Vector3();
 
-function tryBuild(clientX, clientY, remove) {
-  // measure against the canvas itself, not the window — they can differ
+// Placement preview: a white outlined box showing exactly which cell the next
+// tap/click would fill. It lives inside boatGroup so it shares the grid's space.
+const ghost = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, depthWrite: false }));
+ghost.add(new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002)),
+  new THREE.LineBasicMaterial({ color: '#ffffff' })));
+ghost.visible = false;
+ghost.renderOrder = 2;
+boatGroup.add(ghost);
+
+// Where would a click at these screen coords land? Returns the grid cell, or
+// null. `remove` mode targets the block under the cursor instead of the space
+// next to it. Shared by the ghost and the actual build so they never disagree.
+function pickTarget(clientX, clientY, remove) {
   const r = canvas.getBoundingClientRect();
   ndc.x = ((clientX - r.left) / r.width) * 2 - 1;
   ndc.y = -((clientY - r.top) / r.height) * 2 + 1;
   ray.setFromCamera(ndc, camera);
 
-  const meshes = [...blocks.values()].map((b) => b.mesh);
-  // recurse: balloons/thrusters/sails/seats are groups, so the hit is a child
+  const meshes = [];
+  for (const b of blocks.values()) meshes.push(b.mesh);
   const hits = ray.intersectObjects(meshes, true);
   if (hits.length) {
-    const hit = hits[0];
-    let root = hit.object;
+    let root = hits[0].object;
     while (root && root.userData.k === undefined) root = root.parent;
     const b = root && blocks.get(root.userData.k);
-    if (!b) return;
-    if (remove) { removeBlock(b.mesh.userData.k, true); sfx.remove(); afterEdit(); return; }
-    // place against the face we hit (in the block's own space)
-    const n = hit.face.normal;
-    if (addBlock(selected, b.gx + n.x, b.gy + n.y, b.gz + n.z)) { sfx.place(selected); afterEdit(); }
-    else { sfx.deny(); if (blocks.size >= limit()) atCapToast(); }
-    return;
+    if (!b) return null;
+    if (remove) return { gx: b.gx, gy: b.gy, gz: b.gz, remove: true };
+    // take the hit face into world space, then snap to the dominant axis, so
+    // the preview is right even on the rotated parts of a sail or thruster
+    _wn.copy(hits[0].face.normal)
+       .applyMatrix3(_nrm.getNormalMatrix(hits[0].object.matrixWorld)).normalize();
+    const ax = Math.abs(_wn.x), ay = Math.abs(_wn.y), az = Math.abs(_wn.z);
+    let dx = 0, dy = 0, dz = 0;
+    if (ax >= ay && ax >= az) dx = Math.sign(_wn.x);
+    else if (ay >= az) dy = Math.sign(_wn.y);
+    else dz = Math.sign(_wn.z);
+    return { gx: b.gx + dx, gy: b.gy + dy, gz: b.gz + dz };
   }
-  if (remove) return;
-  // nothing hit — drop a block on the pad where the ray crosses the water
+  if (remove) return null;
   const padHit = ray.intersectObject(pad, false)[0];
-  if (!padHit) return;
-  const local = boatGroup.worldToLocal(padHit.point.clone());
-  const gx = Math.round(local.x + (PLOT.w - 1) / 2);
-  const gz = Math.round(local.z + (PLOT.d - 1) / 2);
-  if (addBlock(selected, gx, 0, gz)) { sfx.place(selected); afterEdit(); }
+  if (!padHit) return null;
+  boatGroup.worldToLocal(_lp.copy(padHit.point));
+  return { gx: Math.round(_lp.x + (PLOT.w - 1) / 2), gy: 0, gz: Math.round(_lp.z + (PLOT.d - 1) / 2) };
+}
+
+const inPlot = (t) => t && t.gx >= 0 && t.gx < PLOT.w && t.gy >= 0 && t.gy < PLOT.h && t.gz >= 0 && t.gz < PLOT.d;
+
+function updateGhost(clientX, clientY) {
+  if (mode !== 'build' || clientX == null) { ghost.visible = false; return; }
+  const t = pickTarget(clientX, clientY, eraser);
+  const ok = inPlot(t) && (eraser
+    ? t.remove                                     // something there to take off
+    : !blocks.has(key(t.gx, t.gy, t.gz)) && have(selected) > 0 && blocks.size < limit());
+  ghost.visible = !!ok;
+  if (!ok) return;
+  ghost.position.copy(localPos(t.gx, t.gy, t.gz));
+  // white to place, red to erase
+  const col = eraser ? '#ff5d6c' : '#ffffff';
+  ghost.material.color.set(col);
+  ghost.children[0].material.color.set(col);
+  ghost.material.opacity = eraser ? 0.3 : 0.25;
+}
+
+function tryBuild(clientX, clientY, remove) {
+  const t = pickTarget(clientX, clientY, remove);
+  if (!t) return;
+  if (t.remove) { removeBlock(key(t.gx, t.gy, t.gz), true); sfx.remove(); afterEdit(); return; }
+  if (addBlock(selected, t.gx, t.gy, t.gz)) { sfx.place(selected); afterEdit(); }
   else { sfx.deny(); if (blocks.size >= limit()) atCapToast(); }
 }
+
+const refreshGhost = () => updateGhost(lastPX, lastPY);
 
 function afterEdit() {
   if (have(selected) <= 0) {                       // ran out — hop to something you do have
     const next = BLOCKS.find((b) => have(b.id) > 0);
     if (next) selected = next.id;
   }
-  buildPalette(); refreshVitals(); publishBoat(); saveSoon();
+  buildPalette(); refreshVitals(); publishBoat(); saveSoon(); refreshGhost();
 }
 
 // ---------------------------------------------------------------- multiplayer
@@ -874,12 +947,18 @@ function stepSail(dt, t) {
 
   if (boat.z >= treasureAt(mapId) && !gotTreasure) { gotTreasure = true; finishRun(true); return; }
 
-  // HUD
-  const pct = clamp(boat.z / totalLen(mapId), 0, 1);
-  $('#progress-fill').style.right = `${(1 - pct) * 100}%`;
-  $('#progress-label').textContent = `${Math.round(boat.z)}m`;
-  refreshVitals();
-  net.send({ t: 'progress', dist: boat.z, blocks: s.count });
+  // HUD — 10Hz is plenty, and it keeps style recalculation off the frame path
+  hudT += dt;
+  if (hudT >= 0.1) {
+    hudT = 0;
+    const pct = clamp(boat.z / totalLen(mapId), 0, 1);
+    const right = `${(1 - pct) * 100}%`;
+    const pf = $('#progress-fill');
+    if (pf.__r !== right) { pf.__r = right; pf.style.right = right; }
+    setText($('#progress-label'), `${Math.round(boat.z)}m`);
+    refreshVitals();
+    net.send({ t: 'progress', dist: boat.z, blocks: s.count });
+  }
 }
 
 let bannerTimer = null;
@@ -911,7 +990,7 @@ function updatePips(si) {
 // Only draw the stretch of river you can actually see. Without this the Legend
 // Gauntlet renders all 452 hazards — several thousand meshes and a point light
 // per fireball — every frame, which drags the whole sim into slow motion.
-const HAZ_DRAW = 150;
+const HAZ_DRAW = COARSE ? 105 : 150;
 function cullHazards() {
   const z = mode === 'sail' ? boat.z : 0;
   for (const h of hazards) {
@@ -988,14 +1067,16 @@ function finishRun(treasure) {
 // back from the treasure to the dock.
 const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
+// scratch vectors, reused every frame so the camera allocates nothing
+const _focus = new THREE.Vector3(), _want = new THREE.Vector3(), _look = new THREE.Vector3();
 let camReady = false;
 const snapCamera = () => { camReady = false; };
 
 // While building, frame the BOAT rather than a fixed spot in space, so a tall
 // or wide build stays centred instead of growing off the top of the screen.
-function buildFocus() {
+function buildFocus(out) {
   const g = boatGroup.position;
-  if (!blocks.size) return new THREE.Vector3(g.x, 2.5, g.z);
+  if (!blocks.size) return out.set(g.x, 2.5, g.z);
   let sx = 0, sy = 0, sz = 0, maxY = 0;
   for (const b of blocks.values()) {
     sx += b.gx; sy += b.gy; sz += b.gz;
@@ -1003,7 +1084,7 @@ function buildFocus() {
   }
   const n = blocks.size;
   const l = localPos(sx / n, sy / n, sz / n);
-  return new THREE.Vector3(g.x + l.x, Math.max(2, l.y + maxY * 0.3), g.z + l.z);
+  return out.set(g.x + l.x, Math.max(2, l.y + maxY * 0.3), g.z + l.z);
 }
 
 function updateCamera(dt, now) {
@@ -1015,12 +1096,12 @@ function updateCamera(dt, now) {
   }
 
   const focus = mode === 'build'
-    ? buildFocus()
-    : new THREE.Vector3(boat.x, boat.y + 3.2, boat.z);
+    ? buildFocus(_focus)
+    : _focus.set(boat.x, boat.y + 3.2, boat.z);
 
   // pure orbit around the focus — no world-space fudge, so rotating keeps the
   // subject dead centre at every yaw
-  const want = new THREE.Vector3(
+  const want = _want.set(
     focus.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist,
     focus.y + Math.sin(c.pitch) * c.dist,
     focus.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
@@ -1029,7 +1110,7 @@ function updateCamera(dt, now) {
   // Look down the river so you can read what is coming — but only to the extent
   // you are actually facing that way. Applying the full lead at every yaw shoved
   // the boat off-centre whenever you looked at it side-on.
-  const look = focus.clone();
+  const look = _look.copy(focus);
   if (mode === 'sail') look.z += 10 * Math.max(0, -Math.cos(c.yaw));
 
   if (!camReady) { camPos.copy(want); camLook.copy(look); camReady = true; }
@@ -1127,7 +1208,7 @@ async function boot() {
   window.__bab = { boat, blocks, boatStats, hazards, launch, endRun, net, scene,
     camera, CAM, buildFocus, THREE, addBlock, removeBlock, limit, limitOf: limit,
     get rank() { return rank; }, get inv() { return inv; }, get mapId() { return mapId; },
-    setMap, stages: () => stagesOf(mapId), treasureAt: () => treasureAt(mapId), buildPalette, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
+    setMap, stages: () => stagesOf(mapId), treasureAt: () => treasureAt(mapId), buildPalette, renderer, ghost, pickTarget, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };
 

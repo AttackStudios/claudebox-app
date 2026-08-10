@@ -122,7 +122,13 @@ export function blockMaterial(id) {
 // The ability blocks become small assemblies so a boat looks built, not stacked.
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 
+const blockTemplates = new Map();
 export function makeBlockMesh(id) {
+  if (!blockTemplates.has(id)) blockTemplates.set(id, buildBlockTemplate(id));
+  return blockTemplates.get(id).clone();
+}
+
+function buildBlockTemplate(id) {
   const def = BLOCK_BY_ID[id];
   if (!def) return new THREE.Mesh(BOX, blockMaterial('wood'));
 
@@ -184,21 +190,43 @@ export function makeBlockMesh(id) {
   return new THREE.Mesh(BOX, blockMaterial(id));
 }
 
-// tint a block (mesh or group) as it takes damage
-export function tintDamaged(obj, frac) {
-  obj.traverse?.((o) => {
-    if (!o.isMesh) return;
-    if (!o.userData._mat) { o.userData._mat = o.material; o.material = o.material.clone(); }
-    o.material.color.lerp(new THREE.Color('#3a2018'), Math.min(0.55, (1 - frac) * 0.5));
-  });
-  if (obj.isMesh && !obj.userData._mat) {
-    obj.userData._mat = obj.material; obj.material = obj.material.clone();
-    obj.material.color.lerp(new THREE.Color('#3a2018'), Math.min(0.55, (1 - frac) * 0.5));
+// Damage tint. Cloning a material per damaged block meant hundreds of unique
+// materials (and shader programs) in a long run, so instead there are four
+// shared steps per source material, made once and reused.
+const dmgSteps = new Map();
+const DARK = new THREE.Color('#3a2018');
+function damagedMaterial(base, step) {
+  const key = base.uuid + '|' + step;
+  if (!dmgSteps.has(key)) {
+    const m = base.clone();
+    m.color = base.color.clone().lerp(DARK, step * 0.18);
+    dmgSteps.set(key, m);
   }
+  return dmgSteps.get(key);
+}
+export function tintDamaged(obj, frac) {
+  const step = Math.min(3, Math.max(1, Math.round((1 - frac) * 3)));
+  const apply = (o) => {
+    if (!o.isMesh) return;
+    if (!o.userData._base) o.userData._base = o.material;
+    o.material = damagedMaterial(o.userData._base, step);
+  };
+  if (obj.isMesh) apply(obj);
+  obj.traverse?.(apply);
 }
 
 // ---------------------------------------------------------------- hazards
+// One template per hazard KIND, cloned for every instance. Object3D.clone()
+// copies geometry and material by reference, so 452 hazards cost 9 geometries
+// instead of 2,253 — the old per-instance allocation was the main source of
+// the lag spikes.
+const hazTemplates = new Map();
 export function makeHazardMesh(kind) {
+  if (!hazTemplates.has(kind)) hazTemplates.set(kind, buildHazardTemplate(kind));
+  return hazTemplates.get(kind).clone();
+}
+
+function buildHazardTemplate(kind) {
   const def = HAZARDS[kind];
   const col = def.color;
   const g = new THREE.Group();
@@ -266,9 +294,12 @@ export function makeHazardMesh(kind) {
     const shell = new THREE.Mesh(new THREE.SphereGeometry(def.r * 1.15, 12, 10),
       new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6 }));
     shell.name = 'shell';
-    g.add(core, shell);
-    const light = new THREE.PointLight('#ff7a2a', 1.4, 22);
-    g.add(light);
+    // A third, wider shell reads as glow. A real PointLight here meant the
+    // visible light count changed constantly while sailing, and three.js
+    // recompiles every shader when that happens.
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(def.r * 1.6, 10, 8),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false }));
+    g.add(core, shell, halo);
   } else if (kind === 'whirl') {
     const ringMat = new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
     for (let i = 0; i < 3; i++) {
@@ -289,9 +320,10 @@ export function makeHazardMesh(kind) {
     const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, RIVER.width, 8),
       new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.28 }));
     glow.rotation.x = Math.PI / 2; glow.name = 'glow';
-    g.add(beam, glow);
-    const light = new THREE.PointLight(col, 1.1, 26);
-    g.add(light);
+    const halo = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, RIVER.width, 8),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.14, depthWrite: false }));
+    halo.rotation.x = Math.PI / 2;
+    g.add(beam, glow, halo);
   }
   return g;
 }
