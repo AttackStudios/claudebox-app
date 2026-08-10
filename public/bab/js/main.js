@@ -16,6 +16,8 @@ import {
   STAGES, STAGE_LEN, STAGE_GOLD, TREASURE_GOLD, TOTAL_LEN, TREASURE_AT,
   HAZARDS, hazardsFor, stageIndexAt, BAND_COLOR, goldForRun, DEFAULT_SAVE,
   blockLimit, CHAMPION_ONLY, GOLD_PACK, isPremiumRank,
+  PACK_SIZE, STARTER_INVENTORY, STARTING_GOLD, canBuy, TIER_OF,
+  MAPS, mapFor, mapsForRank, stagesOf, totalLen, treasureAt,
 } from '/shared/bab/config.js';
 
 const $ = (s) => document.querySelector(s);
@@ -93,7 +95,7 @@ for (let i = 0; i < STAGES.length; i++) {
   }
 }
 
-// the treasure itself, waiting at the end
+// the treasure itself, waiting at the end (repositioned when the map changes)
 const treasureChest = new THREE.Group();
 {
   const body = new THREE.Mesh(new THREE.BoxGeometry(7, 4.5, 5),
@@ -133,8 +135,9 @@ const localPos = (gx, gy, gz) => new THREE.Vector3(
   gy + 0.5,
   gz - (PLOT.d - 1) / 2);
 
-function addBlock(id, gx, gy, gz) {
+function addBlock(id, gx, gy, gz, free = false) {
   if (blocks.size >= limit()) return false;   // build limit (Champions get more)
+  if (!free && have(id) <= 0) return false;   // out of stock
   if (gx < 0 || gx >= PLOT.w || gy < 0 || gy >= PLOT.h || gz < 0 || gz >= PLOT.d) return false;
   const k = key(gx, gy, gz);
   if (blocks.has(k)) return false;
@@ -144,20 +147,26 @@ function addBlock(id, gx, gy, gz) {
   mesh.userData.k = k;
   boatGroup.add(mesh);
   blocks.set(k, { id, gx, gy, gz, hp: def.hp, mesh });
+  if (!free) inv[id] = have(id) - 1;
   return true;
 }
 
-function removeBlock(k) {
+// `refund` returns the block to your stock (taking it off on the plot);
+// hazards destroying it at sea do not.
+function removeBlock(k, refund = false) {
   const b = blocks.get(k); if (!b) return;
+  if (refund) inv[b.id] = have(b.id) + 1;
   boatGroup.remove(b.mesh);
   blocks.delete(k);
 }
 
-function clearBoat() { for (const k of [...blocks.keys()]) removeBlock(k); refreshVitals(); }
+// clearing on the plot hands every block back; wiping after a run does not
+function clearBoat(refund = false) { for (const k of [...blocks.keys()]) removeBlock(k, refund); refreshVitals(); }
 
 // A brand-new player gets a raft so there is something to launch immediately.
 function starterRaft() {
   clearBoat();
+  // drawn from stock; if you have none left you simply start with a bare plot
   for (let x = 5; x <= 9; x++) for (let z = 3; z <= 7; z++) addBlock('wood', x, 0, z);
   addBlock('seat', 7, 1, 5);
 }
@@ -173,8 +182,12 @@ function boatStats() {
 }
 
 // ---------------------------------------------------------------- save/load
-let gold = 60;
-let owned = new Set(STARTER_BLOCKS);
+let gold = STARTING_GOLD;
+// blocks are stock now, not permanent unlocks: { blockId: count }
+let inv = { ...STARTER_INVENTORY };
+const have = (id) => inv[id] | 0;
+let mapId = 'standard';
+const curMap = () => mapFor(mapId);
 let best = 0, runs = 0;
 let myName = null;
 let rank = '';             // '' | 'champion' | 'legend' — granted by the owner
@@ -189,14 +202,18 @@ async function loadSave(name) {
     const r = await fetch('/api/gamesave/bab?name=' + encodeURIComponent(name), { headers: codeHdr() });
     const { data } = await r.json();
     const s = data || DEFAULT_SAVE();
-    gold = Number.isFinite(s.gold) ? s.gold : 60;
-    owned = new Set(Array.isArray(s.owned) && s.owned.length ? s.owned : STARTER_BLOCKS);
-    for (const id of STARTER_BLOCKS) owned.add(id);
+    gold = Number.isFinite(s.gold) ? s.gold : STARTING_GOLD;
     best = s.best || 0; runs = s.runs || 0;
-    if (Array.isArray(s.boat) && s.boat.length) {
-      clearBoat();
-      for (const b of s.boat) addBlock(b.b, b.x, b.y, b.z);
-    } else starterRaft();
+    if (s.inv && typeof s.inv === 'object') {
+      inv = { ...s.inv };
+    } else if (Array.isArray(s.owned)) {
+      // migrate the old one-time-unlock saves: every unlocked block becomes a
+      // pack of stock so nobody loses what they had already bought
+      inv = { ...STARTER_INVENTORY };
+      for (const id of s.owned) inv[id] = Math.max(inv[id] | 0, PACK_SIZE);
+    } else inv = { ...STARTER_INVENTORY };
+    if (MAPS[s.map]) mapId = s.map;
+    starterRaft();
   } catch { starterRaft(); }
 }
 
@@ -205,11 +222,10 @@ function saveSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     if (!myName) return;
-    const boat = [...blocks.values()].map((b) => ({ b: b.id, x: b.gx, y: b.gy, z: b.gz }));
     fetch('/api/gamesave', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...codeHdr() },
-      body: JSON.stringify({ name: myName, game: 'bab', data: { gold, owned: [...owned], best, runs, boat } }),
+      body: JSON.stringify({ name: myName, game: 'bab', data: { gold, inv, best, runs, map: mapId } }),
     }).catch(() => {});
   }, 700);
 }
@@ -239,7 +255,10 @@ async function refreshChampion() {
   document.body.classList.toggle('legend', rank === 'legend');
   const tab = $('#champ-tab');
   tab.classList.toggle('hidden', !champion());
-  tab.textContent = rank === 'legend' ? '👑 Legend' : '★ Champion';
+  $('#legend-tab').classList.toggle('hidden', rank !== 'legend');
+  if (!mapsForRank(rank).some((m) => m.id === mapId)) mapId = 'standard';   // rank removed
+  buildMapPicker();
+  buildRiver();
   refreshVitals();
 }
 
@@ -270,11 +289,16 @@ function toast(text) {
 let selected = 'wood';
 function buildPalette() {
   const pal = $('#palette'); pal.innerHTML = '';
-  const list = BLOCKS.filter((b) => owned.has(b.id));
+  const list = BLOCKS.filter((b) => have(b.id) > 0);
+  if (!list.length) {
+    pal.innerHTML = '<div class="pal-empty">Out of blocks — open the 🛒 Shop</div>';
+    return;
+  }
   list.forEach((b, i) => {
     const el = document.createElement('button');
-    el.className = 'slot cbx-tile' + (b.id === selected ? ' on' : '');
-    el.innerHTML = `<span class="key">${i < 9 ? i + 1 : ''}</span>${b.emoji}<small>${b.name.split(' ')[0]}</small>`;
+    const n = have(b.id);
+    el.className = 'slot cbx-tile' + (b.id === selected ? ' on' : '') + (n <= 5 ? ' low' : '');
+    el.innerHTML = `<span class="key">${i < 9 ? i + 1 : ''}</span>${b.emoji}<small>${b.name.split(' ')[0]}</small><span class="qty">${n}</span>`;
     el.addEventListener('click', () => { selected = b.id; sfx.pick(); buildPalette(); });
     pal.appendChild(el);
   });
@@ -315,33 +339,34 @@ function buildShop() {
   list.appendChild(ex);
   const ability = new Set(['balloon', 'thruster', 'sail', 'seat']);
   const shown = BLOCKS.filter((b) => {
-    if (CHAMPION_ONLY.has(b.id)) return champion() && (shopCat === 'champion' || shopCat === 'all');
-    if (shopCat === 'champion') return false;
+    const tier = TIER_OF[b.id] || 'open';
+    if (!canBuy(rank, b.id)) return false;                 // above your rank
+    if (shopCat === 'champion') return tier === 'champion';
+    if (shopCat === 'legend') return tier === 'legend';
+    if (tier !== 'open') return shopCat === 'all';
     return shopCat === 'all' || (shopCat === 'ability' ? ability.has(b.id) : !ability.has(b.id));
   });
-  // cheapest affordable upgrades first — the useful ones surface on top
-  shown.sort((a, b) => (owned.has(a.id) - owned.has(b.id)) || (a.cost - b.cost));
+  shown.sort((a, b) => a.cost - b.cost);
   for (const b of shown) {
-    const has = owned.has(b.id);
-    const short = !has && gold < b.cost;
-    const isChampItem = CHAMPION_ONLY.has(b.id);
+    const tier = TIER_OF[b.id] || 'open';
+    const short = gold < b.cost;
     const row = document.createElement('div');
-    row.className = 'shop-row' + (has ? ' owned' : '') + (short ? ' cant' : '') + (isChampItem ? ' champ' : '');
+    row.className = 'shop-row' + (short ? ' cant' : '') + (tier !== 'open' ? ' champ' : '') + (tier === 'legend' ? ' legendrow' : '');
+    const mark = tier === 'legend' ? ' <i class="champ-star legend">👑</i>' : tier === 'champion' ? ' <i class="champ-star">★</i>' : '';
     row.innerHTML = `
       <span class="ico">${b.emoji}</span>
-      <span class="who"><b>${b.name}${isChampItem ? ' <i class="champ-star">★</i>' : ''}</b><small>${b.hp} hp · ${b.weight} weight · ${b.buoy} float${b.thrust ? ` · ${b.thrust} thrust` : ''}</small></span>`;
+      <span class="who"><b>${b.name}${mark}</b><small>${b.hp} hp · ${b.weight} weight · ${b.buoy} float${b.thrust ? ` · ${b.thrust} thrust` : ''} · you have ${have(b.id)}</small></span>`;
     const btn = document.createElement('button');
-    btn.className = 'cbx-btn buy ' + (has ? 'ghost' : 'go');
-    btn.textContent = has ? 'Owned' : `🪙 ${b.cost.toLocaleString()}`;
-    if (short) btn.className = 'cbx-btn buy ghost';
-    btn.disabled = has;
+    btn.className = 'cbx-btn buy ' + (short ? 'ghost' : 'go');
+    btn.innerHTML = `🪙 ${b.cost.toLocaleString()}<small class="pack">×${PACK_SIZE}</small>`;
     btn.addEventListener('click', () => {
-      if (owned.has(b.id)) return;
-      if (CHAMPION_ONLY.has(b.id) && !champion()) { sfx.deny(); toast('Champions only'); return; }
+      if (!canBuy(rank, b.id)) { sfx.deny(); toast(tier === 'legend' ? 'Legends only' : 'Champions only'); return; }
       if (gold < b.cost) { sfx.deny(); toast('Not enough gold — sail further!'); return; }
-      setGold(gold - b.cost); owned.add(b.id); sfx.buy();
-      toast(`Bought ${b.name}!`);
-      buildShop(); buildPalette(); saveSoon();
+      setGold(gold - b.cost);
+      inv[b.id] = have(b.id) + PACK_SIZE;      // a pack, not a permanent unlock
+      sfx.buy();
+      toast(`+${PACK_SIZE} ${b.name}`);
+      buildShop(); buildPalette(); refreshVitals(); saveSoon();
     });
     row.appendChild(btn);
     list.appendChild(row);
@@ -376,14 +401,18 @@ $('#btn-erase').addEventListener('click', () => {
 // nearest block; a per-hazard cooldown stops one saw deleting a whole hull.
 const hazards = [];
 function buildHazards() {
-  for (let si = 0; si < STAGES.length; si++) {
-    for (const h of hazardsFor(si)) {
+  for (const h of hazards) scene.remove(h.mesh);      // swapping maps rebuilds the river
+  hazards.length = 0;
+  const stages = stagesOf(mapId);
+  for (let si = 0; si < stages.length; si++) {
+    for (const h of hazardsFor(si, mapId)) {
       const def = HAZARDS[h.kind];
       const mesh = makeHazardMesh(h.kind);
       // Seat it in its own stage straight away. Only hazards near the boat get
       // their position stepped each frame, so without this every distant hazard
       // would sit at the world origin — right on top of the harbour.
       mesh.position.set(h.x, 1, h.z);
+      mesh.visible = false;      // cullHazards() reveals the ones in range
       scene.add(mesh);
       hazards.push({ ...h, def, mesh, nextHit: 0, si });
     }
@@ -442,6 +471,56 @@ function setMode(m) {
     : (isTouch ? 'Tilt buttons steer · drag to look · pinch to zoom' : 'A / D to steer · your boat rides the current');
 }
 
+// Rebuild the visible river for the selected map: stage strips, gate posts and
+// the treasure all move, and the hazard set is regenerated.
+const stripGroup = new THREE.Group();
+scene.add(stripGroup);
+function buildRiver() {
+  while (stripGroup.children.length) stripGroup.remove(stripGroup.children[0]);
+  const stages = stagesOf(mapId);
+  for (let i = 0; i < stages.length; i++) {
+    const strip = new THREE.Mesh(
+      new THREE.PlaneGeometry(RIVER.width, STAGE_LEN),
+      new THREE.MeshLambertMaterial({ color: stages[i].water, transparent: true, opacity: 0.85 }));
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(0, WATER_TOP + 0.02, i * STAGE_LEN + STAGE_LEN / 2);
+    stripGroup.add(strip);
+    if (i > 0) {
+      for (const side of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(2.5, 10, 2.5),
+          new THREE.MeshLambertMaterial({ color: BAND_COLOR[stages[i].band] }));
+        post.position.set(side * (RIVER.width / 2 - 1), 4, i * STAGE_LEN);
+        stripGroup.add(post);
+      }
+    }
+  }
+  treasureChest.position.z = treasureAt(mapId) + 6;
+  buildHazards();
+  updatePips(-1);
+}
+
+function setMap(id) {
+  if (!MAPS[id] || mapId === id) return;
+  mapId = id;
+  buildRiver();
+  buildMapPicker();
+  saveSoon();
+  toast(`${curMap().emoji} ${curMap().name}`);
+}
+
+function buildMapPicker() {
+  const wrap = $('#maps'); wrap.innerHTML = '';
+  const list = mapsForRank(rank);
+  wrap.classList.toggle('hidden', list.length < 2);
+  for (const M of list) {
+    const b = document.createElement('button');
+    b.className = 'mapbtn cbx-tile' + (M.id === mapId ? ' on' : '') + (M.rank ? ' ' + M.rank : '');
+    b.innerHTML = `${M.emoji} ${M.name}<small>${M.stages.length} stages</small>`;
+    b.addEventListener('click', () => { sfx.pick(); setMap(M.id); });
+    wrap.appendChild(b);
+  }
+}
+
 function launch() {
   if (blocks.size === 0) { sfx.deny(); toast('Build something first!'); return; }
   const s = boatStats();
@@ -458,38 +537,63 @@ function launch() {
 }
 $('#btn-launch').addEventListener('click', launch);
 
-function endRun(treasure) {
+async function endRun(treasure) {
   const dist = Math.max(0, boat.z);
-  const earned = goldForRun(dist, stagesEntered, treasure);
+  const earned = goldForRun(dist, stagesEntered, treasure, mapId);
   setGold(gold + earned);
   best = Math.max(best, Math.round(dist)); runs++;
-  saveSoon();
   net.send({ t: treasure ? 'finish' : 'sunk', dist });
 
+  // Beating the Legend Gauntlet pays real ClaudeBux, tapering 50 / 25 / 5.
+  let buxLine = '';
+  if (treasure && mapId === 'legend') {
+    try {
+      const r = await fetch('/api/bab/legendwin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...codeHdr() },
+        body: JSON.stringify({ name: myName }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        myBux = j.cubes;
+        buxLine = `<div class="sum-row bux"><span>Legend reward (win #${j.wins})</span><b>+${j.payout} 🔷</b></div>`;
+        sfx.coins(10);
+      }
+    } catch {}
+  }
+
+  const lost = blocks.size;
+  // the harder runs pay a bigger purse — mirror config's goldForRun
+  const purseMul = mapId === 'legend' ? 3 : mapId === 'champion' ? 2 : 1;
   $('#sum-title').textContent = treasure ? 'You reached the treasure!' : 'Your boat sank!';
-  const si = stageIndexAt(dist);
-  $('#sum-stage').textContent = `${treasure ? '🏆' : '📍'} ${STAGES[si].name}`;
+  const si = stageIndexAt(dist, mapId);
+  $('#sum-stage').textContent = `${curMap().emoji} ${stagesOf(mapId)[si].name}`;
   $('#sum-rows').innerHTML = `
     <div class="sum-row"><span>Distance</span><b>${Math.round(dist)}m</b></div>
-    <div class="sum-row"><span>Stages reached</span><b>${stagesEntered} × ${STAGE_GOLD}🪙</b></div>
-    ${treasure ? `<div class="sum-row"><span>Treasure bonus</span><b>${TREASURE_GOLD}🪙</b></div>` : ''}
-    <div class="sum-row"><span>Personal best</span><b>${best}m</b></div>`;
+    <div class="sum-row"><span>Stages reached</span><b>${stagesEntered} × ${STAGE_GOLD * purseMul}🪙</b></div>
+    ${treasure ? `<div class="sum-row"><span>Treasure bonus</span><b>${TREASURE_GOLD * purseMul}🪙</b></div>` : ''}
+    ${purseMul > 1 ? `<div class="sum-row"><span>${curMap().name} purse</span><b>×${purseMul}</b></div>` : ''}
+    ${buxLine}
+    <div class="sum-row"><span>Personal best</span><b>${best}m</b></div>
+    <div class="sum-row"><span>Blocks lost with the boat</span><b>${lost}</b></div>`;
   $('#sum-gold').textContent = earned.toLocaleString();
   $('#summary').classList.remove('hidden');
+  // Whatever survived goes down with the run: creations do not come home.
+  clearBoat(false);
+  buildPalette();
+  saveSoon();
 }
 
 $('#sum-back').addEventListener('click', () => {
   $('#summary').classList.add('hidden');
   $('#treasure').classList.add('hidden');
-  // rebuild the boat exactly as designed — blocks lost at sea come back on the plot
-  const design = [...blocks.values()].map((b) => ({ b: b.id, x: b.gx, y: b.gy, z: b.gz }));
-  clearBoat();
-  for (const d of design) addBlock(d.b, d.x, d.y, d.z);
-  if (blocks.size === 0) starterRaft();
+  // back at the dock with a clean plot — build the next one out of your stock
+  clearBoat(false);
+  buildPalette();
   boat.x = 0; boat.y = 0; boat.z = HARBOUR_Z;
   boatGroup.rotation.set(0, 0, 0);
   setMode('build');
   refreshVitals();
+  publishBoat();
 });
 
 // ---------------------------------------------------------------- camera rig
@@ -588,7 +692,7 @@ addEventListener('keydown', (e) => {
   keys.add(e.key.toLowerCase());
   const n = parseInt(e.key, 10);
   if (mode === 'build' && n >= 1 && n <= 9) {
-    const list = BLOCKS.filter((b) => owned.has(b.id));
+    const list = BLOCKS.filter((b) => have(b.id) > 0);
     if (list[n - 1]) { selected = list[n - 1].id; buildPalette(); }
   }
   if (e.key === 'Enter' && mode === 'build') launch();
@@ -614,7 +718,7 @@ function tryBuild(clientX, clientY, remove) {
     while (root && root.userData.k === undefined) root = root.parent;
     const b = root && blocks.get(root.userData.k);
     if (!b) return;
-    if (remove) { removeBlock(b.mesh.userData.k); sfx.remove(); afterEdit(); return; }
+    if (remove) { removeBlock(b.mesh.userData.k, true); sfx.remove(); afterEdit(); return; }
     // place against the face we hit (in the block's own space)
     const n = hit.face.normal;
     if (addBlock(selected, b.gx + n.x, b.gy + n.y, b.gz + n.z)) { sfx.place(selected); afterEdit(); }
@@ -632,7 +736,13 @@ function tryBuild(clientX, clientY, remove) {
   else { sfx.deny(); if (blocks.size >= limit()) atCapToast(); }
 }
 
-function afterEdit() { refreshVitals(); publishBoat(); saveSoon(); }
+function afterEdit() {
+  if (have(selected) <= 0) {                       // ran out — hop to something you do have
+    const next = BLOCKS.find((b) => have(b.id) > 0);
+    if (next) selected = next.id;
+  }
+  buildPalette(); refreshVitals(); publishBoat(); saveSoon();
+}
 
 // ---------------------------------------------------------------- multiplayer
 const net = new Net();
@@ -724,18 +834,19 @@ function stepSail(dt, t) {
   boat.x = clamp(boat.x, -RIVER.width / 2 + 1, RIVER.width / 2 - 1);
 
   // stage tracking + payout pips
-  const si = stageIndexAt(boat.z);
+  const stages = stagesOf(mapId);
+  const si = stageIndexAt(boat.z, mapId);
   if (si !== lastStageIdx) {
     lastStageIdx = si;
     stagesEntered = si + 1;
-    $('#stage-name').textContent = STAGES[si].name;
-    $('#stage-name').style.color = BAND_COLOR[STAGES[si].band];
-    announceStage(STAGES[si]);
+    $('#stage-name').textContent = stages[si].name;
+    $('#stage-name').style.color = BAND_COLOR[stages[si].band];
+    announceStage(stages[si]);
     if (si > 0) sfx.stageUp();
-    scene.background = new THREE.Color(STAGES[si].sky);
-    scene.fog.color = new THREE.Color(STAGES[si].sky);
+    scene.background = new THREE.Color(stages[si].sky);
+    scene.fog.color = new THREE.Color(stages[si].sky);
     updatePips(si);
-    if (STAGES[si].band === 'red') window.ClaudeBox?.completeChallenge?.('bab-red');
+    if (stages[si].band === 'red') window.ClaudeBox?.completeChallenge?.('bab-red');
   }
 
   // a floating hull rides the swell; a sinking one lists heavily
@@ -761,10 +872,10 @@ function stepSail(dt, t) {
 
   applyHazards(dt, t);
 
-  if (boat.z >= TREASURE_AT && !gotTreasure) { gotTreasure = true; finishRun(true); return; }
+  if (boat.z >= treasureAt(mapId) && !gotTreasure) { gotTreasure = true; finishRun(true); return; }
 
   // HUD
-  const pct = clamp(boat.z / TOTAL_LEN, 0, 1);
+  const pct = clamp(boat.z / totalLen(mapId), 0, 1);
   $('#progress-fill').style.right = `${(1 - pct) * 100}%`;
   $('#progress-label').textContent = `${Math.round(boat.z)}m`;
   refreshVitals();
@@ -788,12 +899,25 @@ function announceStage(st) {
 
 function updatePips(si) {
   const wrap = $('#stage-pips');
-  if (wrap.children.length !== STAGES.length) {
-    wrap.innerHTML = STAGES.map(() => '<i></i>').join('');
+  const stages = stagesOf(mapId);
+  if (wrap.children.length !== stages.length) {
+    wrap.innerHTML = stages.map(() => '<i></i>').join('');
   }
   [...wrap.children].forEach((el, i) => {
-    el.style.background = i <= si ? BAND_COLOR[STAGES[i].band] : 'rgba(255,255,255,.2)';
+    el.style.background = i <= si ? BAND_COLOR[stages[i].band] : 'rgba(255,255,255,.2)';
   });
+}
+
+// Only draw the stretch of river you can actually see. Without this the Legend
+// Gauntlet renders all 452 hazards — several thousand meshes and a point light
+// per fireball — every frame, which drags the whole sim into slow motion.
+const HAZ_DRAW = 150;
+function cullHazards() {
+  const z = mode === 'sail' ? boat.z : 0;
+  for (const h of hazards) {
+    const near = Math.abs(h.z - z) < HAZ_DRAW;
+    if (h.mesh.visible !== near) h.mesh.visible = near;
+  }
 }
 
 function applyHazards(dt, t) {
@@ -824,7 +948,7 @@ function applyHazards(dt, t) {
     }
     if (hitK && hitD < h.def.r) {
       const b = blocks.get(hitK);
-      b.hp -= h.def.dmg;
+      b.hp -= Math.max(1, Math.round(h.def.dmg * (h.dmgMul || 1)));
       h.nextHit = t + 0.55;
       const maxHp = BLOCK_BY_ID[b.id]?.hp || 1;
       const wp = new THREE.Vector3(
@@ -935,6 +1059,7 @@ function frame() {
   // place the boat + camera
   boatGroup.position.set(boat.x, boat.y, boat.z);
   parts.step(dt);
+  cullHazards();
   shake = Math.max(0, shake - dt * 2.6);
   updateCamera(dt, now);
 
@@ -970,9 +1095,10 @@ async function boot() {
   } catch { location.href = '/'; return; }
 
   $('#load-msg').textContent = 'Charting the river…';
-  buildHazards();
   await refreshChampion();
   await loadSave(myName);
+  buildRiver();
+  buildMapPicker();
   setGold(gold);
   buildPalette();
   refreshVitals();
@@ -999,7 +1125,9 @@ async function boot() {
   requestAnimationFrame(frame);
 
   window.__bab = { boat, blocks, boatStats, hazards, launch, endRun, net, scene,
-    camera, CAM, buildFocus, THREE, addBlock, limit, get rank() { return rank; }, limitOf: limit, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
+    camera, CAM, buildFocus, THREE, addBlock, removeBlock, limit, limitOf: limit,
+    get rank() { return rank; }, get inv() { return inv; }, get mapId() { return mapId; },
+    setMap, stages: () => stagesOf(mapId), treasureAt: () => treasureAt(mapId), buildPalette, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };
 

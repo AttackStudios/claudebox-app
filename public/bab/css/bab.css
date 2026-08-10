@@ -196,3 +196,32 @@ body.legend .stab[data-cat="champion"].on {
 body.legend .shop-row.champ { border-color: rgba(196, 107, 255, .45);
   background: linear-gradient(90deg, rgba(196, 107, 255, .14), rgba(255, 255, 255, .05)); }
 body.legend .champ-star { color: #c46bff; }
+
+/* ---- block stock on the palette ---- */
+.slot .qty { position: absolute; bottom: 1px; right: 4px; font-size: 9.5px; font-weight: 900;
+  color: var(--cbx-cyan); text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+.slot.low .qty { color: var(--cbx-red); }
+.pal-empty { color: var(--cbx-dim); font-weight: 900; font-size: 13px; padding: 10px 16px;
+  background: rgba(20,24,32,.86); border-radius: 999px; border: 2px solid rgba(255,255,255,.14); }
+.cbx-btn .pack { font-size: 9.5px; opacity: .8; margin-left: 4px; }
+
+/* ---- map picker ---- */
+#maps { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+.mapbtn { display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 14px; font-size: 12.5px; border-radius: 13px; }
+.mapbtn small { font-size: 9px; color: var(--cbx-dim); font-weight: 900; }
+.mapbtn.champion.on { background: linear-gradient(180deg,#ffd76e,#e0a812); color: #3a2a00; }
+.mapbtn.legend.on { background: linear-gradient(180deg,#c46bff,#7c3aed); color: #fff; }
+
+/* ---- legend shop tier ---- */
+.stab[data-cat="legend"] { color: #c46bff; }
+.stab[data-cat="legend"].on { background: linear-gradient(180deg,#c46bff,#7c3aed); color: #fff; border-color: #fff; }
+.shop-row.legendrow { border-color: rgba(196,107,255,.5);
+  background: linear-gradient(90deg, rgba(196,107,255,.16), rgba(255,255,255,.05)); }
+.champ-star.legend { color: #c46bff; }
+.sum-row.bux b { color: var(--cbx-cyan); }
+
+@media (max-width: 640px) {
+  .mapbtn { padding: 6px 10px; font-size: 11px; }
+  .slot .qty { font-size: 9px; }
+}

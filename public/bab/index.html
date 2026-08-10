@@ -35,6 +35,8 @@
 
   <!-- build-mode bottom bar -->
   <div id="buildbar">
+    <!-- which river to run (rank-gated) -->
+    <div id="maps" class="hidden"></div>
     <!-- the numbers that decide whether you float -->
     <div id="boatstats">
       <span class="stat">🧱 <b id="st-count">0</b></span>
@@ -71,6 +73,7 @@
       <button class="stab" data-cat="solid">🧱 Material</button>
       <button class="stab" data-cat="ability">⚡ Ability</button>
       <button class="stab hidden" id="champ-tab" data-cat="champion">★ Champion</button>
+      <button class="stab hidden" id="legend-tab" data-cat="legend">👑 Legend</button>
     </div>
     <div id="shop-list" class="cbx-scroll"></div>
     <button id="shop-close" class="cbx-btn ghost">Close</button>

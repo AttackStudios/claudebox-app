@@ -263,14 +263,16 @@ export function rankOf(name) {
 // Champions collect a free daily stipend. Called whenever a wallet is read, so
 // it lands the first time they open the hub on a new day.
 const CHAMPION_DAILY = 15;
+const LEGEND_DAILY = 30;
 function claimChampionDaily(u) {
   if (!u || !(u.champion || u.legend)) return 0;
   const today = new Date().toISOString().slice(0, 10);
   if (u.championDaily === today) return 0;
+  const amount = u.legend ? LEGEND_DAILY : CHAMPION_DAILY;
   u.championDaily = today;
-  u.cubes = (u.cubes || 0) + CHAMPION_DAILY;
+  u.cubes = (u.cubes || 0) + amount;
   save();
-  return CHAMPION_DAILY;
+  return amount;
 }
 function creatorDisplayName(nameLower) {
   for (const g of GAMES) for (const c of (g.creators || [])) if (c.toLowerCase() === nameLower) return c;
@@ -1039,6 +1041,22 @@ export function hubRouter() {
     u.gameSaves.bab = sv;
     save();
     res.json({ ok: true, cubes: u.cubes, gold: sv.gold, payout: PAYOUT });
+  });
+
+  // Finishing the Legend Gauntlet pays real ClaudeBux: 50 the first time, 25 the
+  // second, then 5 forever after. Counted server-side so it cannot be replayed.
+  r.post('/bab/legendwin', (req, res) => {
+    const name = clean(req.body?.name);
+    if (!name) return res.status(400).json({ ok: false, error: 'name required' });
+    const u = platform.users[name.toLowerCase()];
+    if (!u) return res.status(404).json({ ok: false, error: 'no such player' });
+    ensureWallet(u);
+    if (!u.legend) return res.status(403).json({ ok: false, error: 'Legends only' });
+    u.babLegendWins = (u.babLegendWins | 0) + 1;
+    const payout = u.babLegendWins === 1 ? 50 : u.babLegendWins === 2 ? 25 : 5;
+    u.cubes += payout;
+    save();
+    res.json({ ok: true, wins: u.babLegendWins, payout, cubes: u.cubes });
   });
 
   // searchable directory of everyone on the platform (names are public in-game)
