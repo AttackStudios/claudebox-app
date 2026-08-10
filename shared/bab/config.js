@@ -29,6 +29,15 @@ export const BLOCKS = [
   { id: 'thruster', name: 'Thruster',      emoji: '🚀', cost: 900,  hp: 2, weight: 2.0,  buoy: 0.35, color: '#ff8a3c', kind: 'thruster', thrust: 5.5 },
   { id: 'sail',     name: 'Sail',          emoji: '⛵', cost: 220,  hp: 1, weight: 0.7,  buoy: 0.60, color: '#f2f4f8', kind: 'sail', thrust: 1.8 },
   { id: 'seat',     name: 'Seat',          emoji: '💺', cost: 0,    hp: 2, weight: 0.9,  buoy: 1.10, color: '#5c72ff', kind: 'seat' },
+
+  // ---- CHAMPION SHOP -----------------------------------------------------
+  // Premium stock. Only players the owner has granted the Champion rank can
+  // see or buy these; `champion: true` is what gates them.
+  { id: 'carbon',   name: 'Carbon Fibre',  emoji: '◼️', cost: 1800, hp: 6,  weight: 0.6, buoy: 1.30, color: '#2b2f38', kind: 'solid',    champion: true },
+  { id: 'diamond',  name: 'Diamond Block', emoji: '💎', cost: 5000, hp: 14, weight: 3.2, buoy: 0.60, color: '#6ee7ff', kind: 'solid',    champion: true },
+  { id: 'obsidian', name: 'Obsidian',      emoji: '🗿', cost: 3200, hp: 11, weight: 5.0, buoy: 0.25, color: '#241b33', kind: 'solid',    champion: true },
+  { id: 'zeppelin', name: 'Zeppelin',      emoji: '🪂', cost: 3600, hp: 3,  weight: 0.4, buoy: 22.0, color: '#ffd76e', kind: 'balloon',  champion: true },
+  { id: 'jet',      name: 'Jet Engine',    emoji: '✈️', cost: 6500, hp: 5,  weight: 3.0, buoy: 0.40, color: '#ff4f9a', kind: 'thruster', thrust: 15, champion: true },
 ];
 export const BLOCK_BY_ID = Object.fromEntries(BLOCKS.map((b) => [b.id, b]));
 export const STARTER_BLOCKS = BLOCKS.filter((b) => b.cost === 0).map((b) => b.id);
@@ -103,5 +112,17 @@ export function hazardsFor(stageIndex) {
 // ---- ECONOMY ------------------------------------------------------------
 export const goldForRun = (dist, stagesEntered, gotTreasure) =>
   Math.floor(dist / 4) + stagesEntered * STAGE_GOLD + (gotTreasure ? TREASURE_GOLD : 0);
+
+// ---- BUILD LIMIT --------------------------------------------------------
+// Boats are capped so a run stays readable (and so the shop still matters).
+// Champions get a bigger allowance as one of the perks of the rank.
+export const MAX_BLOCKS = 75;
+export const CHAMPION_BONUS_BLOCKS = 15;
+export const blockLimit = (champion) => MAX_BLOCKS + (champion ? CHAMPION_BONUS_BLOCKS : 0);
+
+// Buying gold with the platform's premium currency.
+export const GOLD_PACK = { cost: 5, gold: 1000 };   // 5 ClaudeBux -> 1,000 gold
+
+export const CHAMPION_ONLY = new Set(BLOCKS.filter((b) => b.champion).map((b) => b.id));
 
 export const DEFAULT_SAVE = () => ({ gold: 60, owned: [...STARTER_BLOCKS], best: 0, boat: null, runs: 0 });

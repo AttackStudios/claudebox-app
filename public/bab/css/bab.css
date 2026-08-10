@@ -172,3 +172,18 @@ html, body { height: 100%; overflow: hidden; background: #0d2a3a; }
   #boatstats { font-size: 11px; gap: 7px; padding: 6px 11px; }
   #float-meter { width: 66px; }
 }
+
+/* ---- confirm dialog ---- */
+.row-btns { display: flex; gap: 8px; }
+.row-btns .cbx-btn { flex: 1; }
+
+/* ---- Champion rank ---- */
+.stab[data-cat="champion"] { color: #ffc107; }
+.stab[data-cat="champion"].on { background: linear-gradient(180deg, #ffd76e, #e0a812); color: #3a2a00; border-color: #fff; }
+.shop-row.champ { border-color: rgba(255, 193, 7, .45);
+  background: linear-gradient(90deg, rgba(255, 193, 7, .12), rgba(255, 255, 255, .05)); }
+.champ-star { color: #ffc107; font-style: normal; font-size: 12px; }
+.shop-row.exchange { border-color: rgba(110, 231, 255, .4);
+  background: linear-gradient(90deg, rgba(110, 231, 255, .12), rgba(255, 255, 255, .05)); }
+/* the block counter turns amber once the build limit is reached */
+#boatstats.atcap #st-count { color: var(--cbx-gold); }

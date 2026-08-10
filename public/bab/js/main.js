@@ -15,6 +15,7 @@ import {
   BLOCKS, BLOCK_BY_ID, STARTER_BLOCKS, PLOT, RIVER,
   STAGES, STAGE_LEN, STAGE_GOLD, TREASURE_GOLD, TOTAL_LEN, TREASURE_AT,
   HAZARDS, hazardsFor, stageIndexAt, BAND_COLOR, goldForRun, DEFAULT_SAVE,
+  blockLimit, CHAMPION_ONLY, GOLD_PACK,
 } from '/shared/bab/config.js';
 
 const $ = (s) => document.querySelector(s);
@@ -133,6 +134,7 @@ const localPos = (gx, gy, gz) => new THREE.Vector3(
   gz - (PLOT.d - 1) / 2);
 
 function addBlock(id, gx, gy, gz) {
+  if (blocks.size >= limit()) return false;   // build limit (Champions get more)
   if (gx < 0 || gx >= PLOT.w || gy < 0 || gy >= PLOT.h || gz < 0 || gz >= PLOT.d) return false;
   const k = key(gx, gy, gz);
   if (blocks.has(k)) return false;
@@ -175,6 +177,9 @@ let gold = 60;
 let owned = new Set(STARTER_BLOCKS);
 let best = 0, runs = 0;
 let myName = null;
+let champion = false;      // granted by the owner; unlocks the Champion Shop
+let myBux = 0;
+const limit = () => blockLimit(champion);
 
 const codeHdr = () => ({ 'x-cbx-code': localStorage.getItem('claudebox.code') || '' });
 
@@ -211,6 +216,46 @@ function saveSoon() {
 // ---------------------------------------------------------------- HUD
 function setGold(v) { gold = Math.max(0, Math.round(v)); $('#gold').textContent = gold.toLocaleString(); }
 
+let capToastAt = 0;
+function atCapToast() {
+  if (clockNowMs() - capToastAt < 2500) return;    // do not spam on held taps
+  capToastAt = clockNowMs();
+  toast(champion ? `Build limit reached (${limit()} blocks)`
+                 : `Build limit reached (${limit()}) — Champions get +15`);
+}
+const clockNowMs = () => performance.now();
+
+// Ask the platform whether this account holds the Champion rank. The answer
+// also carries the ClaudeBux balance, and collects the daily stipend.
+async function refreshChampion() {
+  try {
+    const r = await fetch('/api/champion/me?name=' + encodeURIComponent(myName), { headers: codeHdr() });
+    const j = await r.json();
+    champion = !!j.champion;
+    myBux = j.cubes || 0;
+  } catch { champion = false; }
+  document.body.classList.toggle('champion', champion);
+  $('#champ-tab').classList.toggle('hidden', !champion);
+  refreshVitals();
+}
+
+// 5 ClaudeBux -> 1,000 gold. Spent server-side so it cannot come apart.
+async function buyGoldPack() {
+  try {
+    const r = await fetch('/api/bab/buygold', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...codeHdr() },
+      body: JSON.stringify({ name: myName }),
+    });
+    const j = await r.json();
+    if (!j.ok) { sfx.deny(); toast(j.error === 'not enough ClaudeBux' ? 'Not enough ClaudeBux' : (j.error || 'Purchase failed')); return; }
+    myBux = j.cubes;
+    setGold(j.gold);
+    sfx.buy();
+    toast(`+${GOLD_PACK.gold.toLocaleString()} gold`);
+    buildShop();
+  } catch { toast('Purchase failed'); }
+}
+
 function toast(text) {
   const el = document.createElement('div');
   el.className = 'toast'; el.textContent = text;
@@ -239,7 +284,8 @@ function refreshVitals() {
   $('#float-state').textContent = sinking ? 'SINKING' : 'afloat';
 
   // build-mode readout: the actual numbers, so "why did I sink" is answerable
-  $('#st-count').textContent = s.count;
+  $('#st-count').textContent = s.count + '/' + limit();
+  $('#boatstats').classList.toggle('atcap', s.count >= limit());
   $('#st-weight').textContent = s.weight.toFixed(1);
   $('#st-buoy').textContent = s.buoy.toFixed(1);
   $('#st-float').textContent = s.count ? s.float.toFixed(2) : '—';
@@ -252,19 +298,34 @@ function refreshVitals() {
 let shopCat = 'all';
 function buildShop() {
   const list = $('#shop-list'); list.innerHTML = '';
+  // buy gold with the platform currency
+  const ex = document.createElement('div');
+  ex.className = 'shop-row exchange';
+  ex.innerHTML = `<span class="ico">🔷</span><span class="who"><b>${GOLD_PACK.gold.toLocaleString()} gold</b>`
+    + `<small>costs ${GOLD_PACK.cost} ClaudeBux · you have ${myBux}</small></span>`;
+  const exb = document.createElement('button');
+  exb.className = 'cbx-btn buy ' + (myBux >= GOLD_PACK.cost ? 'go' : 'ghost');
+  exb.textContent = `🔷 ${GOLD_PACK.cost}`;
+  exb.addEventListener('click', buyGoldPack);
+  ex.appendChild(exb);
+  list.appendChild(ex);
   const ability = new Set(['balloon', 'thruster', 'sail', 'seat']);
-  const shown = BLOCKS.filter((b) => shopCat === 'all'
-    || (shopCat === 'ability' ? ability.has(b.id) : !ability.has(b.id)));
+  const shown = BLOCKS.filter((b) => {
+    if (CHAMPION_ONLY.has(b.id)) return champion && (shopCat === 'champion' || shopCat === 'all');
+    if (shopCat === 'champion') return false;
+    return shopCat === 'all' || (shopCat === 'ability' ? ability.has(b.id) : !ability.has(b.id));
+  });
   // cheapest affordable upgrades first — the useful ones surface on top
   shown.sort((a, b) => (owned.has(a.id) - owned.has(b.id)) || (a.cost - b.cost));
   for (const b of shown) {
     const has = owned.has(b.id);
     const short = !has && gold < b.cost;
+    const isChampItem = CHAMPION_ONLY.has(b.id);
     const row = document.createElement('div');
-    row.className = 'shop-row' + (has ? ' owned' : '') + (short ? ' cant' : '');
+    row.className = 'shop-row' + (has ? ' owned' : '') + (short ? ' cant' : '') + (isChampItem ? ' champ' : '');
     row.innerHTML = `
       <span class="ico">${b.emoji}</span>
-      <span class="who"><b>${b.name}</b><small>${b.hp} hp · ${b.weight} weight · ${b.buoy} float${b.thrust ? ` · ${b.thrust} thrust` : ''}</small></span>`;
+      <span class="who"><b>${b.name}${isChampItem ? ' <i class="champ-star">★</i>' : ''}</b><small>${b.hp} hp · ${b.weight} weight · ${b.buoy} float${b.thrust ? ` · ${b.thrust} thrust` : ''}</small></span>`;
     const btn = document.createElement('button');
     btn.className = 'cbx-btn buy ' + (has ? 'ghost' : 'go');
     btn.textContent = has ? 'Owned' : `🪙 ${b.cost.toLocaleString()}`;
@@ -272,6 +333,7 @@ function buildShop() {
     btn.disabled = has;
     btn.addEventListener('click', () => {
       if (owned.has(b.id)) return;
+      if (CHAMPION_ONLY.has(b.id) && !champion) { sfx.deny(); toast('Champions only'); return; }
       if (gold < b.cost) { sfx.deny(); toast('Not enough gold — sail further!'); return; }
       setGold(gold - b.cost); owned.add(b.id); sfx.buy();
       toast(`Bought ${b.name}!`);
@@ -291,7 +353,13 @@ for (const t of document.querySelectorAll('.stab')) {
     buildShop();
   });
 }
-$('#btn-clear').addEventListener('click', () => { clearBoat(); publishBoat(); saveSoon(); });
+$('#btn-clear').addEventListener('click', () => { sfx.pick(); $('#confirm').classList.remove('hidden'); });
+$('#confirm-no').addEventListener('click', () => { sfx.pick(); $('#confirm').classList.add('hidden'); });
+$('#confirm-yes').addEventListener('click', () => {
+  $('#confirm').classList.add('hidden');
+  clearBoat(); publishBoat(); saveSoon(); sfx.breakBlock();
+  toast('Boat cleared');
+});
 // Build/erase toggle — the only way to remove a block on a touchscreen.
 $('#btn-erase').addEventListener('click', () => {
   eraser = !eraser;
@@ -546,7 +614,7 @@ function tryBuild(clientX, clientY, remove) {
     // place against the face we hit (in the block's own space)
     const n = hit.face.normal;
     if (addBlock(selected, b.gx + n.x, b.gy + n.y, b.gz + n.z)) { sfx.place(selected); afterEdit(); }
-    else sfx.deny();
+    else { sfx.deny(); if (blocks.size >= limit()) atCapToast(); }
     return;
   }
   if (remove) return;
@@ -557,7 +625,7 @@ function tryBuild(clientX, clientY, remove) {
   const gx = Math.round(local.x + (PLOT.w - 1) / 2);
   const gz = Math.round(local.z + (PLOT.d - 1) / 2);
   if (addBlock(selected, gx, 0, gz)) { sfx.place(selected); afterEdit(); }
-  else sfx.deny();
+  else { sfx.deny(); if (blocks.size >= limit()) atCapToast(); }
 }
 
 function afterEdit() { refreshVitals(); publishBoat(); saveSoon(); }
@@ -899,6 +967,7 @@ async function boot() {
 
   $('#load-msg').textContent = 'Charting the river…';
   buildHazards();
+  await refreshChampion();
   await loadSave(myName);
   setGold(gold);
   buildPalette();
@@ -926,7 +995,7 @@ async function boot() {
   requestAnimationFrame(frame);
 
   window.__bab = { boat, blocks, boatStats, hazards, launch, endRun, net, scene,
-    camera, CAM, buildFocus, THREE, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
+    camera, CAM, buildFocus, THREE, addBlock, limit, get champion() { return champion; }, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };
 

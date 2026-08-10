@@ -630,6 +630,15 @@ function showSkeletons() {
 
 // ---------------- verification badges + profiles ----------------
 function badgeSvg(badge) {
+  // Champion: a plain gold disc with a white star, so it reads differently
+  // from the scalloped verification badge at a glance.
+  if (badge === 'champion') {
+    return '<svg class="vbadge champion" viewBox="0 0 22 22" role="img" aria-label="Champion">'
+      + '<title>Champion</title>'
+      + '<circle cx="11" cy="11" r="10" fill="#ffc107" stroke="#d99a12" stroke-width="1"/>'
+      + '<path fill="#fff" d="M11 4.4l1.86 3.77 4.16.6-3.01 2.94.71 4.14L11 13.9l-3.72 1.95.71-4.14-3.01-2.94 4.16-.6z"/>'
+      + '</svg>';
+  }
   if (badge !== 'verified' && badge !== 'owner') return '';
   const col = badge === 'owner' ? '#e0393b' : '#1a9bf0';
   const label = badge === 'owner' ? 'Owner' : 'Verified';

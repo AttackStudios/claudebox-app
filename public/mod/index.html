@@ -86,6 +86,36 @@ const banBox = `<div class="top"><h3>🔨 Ban a player</h3>
       <button class="btn danger" id="ban-go">🔨 Ban + their devices</button>
     </div>
     <div class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px">Bans the name everywhere AND locks out every device it has logged in from — a new username on the same device won't get in.</div></div>`;
+const champBox = `<div class="top"><h3>&#11088; Champion rank</h3>
+    <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="ch-name" placeholder="Player name" list="all-users" style="flex:1;min-width:160px">
+      <button class="btn" id="ch-give">&#11088; Make Champion</button>
+      <button class="btn danger" id="ch-take">Remove</button>
+    </div>
+    <div class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px">Champions get the gold star after their name, 15 ClaudeBux a day, the Champion Shop in Build A Boat, and a build limit 15 blocks higher.</div>
+    <div id="ch-list" class="meta" style="color:#8a94a8;font-size:12.5px;margin-top:8px"></div></div>`;
+async function loadChampions() {
+  const el = document.getElementById('ch-list'); if (!el) return;
+  try {
+    const j = await api('/champion/list?name=' + encodeURIComponent(me())).then((r) => r.json());
+    const list = j.champions || [];
+    el.textContent = list.length ? 'Champions: ' + list.map((c) => c.name).join(', ') : 'No Champions yet.';
+  } catch { el.textContent = ''; }
+}
+function wireChampBox() {
+  const set = async (on) => {
+    const box = document.getElementById('ch-name');
+    const target = box ? box.value.trim() : '';
+    if (!target) return;
+    const j = await api('/champion/set', { method: 'POST', body: JSON.stringify({ name: me(), target, on }) }).then((r) => r.json());
+    alert(j.ok ? (j.name + (j.champion ? ' is now a Champion' : ' is no longer a Champion')) : (j.error || 'failed'));
+    loadChampions();
+  };
+  const g = document.getElementById('ch-give'), t = document.getElementById('ch-take');
+  if (g) g.onclick = () => set(true);
+  if (t) t.onclick = () => set(false);
+  loadChampions();
+}
 function wireBanBox() {
   $('#ban-go').onclick = () => { const t = $('#ban-name').value.trim(); if (t) banPlayer(t); };
   $('#ban-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ban-go').click(); });
@@ -100,8 +130,9 @@ function wireBanBox() {
 function render(reports) {
   if (!reports.length) {
     $('#main').innerHTML = `<div class="empty" style="padding:40px 20px"><div class="em">✅</div><p>No reports right now. All clear!</p><a class="back" href="/">← Back to ClaudeBox</a></div>`
-      + banBox + `<div id="bans" style="margin-top:28px"></div>`;
+      + banBox + champBox + `<div id="bans" style="margin-top:28px"></div>`;
     wireBanBox();
+    wireChampBox();
     loadBans();
     return;
   }
@@ -121,8 +152,9 @@ function render(reports) {
       ${x.details ? `<div class="det">${esc(x.details)}</div>` : ''}
       <div class="acts"><button class="btn danger ban" data-t="${esc(x.target)}">🔨 Ban ${esc(x.target)}</button><button class="btn dismiss">Dismiss</button></div>
     </div>`).join('');
-  $('#main').innerHTML = bar + cards + `<div style="margin-top:28px"></div>` + banBox + `<div id="bans" style="margin-top:28px"></div>`;
+  $('#main').innerHTML = bar + cards + `<div style="margin-top:28px"></div>` + banBox + champBox + `<div id="bans" style="margin-top:28px"></div>`;
   wireBanBox();
+  wireChampBox();
   $('#refresh').onclick = () => { load(); loadBans(); };
   $('#clear').onclick = async () => { if (!confirm('Clear ALL reports?')) return; await api('/reports/clear', { method: 'POST', body: JSON.stringify({ name: me() }) }); load(); loadBans(); };
   document.querySelectorAll('.card .dismiss').forEach((b) => b.onclick = async (e) => {

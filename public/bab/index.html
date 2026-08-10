@@ -70,9 +70,22 @@
       <button class="stab on" data-cat="all">All</button>
       <button class="stab" data-cat="solid">🧱 Material</button>
       <button class="stab" data-cat="ability">⚡ Ability</button>
+      <button class="stab hidden" id="champ-tab" data-cat="champion">★ Champion</button>
     </div>
     <div id="shop-list" class="cbx-scroll"></div>
     <button id="shop-close" class="cbx-btn ghost">Close</button>
+  </div>
+</div>
+
+<!-- ============ CLEAR CONFIRMATION ============ -->
+<div id="confirm" class="scrim hidden">
+  <div class="panel cbx-panel cbx-pop" style="width:min(400px,92vw)">
+    <h2>🗑️ Clear your boat?</h2>
+    <p class="sub">Every block comes off the plot. This cannot be undone.</p>
+    <div class="row-btns">
+      <button id="confirm-no" class="cbx-btn ghost">Cancel</button>
+      <button id="confirm-yes" class="cbx-btn danger">Yes, clear it</button>
+    </div>
   </div>
 </div>
 

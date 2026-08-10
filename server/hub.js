@@ -234,12 +234,31 @@ function creatorGames(nameLower) {
 function creatorVisits(nameLower) {
   return creatorGames(nameLower).reduce((sum, g) => sum + gameStat(g.id).plays, 0);
 }
-// verification: owner (red), official/150+-visit creators (blue), else none
+// verification: owner (red), Champion (gold star, owner-granted), official /
+// 150+-visit creators (blue), else none. Champion outranks verified because it
+// is handed out deliberately rather than earned by play count.
 function badgeFor(name) {
   const nl = String(name || '').toLowerCase();
   if (nl === OWNER_NAME) return 'owner';
+  if (isChampion(nl)) return 'champion';
   if (nl === OFFICIAL_NAME) return 'verified';
   return creatorVisits(nl) >= 150 ? 'verified' : null;
+}
+export function isChampion(name) {
+  const u = platform.users[String(name || '').toLowerCase()];
+  return !!(u && u.champion);
+}
+// Champions collect a free daily stipend. Called whenever a wallet is read, so
+// it lands the first time they open the hub on a new day.
+const CHAMPION_DAILY = 15;
+function claimChampionDaily(u) {
+  if (!u || !u.champion) return 0;
+  const today = new Date().toISOString().slice(0, 10);
+  if (u.championDaily === today) return 0;
+  u.championDaily = today;
+  u.cubes = (u.cubes || 0) + CHAMPION_DAILY;
+  save();
+  return CHAMPION_DAILY;
 }
 function creatorDisplayName(nameLower) {
   for (const g of GAMES) for (const c of (g.creators || [])) if (c.toLowerCase() === nameLower) return c;
@@ -461,6 +480,8 @@ function ensureWallet(u) {
   if (!u) return u;
   if (typeof u.stars !== 'number') u.stars = 0;
   if (typeof u.cubes !== 'number') u.cubes = 0;
+  if (typeof u.champion !== 'boolean') u.champion = false;   // granted by the owner only
+  if (typeof u.championDaily !== 'string') u.championDaily = '';
   if (!u.challenges || typeof u.challenges !== 'object') u.challenges = {};
   if (!Array.isArray(u.owned)) u.owned = [];
   if (!Array.isArray(u.ownedAvatar)) u.ownedAvatar = [];
@@ -491,7 +512,9 @@ function ownedAvatarValues(u, slot) {
 // The wallet slice sent to clients.
 function walletOf(u) {
   ensureWallet(u);
+  const dailyGranted = claimChampionDaily(u);
   return {
+    champion: !!u.champion, dailyGranted,
     stars: u.stars, cubes: u.cubes,
     challenges: u.challenges, owned: u.owned, ownedAvatar: u.ownedAvatar,
     title: u.title, nameColor: u.nameColor,
@@ -937,6 +960,51 @@ export function hubRouter() {
     res.json({ ok: true });
   });
   // owner ban controls
+  // ---- Champion rank: granted by hand, by the owner, and nobody else ----
+  r.get('/champion/list', (req, res) => {
+    if (badgeFor(clean(req.query.name)) !== 'owner') return res.status(403).json({ error: 'owner only' });
+    const champs = Object.values(platform.users).filter((u) => u.champion).map((u) => ({ name: u.name }));
+    res.json({ champions: champs });
+  });
+  r.post('/champion/set', (req, res) => {
+    if (badgeFor(clean(req.body?.name)) !== 'owner') return res.status(403).json({ ok: false, error: 'owner only' });
+    const target = clean(req.body?.target);
+    if (!target) return res.status(400).json({ ok: false, error: 'target required' });
+    const u = platform.users[target.toLowerCase()];
+    if (!u) return res.status(404).json({ ok: false, error: 'no such player' });
+    ensureWallet(u);
+    u.champion = !!req.body?.on;
+    if (!u.champion) u.championDaily = '';
+    save();
+    res.json({ ok: true, name: u.name, champion: u.champion });
+  });
+  // Is the caller a Champion? Games ask this to unlock their premium content.
+  r.get('/champion/me', (req, res) => {
+    const nl = clean(req.query.name).toLowerCase();
+    const u = platform.users[nl];
+    if (u) ensureWallet(u), claimChampionDaily(u);
+    res.json({ champion: !!(u && u.champion), cubes: u ? u.cubes : 0 });
+  });
+
+  // Spend ClaudeBux for in-game gold in Build A Boat. Done server-side so the
+  // spend and the payout cannot come apart.
+  r.post('/bab/buygold', (req, res) => {
+    const name = clean(req.body?.name);
+    if (!name) return res.status(400).json({ ok: false, error: 'name required' });
+    const u = platform.users[name.toLowerCase()];
+    if (!u) return res.status(404).json({ ok: false, error: 'no such player' });
+    ensureWallet(u);
+    const COST = 5, PAYOUT = 1000;
+    if (u.cubes < COST) return res.status(400).json({ ok: false, error: 'not enough ClaudeBux', cubes: u.cubes });
+    u.cubes -= COST;
+    if (!u.gameSaves) u.gameSaves = {};
+    const sv = u.gameSaves.bab || {};
+    sv.gold = Math.max(0, Math.round(sv.gold || 0)) + PAYOUT;
+    u.gameSaves.bab = sv;
+    save();
+    res.json({ ok: true, cubes: u.cubes, gold: sv.gold, payout: PAYOUT });
+  });
+
   // searchable directory of everyone on the platform (names are public in-game)
   r.get('/users', (req, res) => {
     const q = String(req.query.q || '').toLowerCase().trim();
