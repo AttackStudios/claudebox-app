@@ -99,7 +99,7 @@ function onMove(p, msg) {
 // player cannot flood the room with a ten-thousand-block monster.
 function onBoat(p, msg, ctx) {
   if (!p.joined) return;
-  const raw = Array.isArray(msg.blocks) ? msg.blocks.slice(0, 900) : [];
+  const raw = Array.isArray(msg.blocks) ? msg.blocks.slice(0, 3000) : [];
   const blocks = raw.map((b) => ({
     b: cleanTxt(b?.b, 12), x: num(b?.x) | 0, y: num(b?.y) | 0, z: num(b?.z) | 0,
   }));
@@ -120,7 +120,7 @@ function onProgress(p, msg) {
   const want = Math.max(0, Math.min(TOTAL_LEN, num(msg.dist)));
   const maxSoFar = (clock() - p.launchedAt) * 40 + 20;
   p.dist = Math.max(p.dist, Math.min(want, maxSoFar));
-  p.blocks = Math.max(0, Math.min(900, num(msg.blocks) | 0));
+  p.blocks = Math.max(0, Math.min(3000, num(msg.blocks) | 0));
 }
 
 function onSunk(p, msg, ctx) {

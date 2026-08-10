@@ -7,7 +7,11 @@
 // No assets, code or text are taken from the original — only the idea of the loop.
 
 export const GRID = 1;                       // one block = one stud
-export const PLOT = { w: 15, d: 11, h: 14 }; // build volume, in blocks
+// Build volume is a CUBE whose side depends on rank. There is no cap on how
+// many blocks you place inside it — the space itself is the limit.
+export const PLOT_SIZES = { '': 25, champion: 50, legend: 100 };
+export const plotSize = (rank) => PLOT_SIZES[rank] || PLOT_SIZES[''];
+export const PLOT = { w: 25, d: 25, h: 25 };   // the default (unranked) volume
 export const RIVER = { width: 30 };
 export const WATER_Y = 0;
 
@@ -177,16 +181,10 @@ export const goldForRun = (dist, stagesEntered, gotTreasure, mapId = 'standard')
 // ---- BUILD LIMIT --------------------------------------------------------
 // Boats are capped so a run stays readable (and so the shop still matters).
 // Champions get a bigger allowance as one of the perks of the rank.
-export const MAX_BLOCKS = 75;
-export const CHAMPION_BONUS_BLOCKS = 15;   // Champion -> 90
-export const LEGEND_BONUS_BLOCKS = 65;     // Legend  -> 140 (50 more than Champion)
-// `rank` is 'legend' | 'champion' | '' — a bare `true` is still read as Champion
-// so older callers keep working.
-export const blockLimit = (rank) => {
-  if (rank === 'legend') return MAX_BLOCKS + LEGEND_BONUS_BLOCKS;
-  if (rank === 'champion' || rank === true) return MAX_BLOCKS + CHAMPION_BONUS_BLOCKS;
-  return MAX_BLOCKS;
-};
+// A purely defensive ceiling so one boat cannot take down the room's networking
+// or the renderer. It sits far above anything a real build reaches.
+export const SAFETY_BLOCK_CAP = 3000;
+export const blockLimit = () => SAFETY_BLOCK_CAP;
 // both ranks unlock the premium stock
 export const isPremiumRank = (rank) => rank === 'champion' || rank === 'legend';
 

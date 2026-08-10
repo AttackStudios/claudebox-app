@@ -15,7 +15,7 @@ import {
   BLOCKS, BLOCK_BY_ID, STARTER_BLOCKS, PLOT, RIVER,
   STAGES, STAGE_LEN, STAGE_GOLD, TREASURE_GOLD, TOTAL_LEN, TREASURE_AT,
   HAZARDS, hazardsFor, stageIndexAt, BAND_COLOR, goldForRun, DEFAULT_SAVE,
-  blockLimit, CHAMPION_ONLY, GOLD_PACK, isPremiumRank,
+  blockLimit, CHAMPION_ONLY, GOLD_PACK, isPremiumRank, plotSize,
   PACK_SIZE, STARTER_INVENTORY, STARTING_GOLD, canBuy, TIER_OF,
   MAPS, mapFor, mapsForRank, stagesOf, totalLen, treasureAt,
 } from '/shared/bab/config.js';
@@ -123,13 +123,16 @@ const treasureChest = new THREE.Group();
 // ---------------------------------------------------------------- plots
 // Your plot pad is where blocks may be placed. Remote players get one too, so
 // the harbour looks lived-in.
-const PLOT_GAP = PLOT.w + 7;
+// The build volume is a cube sized by rank (25 / 50 / 100 a side). PS is the
+// live value; everything that maps grid cells to world space reads it.
+let PS = plotSize('');
+const PLOT_GAP = 32;
 let myPlot = 0;
 // YOUR plot always sits at the river mouth (x = 0) so the voyage runs straight
 // ahead; everyone else's plot is laid out relative to yours along the harbour.
-const plotOrigin = (i) => ({ x: (i - myPlot) * PLOT_GAP, z: HARBOUR_Z });
+const plotOrigin = (i) => ({ x: (i - myPlot) * (PS + 8), z: HARBOUR_Z });
 const padMat = new THREE.MeshLambertMaterial({ color: '#5c72ff', transparent: true, opacity: 0.35 });
-const pad = new THREE.Mesh(new THREE.BoxGeometry(PLOT.w, 0.3, PLOT.d), padMat);
+let pad = new THREE.Mesh(new THREE.BoxGeometry(PS, 0.3, PS), padMat);
 pad.position.set(0, WATER_TOP + 0.15, HARBOUR_Z);
 scene.add(pad);
 
@@ -143,14 +146,28 @@ const key = (x, y, z) => `${x},${y},${z}`;
 
 // grid -> local position inside the boat group
 const localPos = (gx, gy, gz) => new THREE.Vector3(
-  gx - (PLOT.w - 1) / 2,
+  gx - (PS - 1) / 2,
   gy + 0.5,
-  gz - (PLOT.d - 1) / 2);
+  gz - (PS - 1) / 2);
+
+// Resize the plot when the rank changes. Creations never survive a run, so
+// there is nothing to migrate — just swap the pad and re-centre.
+function applyPlotSize() {
+  const next = plotSize(rank);
+  if (next === PS && pad.geometry.parameters.width === next) return;
+  PS = next;
+  scene.remove(pad);
+  pad.geometry.dispose();
+  pad = new THREE.Mesh(new THREE.BoxGeometry(PS, 0.3, PS), padMat);
+  pad.position.set(0, WATER_TOP + 0.15, HARBOUR_Z);
+  pad.visible = mode === 'build';
+  scene.add(pad);
+}
 
 function addBlock(id, gx, gy, gz, free = false) {
-  if (blocks.size >= limit()) return false;   // build limit (Champions get more)
+  if (blocks.size >= blockLimit()) return false;   // safety ceiling, not a rank limit
   if (!free && have(id) <= 0) return false;   // out of stock
-  if (gx < 0 || gx >= PLOT.w || gy < 0 || gy >= PLOT.h || gz < 0 || gz >= PLOT.d) return false;
+  if (gx < 0 || gx >= PS || gy < 0 || gy >= PS || gz < 0 || gz >= PS) return false;
   const k = key(gx, gy, gz);
   if (blocks.has(k)) return false;
   const def = BLOCK_BY_ID[id]; if (!def) return false;
@@ -179,8 +196,9 @@ function clearBoat(refund = false) { for (const k of [...blocks.keys()]) removeB
 function starterRaft() {
   clearBoat();
   // drawn from stock; if you have none left you simply start with a bare plot
-  for (let x = 5; x <= 9; x++) for (let z = 3; z <= 7; z++) addBlock('wood', x, 0, z);
-  addBlock('seat', 7, 1, 5);
+  const c = Math.floor(PS / 2);
+  for (let x = c - 2; x <= c + 2; x++) for (let z = c - 2; z <= c + 2; z++) addBlock('wood', x, 0, z);
+  addBlock('seat', c, 1, c);
 }
 
 // aggregate stats the physics reads
@@ -249,8 +267,8 @@ let capToastAt = 0;
 function atCapToast() {
   if (clockNowMs() - capToastAt < 2500) return;    // do not spam on held taps
   capToastAt = clockNowMs();
-  toast(champion() ? `Build limit reached (${limit()} blocks)`
-                   : `Build limit reached (${limit()}) — Champions get +15, Legends +65`);
+  toast(rank === 'legend' ? `Outside your ${PS}×${PS}×${PS} build volume`
+    : `Outside your ${PS}×${PS}×${PS} volume — ${rank === 'champion' ? 'Legends get 100³' : 'Champions get 50³, Legends 100³'}`);
 }
 const clockNowMs = () => performance.now();
 
@@ -269,6 +287,7 @@ async function refreshChampion() {
   tab.classList.toggle('hidden', !champion());
   $('#legend-tab').classList.toggle('hidden', rank !== 'legend');
   if (!mapsForRank(rank).some((m) => m.id === mapId)) mapId = 'standard';   // rank removed
+  applyPlotSize();                                   // 25 / 50 / 100 a side
   // boot() builds the river once after the save loads — doing it here too meant
   // constructing all 452 hazards twice on startup
   refreshVitals();
@@ -324,8 +343,9 @@ function refreshVitals() {
   setText($('#float-state'), sinking ? 'SINKING' : 'afloat');
 
   // build-mode readout: the actual numbers, so "why did I sink" is answerable
-  setText($('#st-count'), s.count + '/' + limit());
-  $('#boatstats').classList.toggle('atcap', s.count >= limit());
+  setText($('#st-count'), String(s.count));
+  setText($('#st-vol'), `${PS}³`);
+  $('#boatstats').classList.toggle('atcap', s.count >= blockLimit());
   setText($('#st-weight'), s.weight.toFixed(1));
   setText($('#st-buoy'), s.buoy.toFixed(1));
   setText($('#st-float'), s.count ? s.float.toFixed(2) : '—');
@@ -778,17 +798,17 @@ function pickTarget(clientX, clientY, remove) {
   const padHit = ray.intersectObject(pad, false)[0];
   if (!padHit) return null;
   boatGroup.worldToLocal(_lp.copy(padHit.point));
-  return { gx: Math.round(_lp.x + (PLOT.w - 1) / 2), gy: 0, gz: Math.round(_lp.z + (PLOT.d - 1) / 2) };
+  return { gx: Math.round(_lp.x + (PS - 1) / 2), gy: 0, gz: Math.round(_lp.z + (PS - 1) / 2) };
 }
 
-const inPlot = (t) => t && t.gx >= 0 && t.gx < PLOT.w && t.gy >= 0 && t.gy < PLOT.h && t.gz >= 0 && t.gz < PLOT.d;
+const inPlot = (t) => t && t.gx >= 0 && t.gx < PS && t.gy >= 0 && t.gy < PS && t.gz >= 0 && t.gz < PS;
 
 function updateGhost(clientX, clientY) {
   if (mode !== 'build' || clientX == null) { ghost.visible = false; return; }
   const t = pickTarget(clientX, clientY, eraser);
   const ok = inPlot(t) && (eraser
     ? t.remove                                     // something there to take off
-    : !blocks.has(key(t.gx, t.gy, t.gz)) && have(selected) > 0 && blocks.size < limit());
+    : !blocks.has(key(t.gx, t.gy, t.gz)) && have(selected) > 0 && blocks.size < blockLimit());
   ghost.visible = !!ok;
   if (!ok) return;
   ghost.position.copy(localPos(t.gx, t.gy, t.gz));
@@ -803,8 +823,11 @@ function tryBuild(clientX, clientY, remove) {
   const t = pickTarget(clientX, clientY, remove);
   if (!t) return;
   if (t.remove) { removeBlock(key(t.gx, t.gy, t.gz), true); sfx.remove(); afterEdit(); return; }
-  if (addBlock(selected, t.gx, t.gy, t.gz)) { sfx.place(selected); afterEdit(); }
-  else { sfx.deny(); if (blocks.size >= limit()) atCapToast(); }
+  if (addBlock(selected, t.gx, t.gy, t.gz)) { sfx.place(selected); afterEdit(); return; }
+  sfx.deny();
+  if (!inPlot(t)) atCapToast();                                   // outside the cube
+  else if (have(selected) <= 0) toast(`Out of ${BLOCK_BY_ID[selected]?.name || 'blocks'}`);
+  else if (blocks.size >= blockLimit()) toast('Boat is at the safety limit');
 }
 
 const refreshGhost = () => updateGhost(lastPX, lastPY);
@@ -1019,9 +1042,9 @@ function applyHazards(dt, t) {
     // find the closest block to the hazard, in world space
     let hitK = null, hitD = Infinity;
     for (const b of blocks.values()) {
-      const wx = boat.x + (b.gx - (PLOT.w - 1) / 2);
+      const wx = boat.x + (b.gx - (PS - 1) / 2);
       const wy = boat.y + b.gy + 0.5;
-      const wz = boat.z + (b.gz - (PLOT.d - 1) / 2);
+      const wz = boat.z + (b.gz - (PS - 1) / 2);
       const d = Math.hypot(wx - p.x, wy - p.y, wz - p.z);
       if (d < hitD) { hitD = d; hitK = b.mesh.userData.k; }
     }
@@ -1031,7 +1054,7 @@ function applyHazards(dt, t) {
       h.nextHit = t + 0.55;
       const maxHp = BLOCK_BY_ID[b.id]?.hp || 1;
       const wp = new THREE.Vector3(
-        boat.x + (b.gx - (PLOT.w - 1) / 2), boat.y + b.gy + 0.5, boat.z + (b.gz - (PLOT.d - 1) / 2));
+        boat.x + (b.gx - (PS - 1) / 2), boat.y + b.gy + 0.5, boat.z + (b.gz - (PS - 1) / 2));
       if (b.hp <= 0) {
         parts.burst(wp, BLOCK_BY_ID[b.id]?.color || '#b3803f', 12, { spread: 7, up: 6 });
         parts.burst(wp, '#bfe6ff', 6, { spread: 5, up: 5, size: 0.8 });
@@ -1208,6 +1231,7 @@ async function boot() {
   window.__bab = { boat, blocks, boatStats, hazards, launch, endRun, net, scene,
     camera, CAM, buildFocus, THREE, addBlock, removeBlock, limit, limitOf: limit,
     get rank() { return rank; }, get inv() { return inv; }, get mapId() { return mapId; },
+    get plotSize() { return PS; }, get pad() { return pad; },
     setMap, stages: () => stagesOf(mapId), treasureAt: () => treasureAt(mapId), buildPalette, renderer, ghost, pickTarget, get lastLook() { return lastLook; }, set lastLook(v) { lastLook = v; },
     get gold() { return gold; }, set gold(v) { setGold(v); },
     get mode() { return mode; } };

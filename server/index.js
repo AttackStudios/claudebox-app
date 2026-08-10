@@ -475,7 +475,7 @@ babWss.on('connection', (ws) => {
   babState.players.set(p.id, p);
   const ctx = { broadcast: babBroadcast, send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)) };
   ws.on('message', (raw) => {
-    if (raw.length > 65536) return;              // a big boat is a big message
+    if (raw.length > 262144) return;             // a 3000-block boat is ~100KB of JSON
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     try { babHandle(p, msg, ctx); } catch (err) { console.error('[bab]', msg?.t, err); }
   });
