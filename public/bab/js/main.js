@@ -31,8 +31,11 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 600);
 
 function resize() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  // widen the vertical fov in portrait so the horizontal view stays usable
+  camera.fov = camera.aspect < 1 ? 84 : 62;
+  camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
 
@@ -273,6 +276,12 @@ function buildShop() {
 $('#btn-shop').addEventListener('click', () => { buildShop(); $('#shop').classList.remove('hidden'); });
 $('#shop-close').addEventListener('click', () => $('#shop').classList.add('hidden'));
 $('#btn-clear').addEventListener('click', () => { clearBoat(); publishBoat(); saveSoon(); });
+// Build/erase toggle — the only way to remove a block on a touchscreen.
+$('#btn-erase').addEventListener('click', () => {
+  eraser = !eraser;
+  $('#btn-erase').classList.toggle('on', eraser);
+  $('#btn-erase').textContent = eraser ? '🧨 Erasing' : '🧱 Building';
+});
 
 // ---------------------------------------------------------------- hazards
 // Every hazard is a mesh plus a position function of time. Contact damages the
@@ -327,9 +336,14 @@ function setMode(m) {
   $('#voyage').classList.toggle('hidden', m !== 'sail');
   $('#vitals').classList.toggle('hidden', m !== 'sail');
   pad.visible = m === 'build';
+  // the steer arrows belong to sailing only; in build mode they overlapped the
+  // Shop / Erase / Clear row on a phone
+  $('#tilt').classList.toggle('hidden', !(isTouch && m === 'sail'));
+  if (m !== 'sail') touchSteer = 0;
   $('#hints').textContent = m === 'build'
-    ? 'Click to place · Right-click / Shift-click to remove · Drag to orbit · Scroll to zoom · 1-9 pick block'
-    : 'A / D to steer · your boat rides the current';
+    ? (isTouch ? 'Tap to place · 🧱/🧨 toggles erase · drag to orbit · pinch to zoom'
+               : 'Click to place · Right-click / Shift-click to remove · Drag to orbit · Scroll to zoom · 1-9 pick block')
+    : (isTouch ? 'Tilt buttons steer · drag to look · pinch to zoom' : 'A / D to steer · your boat rides the current');
 }
 
 function launch() {
@@ -391,7 +405,6 @@ const CAM = {
 };
 const cam = () => CAM[mode];
 let lastLook = -99;            // when the player last dragged, for auto-recentre
-let dragging = false, dragMoved = 0, lastX = 0, lastY = 0;
 
 // shortest-way-round interpolation, so recentring never spins the long way
 function angleLerp(a, b, t) {
@@ -402,31 +415,71 @@ function angleLerp(a, b, t) {
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Touch needs real multi-touch bookkeeping. The old code kept ONE lastX/lastY:
+// a second finger overwrote it and then both fingers diffed against the same
+// point, so every move jumped between them and the camera whipped around.
+// Now each pointer tracks its own position; one finger orbits, two pinch-zoom.
+const pointers = new Map();          // pointerId -> { x, y }
+let pinchDist = 0;
+let gestureMoved = 0, gestureStart = 0;
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const TAP_SLOP = isTouch ? 16 : 6;   // a finger always wobbles more than a mouse
+let eraser = false;                  // touch has no right-click, so it needs a mode
+let touchSteer = 0;                  // -1 / 0 / +1 from the on-screen arrows
+
+function twoFingerDist() {
+  const [a, b] = [...pointers.values()];
+  return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+}
+
 canvas.addEventListener('pointerdown', (e) => {
-  dragging = true; dragMoved = 0; lastX = e.clientX; lastY = e.clientY;
-  canvas.setPointerCapture(e.pointerId);
+  canvas.setPointerCapture?.(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) { gestureMoved = 0; gestureStart = performance.now(); }
+  if (pointers.size === 2) pinchDist = twoFingerDist();
 });
+
 canvas.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  const dx = e.clientX - lastX, dy = e.clientY - lastY;
-  lastX = e.clientX; lastY = e.clientY;
-  dragMoved += Math.abs(dx) + Math.abs(dy);
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
   const c = cam();
-  c.yaw -= dx * 0.005;
-  c.pitch = clamp(c.pitch + dy * 0.004, 0.05, 1.42);
+
+  if (pointers.size >= 2) {
+    // two fingers pinch the zoom and never rotate — mixing the two is what
+    // made the view spin on touch
+    const d = twoFingerDist();
+    if (pinchDist > 0) c.dist = clamp(c.dist * (pinchDist / d), 7, 90);
+    pinchDist = d;
+    gestureMoved = 1e9;              // a pinch is never a tap
+    return;
+  }
+
+  gestureMoved += Math.abs(dx) + Math.abs(dy);
+  c.yaw -= dx * 0.006;
+  c.pitch = clamp(c.pitch + dy * 0.005, 0.05, 1.42);
   lastLook = performance.now() / 1000;
 });
-canvas.addEventListener('pointerup', (e) => {
-  dragging = false;
+
+function endPointer(e, cancelled) {
+  const wasSingle = pointers.size === 1;
+  pointers.delete(e.pointerId);
   canvas.releasePointerCapture?.(e.pointerId);
-  // a click that did not really drag is a build action
-  if (mode === 'build' && dragMoved < 6) {
-    const remove = e.button === 2 || e.shiftKey;
-    tryBuild(e.clientX, e.clientY, remove);
+  if (pointers.size < 2) pinchDist = 0;
+  if (cancelled) { gestureMoved = 1e9; return; }
+  // one finger, held briefly and barely moved = a build tap
+  if (wasSingle && mode === 'build'
+      && gestureMoved < TAP_SLOP && performance.now() - gestureStart < 700) {
+    tryBuild(e.clientX, e.clientY, e.button === 2 || e.shiftKey || eraser);
   }
-});
+}
+canvas.addEventListener('pointerup', (e) => endPointer(e, false));
+// without this an interrupted touch left the camera spinning from stale coords
+canvas.addEventListener('pointercancel', (e) => endPointer(e, true));
+
 canvas.addEventListener('wheel', (e) => {
-  // zoom the orbit you are actually using — sailing used to clamp this away
   const c = cam();
   c.dist = clamp(c.dist + Math.sign(e.deltaY) * 2.5, 7, 90);
 }, { passive: true });
@@ -447,8 +500,10 @@ const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
 function tryBuild(clientX, clientY, remove) {
-  ndc.x = (clientX / innerWidth) * 2 - 1;
-  ndc.y = -(clientY / innerHeight) * 2 + 1;
+  // measure against the canvas itself, not the window — they can differ
+  const r = canvas.getBoundingClientRect();
+  ndc.x = ((clientX - r.left) / r.width) * 2 - 1;
+  ndc.y = -((clientY - r.top) / r.height) * 2 + 1;
   ray.setFromCamera(ndc, camera);
 
   const meshes = [...blocks.values()].map((b) => b.mesh);
@@ -556,9 +611,10 @@ function stepSail(dt, t) {
   boat.z += speed * dt;
 
   // steering, plus the drift out of the harbour toward the river centre
-  let steer = 0;
+  let steer = touchSteer;   // on-screen buttons; phones have no A/D
   if (keys.has('a') || keys.has('arrowleft')) steer -= 1;
   if (keys.has('d') || keys.has('arrowright')) steer += 1;
+  steer = clamp(steer, -1, 1);
   boat.x += steer * 7 * dt;
   if (boat.z < STAGE_LEN) boat.x = lerp(boat.x, 0, 1 - Math.exp(-1.1 * dt));
   boat.x = clamp(boat.x, -RIVER.width / 2 + 1, RIVER.width / 2 - 1);
@@ -672,7 +728,7 @@ function updateCamera(dt, now) {
   const c = cam();
 
   // sailing: once you stop looking around, drift back to behind the boat
-  if (mode === 'sail' && now - lastLook > 1.2 && !dragging) {
+  if (mode === 'sail' && now - lastLook > 1.2 && pointers.size === 0) {
     c.yaw = angleLerp(c.yaw, Math.PI, 1 - Math.exp(-2.4 * dt));
   }
 
@@ -754,6 +810,18 @@ async function boot() {
   refreshVitals();
   updatePips(-1);
   setMode('build');
+
+  // on-screen steering: a phone has no A/D keys
+  if (isTouch) {
+    for (const [id, dir] of [['tilt-l', -1], ['tilt-r', 1]]) {
+      const b = $('#' + id);
+      const set = (v) => (e) => { e.preventDefault(); touchSteer = v; };
+      b.addEventListener('pointerdown', set(dir));
+      b.addEventListener('pointerup', set(0));
+      b.addEventListener('pointercancel', set(0));
+      b.addEventListener('pointerleave', set(0));
+    }
+  }
 
   net.connect();
   net.join({ name: myName, avatar: profile, code: localStorage.getItem('claudebox.code') || '' });
