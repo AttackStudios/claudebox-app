@@ -2854,7 +2854,7 @@ function freshAmmo() {
 // you keep for boostDur, after which whatever of that burst is STILL in your
 // velocity is taken back out. That stops it compounding across repeat uses
 // while never yanking you backwards.
-const boostState = { vx: 0, vz: 0, until: 0, cdUntil: 0 };
+const boostState = { vx: 0, vy: 0, vz: 0, until: 0, cdUntil: 0 };
 function scytheWeaponId() {
   for (const id of myLoadout()) if (WEAPONS[id]?.boost) return id;
   return WEAPONS[me.weapon]?.boost ? me.weapon : null;
@@ -2866,12 +2866,17 @@ function triggerScytheBoost() {
   if (me.dead || now < boostState.cdUntil) return false;
   if (['freeze', 'vote', 'teleport', 'podium'].includes(game.phase)) return false;
   boostState.cdUntil = now + w.boostCd;
-  const dx = -Math.sin(me.ry), dz = -Math.cos(me.ry);
-  const vx = dx * w.boostSpeed, vz = dz * w.boostSpeed;
+  // Launch along your FULL view, not just your yaw — look up to fly up, look
+  // down to dive. `boostUp` is now only a small assist that fades out as you
+  // pitch away from level, so it helps you clear a lip without fighting a
+  // deliberate downward launch.
+  const d = aimDir(0);
+  const vx = d.x * w.boostSpeed, vy = d.y * w.boostSpeed, vz = d.z * w.boostSpeed;
+  const levelness = Math.max(0, 1 - Math.abs(d.y) * 2.2);
   me.vel.x += vx; me.vel.z += vz;
-  me.vel.y = Math.max(me.vel.y, w.boostUp);
+  me.vel.y += vy + w.boostUp * levelness;
   me.grounded = false; me.sliding = false;
-  boostState.vx = vx; boostState.vz = vz; boostState.until = now + w.boostDur;
+  boostState.vx = vx; boostState.vy = vy; boostState.vz = vz; boostState.until = now + w.boostDur;
   vmAnim.scytheT = 0;                       // the custom activation animation
   vmAnim.swingT = 1;                        // it is not a swing
   sfx.dash?.(); net.send({ t: 'dash' });
@@ -2880,14 +2885,19 @@ function triggerScytheBoost() {
 // called every frame from the movement step
 function tickScytheBoost() {
   if (!boostState.until || clockNow() < boostState.until) return;
-  const bx = boostState.vx, bz = boostState.vz;
+  const bx = boostState.vx, by = boostState.vy, bz = boostState.vz;
   boostState.until = 0;
+  // Horizontal and vertical are reclaimed separately: gravity eats the vertical
+  // part far faster, and folding both into one factor would under-remove the
+  // horizontal burst.
   const mag2 = bx * bx + bz * bz;
-  if (mag2 < 0.0001) return;
-  // remove only the part of the burst still present, so a player who has since
-  // turned or been slowed is not shoved backwards
-  const k = Math.max(0, Math.min(1, (me.vel.x * bx + me.vel.z * bz) / mag2));
-  me.vel.x -= bx * k; me.vel.z -= bz * k;
+  if (mag2 > 0.0001) {
+    const k = Math.max(0, Math.min(1, (me.vel.x * bx + me.vel.z * bz) / mag2));
+    me.vel.x -= bx * k; me.vel.z -= bz * k;
+  }
+  // Only an UPWARD burst is worth reclaiming, and only what is still left of it.
+  // Clawing back a downward launch would fling you up out of a dive.
+  if (by > 0 && me.vel.y > 0) me.vel.y -= Math.min(me.vel.y, by);
 }
 
 // ---------------------------------------------------------------- quick slots
