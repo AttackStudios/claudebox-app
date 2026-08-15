@@ -3,7 +3,7 @@
 
 import { state, clock, publicPlayer, publicFighter } from './state.js';
 import { ROUND, MODES, WEAPONS, LOADOUT, WAVE } from '../../shared/rivals/config.js';
-import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade, placePad, applyLoadout } from './match.js';
+import { createMatch, createWaveMatch, addWavePlayer, matchSend, matchRoster, tickMatch, fireHitscan, meleeSwing, throwGrenade, placePad, applyLoadout, detonateSatchels } from './match.js';
 import { tickBots } from './bots.js';
 import { ensurePlatformUser, checkAccess, isBanned } from '../hub.js';
 
@@ -150,6 +150,14 @@ export function handleMessage(p, msg, ctx) {
       const wid = msg.wid === 'satchel' ? 'satchel' : 'grenade';
       if (!allowedWeapons(m, f).includes(wid)) return;   // must actually carry it
       throwGrenade(m, f, +msg.dx || 0, +msg.dy || 0, +msg.dz || 0, wid);
+      return;
+    }
+    case 'detonate': {
+      const m = p.matchId && state.matches.get(p.matchId);
+      const f = m?.fighters.get(p.id);
+      if (!f || f.dead || m.state !== 'live') return;
+      if (!allowedWeapons(m, f).includes('satchel')) return;
+      detonateSatchels(m, f);
       return;
     }
     case 'pad': {

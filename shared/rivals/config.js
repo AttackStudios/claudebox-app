@@ -176,10 +176,11 @@ export const WEAPONS = {
   satchel: {
     slot: 4, name: 'Satchel', class: 'utility', auto: false, utility: true,
     infinite: true,       // no ammo — throw explosives forever
-    throwVel: 21, fuse: 2.4, radius: 6.0, maxDmg: 76, rate: 0.5,
-    btnBoost: 16,         // red-button horizontal slide-jump burst
-    btnUp: 8.2,           // red-button upward pop
-    btnCd: 0.3,           // 0.3s cooldown on the red button
+    throwVel: 21, radius: 6.0, maxDmg: 76, rate: 0.5,
+    sticky: true,         // C4: sticks where it lands instead of going off
+    fuse: 0,              // never self-detonates — you choose the moment
+    maxPlaced: 4,         // how many you can have live at once
+    btnCd: 0.25,          // detonator cooldown
     vm: 'grenade',
   },
 };

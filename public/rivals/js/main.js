@@ -940,20 +940,17 @@ function onRightDown() {
     return;
   }
   if (me.weapon === 'satchel') {
-    // RED BUTTON — a slide-jump you can trigger anywhere, even mid-air, on a
-    // short cooldown. Flings you along where you're looking (horizontally) plus
-    // an upward pop; spam it every 0.3s to fly across the map.
+    // DETONATOR — the satchel is C4: you throw charges that stick where they
+    // land, then press this to set every one of them off at once. (The old
+    // red-button self-launch jump is gone.)
     const now = clockNow();
     const W = WEAPONS.satchel;
     if (now - (me.satchelBtnAt || -9) < W.btnCd || me.dead || game.phase === 'freeze' || game.phase === 'podium') return;
     me.satchelBtnAt = now;
     vmAnim.satchelBtnT = 0;   // left hand slams the detonator button
-    const dirX = -Math.sin(me.ry), dirZ = -Math.cos(me.ry);
-    me.vel.x = dirX * W.btnBoost; me.vel.z = dirZ * W.btnBoost;
-    me.vel.y = Math.max(me.vel.y, W.btnUp);
-    me.grounded = false; me.sliding = false;
-    me.slideVel = { x: me.vel.x, z: me.vel.z }; me.slideEndAt = now;   // keep momentum into a real jump
-    sfx.dash(); net.send({ t: 'dash' });
+    sfx.click?.();
+    if (game.phase === 'live') net.send({ t: 'detonate' });
+    else detonateLocalNades();   // practice arena
     return;
   }
   // guns: ADS handled continuously via rightDown
@@ -1148,16 +1145,20 @@ function stepMe(dt) {
     }
   }
 
-  // practice arena: local grenades/satchels — arc, explode on ground/contact/fuse,
-  // and self-launch you (grenade/satchel-jump practice)
+  // practice arena: local grenades arc and blow; satchels stick where they land
+  // and wait for the detonator
   for (let i = localNades.length - 1; i >= 0; i--) {
     const g = localNades[i], w = WEAPONS[g.wid];
-    g.vy -= MOVE.gravity * 0.8 * dt;
-    g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt;
+    if (g.stuck && !g.fire) continue;
+    if (!g.stuck) {
+      g.vy -= MOVE.gravity * 0.8 * dt;
+      g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt;
+    }
     let impact = g.y < 0.12 || pointInMap(g.x, g.y, g.z);   // ground OR any wall/cover
     g.y = Math.max(0.12, g.y); g.mesh.position.set(g.x, g.y, g.z);
-    if (!impact && now >= g.armAt && Math.hypot(me.pos.x - g.x, (me.pos.y + 0.9) - g.y, me.pos.z - g.z) < 1.6) impact = true;
-    if (impact || now >= g.explodeAt) {
+    if (!impact && !g.stuck && now >= g.armAt && Math.hypot(me.pos.x - g.x, (me.pos.y + 0.9) - g.y, me.pos.z - g.z) < 1.6) impact = true;
+    if (impact && w.sticky && !g.fire) { g.stuck = true; g.vx = g.vy = g.vz = 0; continue; }
+    if (g.fire || impact || (w.fuse > 0 && now >= g.explodeAt)) {
       scene.remove(g.mesh); localNades.splice(i, 1); boomFx(g.x, g.y, g.z);
       const dx = me.pos.x - g.x, dy = (me.pos.y + 0.9) - g.y, dz = me.pos.z - g.z;
       const d = Math.hypot(dx, dy, dz);
@@ -1252,9 +1253,12 @@ const VM_SKIN = identity.avatar?.skin || '#f5d3b3';
 // arms are single chunky CUBES in your shirt colour — just like the original
 function mkArm() {
   const g = new THREE.Group();
-  const cube = new THREE.Mesh(roundedBoxGeo(0.18, 0.18, 0.78, 0.055), vmMat(VM_SHIRT));
+  // front (hand) face stays at z = -0.13; the shoulder end runs back to 1.67,
+  // far enough behind the near plane that it can never enter the frustum
+  const ARM_LEN = 1.8;
+  const cube = new THREE.Mesh(roundedBoxGeo(0.18, 0.18, ARM_LEN, 0.055), vmMat(VM_SHIRT));
   cube.userData.isArm = true;   // skins must never repaint your hands
-  cube.position.set(0, 0, 0.26);
+  cube.position.set(0, 0, -0.13 + ARM_LEN / 2);
   g.add(cube);
   return g;
 }
@@ -1360,62 +1364,14 @@ function buildViewmodels() {
     if (!b) continue;
     const g = new THREE.Group();
     rigWeapon(g, b.parts, b.arms[0], b.arms[1], b.arms[2], b.arms[3]);
+    // dual-wield items ride the hands themselves, so an equip swing can never
+    // pull the blades away from the fists
+    if (b.hands) {
+      for (const part of b.hands.r || []) g.userData.rArm.add(part);
+      for (const part of b.hands.l || []) g.userData.lArm.add(part);
+    }
     g.userData.fx = b.fx;
     viewmodels[id] = g;
-  }
-  // ---- knife (small pocket knife in the right hand) ----
-  {
-    const g = new THREE.Group();
-    rigWeapon(g, [
-      box(0.05, 0.06, 0.17, DARK, 0.4, -0.16, -0.1),
-      box(0.055, 0.065, 0.03, STEEL, 0.4, -0.16, -0.2),
-      box(0.03, 0.055, 0.24, '#c8ccd4', 0.4, -0.155, -0.33),
-      box(0.03, 0.03, 0.05, '#c8ccd4', 0.4, -0.168, -0.47),
-    ], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
-    viewmodels.scythe = g;
-  }
-  // ---- grenade (chunkier, lever + pin) ----
-  {
-    const g = new THREE.Group();
-    rigWeapon(g, [
-      (() => { const b = new THREE.Mesh(new THREE.SphereGeometry(0.095, 18, 14), vmMat('#3f7d3f')); b.scale.y = 1.18; b.position.set(0.38, -0.14, -0.06); return b; })(),
-      box(0.06, 0.05, 0.06, STEEL, 0.38, -0.03, -0.06),       // cap
-      (() => { const l = box(0.025, 0.1, 0.05, STEEL, 0.415, -0.06, -0.02, 0.25); g.__lever = l; return l; })(),   // lever
-      (() => { const pin = box(0.05, 0.02, 0.02, '#d8dbe0', 0.35, -0.005, -0.06); pin.userData.x0 = pin.position.x; pin.userData.y0 = pin.position.y; g.__pin = pin; return pin; })(),  // pin ring
-    ], [0.38, -0.26, 0.08], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
-    g.userData.fx = { lever: g.__lever, pin: g.__pin };
-    viewmodels.grenade = g;
-  }
-  // ---- fists: two big shirt-colour cubes ----
-  {
-    const g = new THREE.Group();
-    rigWeapon(g, [],
-      [0.58, -0.26, -0.04], [0.7, -0.45, -0.2], [-0.6, -0.25, -0.1], [0.7, 0.45, 0.2]);
-    viewmodels.fists = g;
-  }
-  // ---- katana: long single-edged blade, two-handed grip ----
-  {
-    const g = new THREE.Group();
-    rigWeapon(g, [
-      box(0.052, 0.09, 0.24, '#15161b', 0.36, -0.16, 0.06),    // wrapped handle
-      box(0.05, 0.05, 0.05, '#0e0f13', 0.36, -0.16, 0.19),     // pommel
-      box(0.12, 0.03, 0.12, GOLD, 0.36, -0.16, -0.08),         // tsuba (guard)
-      box(0.028, 0.075, 0.82, '#dbe2ec', 0.36, -0.145, -0.54), // long blade
-      box(0.02, 0.05, 0.14, '#f2f5fa', 0.36, -0.125, -1.0),    // angled tip
-    ], [0.36, -0.24, 0.1], [0.5, -0.3, 0.14], [-0.26, -0.28, -0.12], [0.55, 0.5, -0.05]);
-    viewmodels.katana = g;
-  }
-  // ---- bat: chunky baseball bat, both hands on the grip ----
-  {
-    const g = new THREE.Group();
-    rigWeapon(g, [
-      box(0.05, 0.05, 0.22, '#6b4423', 0.3, -0.16, 0.08),      // handle
-      box(0.065, 0.065, 0.05, '#4a2f18', 0.3, -0.16, 0.2),     // knob
-      box(0.08, 0.08, 0.3, '#a9772f', 0.3, -0.16, -0.18),      // taper
-      box(0.118, 0.118, 0.42, '#c08a3a', 0.3, -0.16, -0.56),   // barrel
-      box(0.12, 0.12, 0.06, '#c08a3a', 0.3, -0.16, -0.8),      // end cap
-    ], [0.3, -0.24, 0.1], [0.5, -0.3, 0.1], [-0.32, -0.28, -0.02], [0.55, 0.4, 0.0]);
-    viewmodels.bat = g;
   }
   // ---- butterfly knife (balisong): fully ARTICULATED — the blade and both
   // handles each pivot on the tang pin, so flips/fans/twirls are real motion ----
@@ -1426,91 +1382,6 @@ function buildViewmodels() {
     rigWeapon(g, [pivot], [0.4, -0.26, 0.06], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
     g.userData.bf = { pivot, blade: bladeG, hA, hB, blur: blurMesh, blur2: blurMesh2, blurDisc };
     viewmodels.butterfly = g;
-  }
-  // ---- The Warper: white portal gun, blue + orange prongs ----
-  {
-    const g = new THREE.Group();
-    const prongA = box(0.022, 0.05, 0.16, '#4db8ff', 0.035, 0.045, -0.42);
-    const prongB = box(0.022, 0.05, 0.16, '#ff9a3d', -0.035, 0.045, -0.42);
-    rigWeapon(g, [
-      box(0.09, 0.1, 0.34, '#eef1f6', 0, 0, -0.06),          // white shell
-      box(0.07, 0.07, 0.16, '#c9d2e0', 0, 0.01, -0.28),      // snout
-      (() => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.062, 0.016, 8, 18), vmMat('#2a2e38')); r.position.set(0, 0.01, -0.38); return r; })(),   // barrel ring
-      box(0.06, 0.14, 0.08, '#2a2e38', 0, -0.11, 0.06, 0.25),// grip
-      box(0.05, 0.04, 0.2, '#8f99ad', 0, 0.065, 0.02),       // spine
-      prongA, prongB,
-    ], [0.045, -0.17, 0.17], [0.45, 0, 0], [-0.085, -0.18, 0.13], [0.45, 0.3, 0.2]);
-    g.userData.fx = { prongA, prongB };
-    viewmodels.warper = g;
-  }
-  // ---- daggers: a small knife in EACH hand ----
-  {
-    const g = new THREE.Group();
-    const dagger = (x) => [
-      box(0.04, 0.05, 0.13, DARK, x, -0.16, 0.0),              // handle
-      box(0.06, 0.06, 0.03, STEEL, x, -0.16, -0.1),            // guard
-      box(0.026, 0.052, 0.24, '#cfd6e0', x, -0.155, -0.26),    // blade
-      box(0.014, 0.03, 0.07, '#eef2f8', x, -0.15, -0.41),      // point
-    ];
-    rigWeapon(g, [...dagger(0.4), ...dagger(-0.4)],
-      [0.4, -0.26, 0.06], [0.55, -0.32, 0.12], [-0.4, -0.26, 0.06], [0.55, 0.32, -0.12]);
-    viewmodels.daggers = g;
-  }
-  // ---- jump pad: a small pad held flat, one hand gripping each side ----
-  {
-    const g = new THREE.Group();
-    const glow = (w, h, d, c, x, y, z) => { const m = new THREE.Mesh(roundedBoxGeo(w, h, d, Math.min(w, h, d) * 0.3), new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); return m; };
-    const CY = -0.14;
-    rigWeapon(g, [
-      box(0.66, 0.09, 0.52, '#aebccd', 0, CY, -0.16),          // plate
-      box(0.12, 0.12, 0.12, '#c6d3e2', 0.26, CY + 0.03, -0.02),// corner nubs
-      box(0.12, 0.12, 0.12, '#c6d3e2', -0.26, CY + 0.03, -0.02),
-      box(0.12, 0.12, 0.12, '#c6d3e2', 0.26, CY + 0.03, -0.3),
-      box(0.12, 0.12, 0.12, '#c6d3e2', -0.26, CY + 0.03, -0.3),
-      glow(0.28, 0.11, 0.26, '#6fd8ff', 0, CY + 0.05, -0.16),  // glowing core
-      glow(0.05, 0.1, 0.32, '#37e0ff', 0.17, CY + 0.04, -0.16),// glow bars
-      glow(0.05, 0.1, 0.32, '#37e0ff', -0.17, CY + 0.04, -0.16),
-      glow(0.32, 0.1, 0.05, '#37e0ff', 0, CY + 0.04, -0.02),
-      glow(0.32, 0.1, 0.05, '#37e0ff', 0, CY + 0.04, -0.3),
-    ], [0.54, -0.23, 0.06], [0.28, -0.55, 0.6], [-0.54, -0.23, 0.06], [0.28, 0.55, -0.6]);
-    viewmodels.jumppad = g;
-  }
-  // ---- satchel: a red explosive in the RIGHT hand + a detonator box with a
-  // red plunger button in the LEFT hand (hands animate throw + button-press) ----
-  {
-    const g = new THREE.Group();
-    const gun = new THREE.Group();                    // unused holder (satisfies base-reset)
-    const rArm = mkArm(); rArm.position.set(0.42, -0.24, 0.06); rArm.rotation.set(0.55, -0.32, 0.14);
-    const lArm = mkArm(); lArm.position.set(-0.42, -0.24, 0.06); lArm.rotation.set(0.5, 0.34, -0.16);
-    // explosive bundle riding in the right hand
-    const explosive = new THREE.Group();
-    explosive.add(box(0.13, 0.19, 0.13, '#c23b3b', 0, 0, -0.44));       // red charge
-    explosive.add(box(0.145, 0.07, 0.145, '#8a2a2a', 0, 0.06, -0.44));  // tape band
-    explosive.add(box(0.145, 0.07, 0.145, '#8a2a2a', 0, -0.06, -0.44)); // tape band
-    explosive.add(box(0.03, 0.1, 0.03, '#e8c96a', 0, 0.15, -0.44));     // fuse stub
-    rArm.add(explosive);
-    // detonator box + plunger in the left hand
-    const det = new THREE.Group();
-    det.add(box(0.22, 0.13, 0.28, '#24272e', 0, 0, -0.42));             // box body
-    det.add(box(0.22, 0.03, 0.28, '#3a3f48', 0, 0.07, -0.42));          // lid trim
-    const plunger = new THREE.Group();
-    plunger.add(box(0.09, 0.05, 0.09, '#d64545', 0, 0, 0));             // red button cap
-    plunger.add(box(0.03, 0.08, 0.03, '#9a9fa8', 0, -0.06, 0));         // shaft
-    plunger.position.set(0, 0.12, -0.42);
-    det.add(plunger);
-    det.add(box(0.02, 0.02, 0.16, '#4a4a4a', 0.05, -0.02, -0.26));      // wire
-    lArm.add(det);
-    g.add(gun, rArm, lArm);
-    g.userData = {
-      gun, rArm, lArm,
-      base: {
-        gun: { p: gun.position.clone(), r: gun.rotation.clone() },
-        rArm: { p: rArm.position.clone(), r: rArm.rotation.clone() },
-        lArm: { p: lArm.position.clone(), r: lArm.rotation.clone() },
-      },
-      explosive, plunger, plungerY: plunger.position.y,
-    };
-    viewmodels.satchel = g;
   }
   // ---- CAT PAW (unique skin model): a cartoon orange-tabby cat paw with white
   // toes, pink paw pads, and curved 3D claws — the most detailed item in game ----
@@ -1632,7 +1503,13 @@ function applySkinToGroup(group, def) {
 function enforceArmColors() {
   for (const g of Object.values(viewmodels)) {
     for (const arm of [g?.userData?.rArm, g?.userData?.lArm]) {
-      arm?.traverse?.((o) => { if (o.isMesh && o.material?.color) { o.userData.isArm = true; o.material.color.set(VM_SHIRT); } });
+      // `heldItem` marks a weapon parented to the hand (daggers) — it keeps its
+      // own materials. Without this the pass would repaint the blades AND mutate
+      // the shared material for every other weapon using it.
+      arm?.traverse?.((o) => {
+        if (o.userData.heldItem) return;
+        if (o.isMesh && o.material?.color) { o.userData.isArm = true; o.material.color.set(VM_SHIRT); }
+      });
     }
   }
 }
@@ -4234,11 +4111,37 @@ net.on('dash', (msg) => { if (msg.id !== net.id) sfx.dash(); });
 const nades = new Map();
 net.on('nade.spawn', (msg) => {
   const g = msg.g;
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), new THREE.MeshLambertMaterial({ color: g.wid === 'satchel' ? '#d64545' : '#3f7d3f' }));
+  let mesh;
+  if (g.wid === 'satchel') {
+    // a slab of C4 with a blinking indicator, so placed charges are findable
+    mesh = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.36), new THREE.MeshLambertMaterial({ color: '#c8433a' }));
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.05, 0.37), new THREE.MeshLambertMaterial({ color: '#23272e' }));
+    strap.position.y = 0.05;
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff3344' }));
+    lamp.position.set(0, 0.11, 0); lamp.name = 'lamp';
+    mesh.add(body, strap, lamp);
+  } else {
+    mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), new THREE.MeshLambertMaterial({ color: '#3f7d3f' }));
+  }
   mesh.position.set(g.x, g.y, g.z);
   scene.add(mesh);
-  nades.set(g.id, { mesh, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz });
+  nades.set(g.id, { mesh, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz, wid: g.wid });
 });
+// a charge that has landed stops moving and starts blinking
+net.on('nade.stick', (msg) => {
+  const n = nades.get(msg.id);
+  if (!n) return;
+  n.stuck = true; n.vx = n.vy = n.vz = 0;
+  n.x = msg.x; n.y = msg.y; n.z = msg.z;
+  n.mesh.position.set(msg.x, msg.y, msg.z);
+});
+// the owner replaced their oldest charge
+net.on('nade.gone', (msg) => {
+  const n = nades.get(msg.id);
+  if (n) { scene.remove(n.mesh); nades.delete(msg.id); }
+});
+net.on('nade.detonate', () => sfx.click?.());
 net.on('nade.boom', (msg) => {
   const n = nades.get(msg.id);
   if (n) { scene.remove(n.mesh); nades.delete(msg.id); }
@@ -4249,6 +4152,13 @@ net.on('nade.boom', (msg) => {
 function clearPads() {
   for (const p of placedPads) { scene.remove(p.group); p.group.traverse?.((n) => { n.geometry?.dispose?.(); n.material?.dispose?.(); }); }
   placedPads = [];
+}
+// press the detonator in the practice arena
+function detonateLocalNades() {
+  let n = 0;
+  for (const g of localNades) { if (g.wid === 'satchel' && !g.fire) { g.fire = true; n++; } }
+  if (n) sfx.click?.();
+  return n;
 }
 function clearLocalNades() { for (const n of localNades) scene.remove(n.mesh); localNades = []; }
 // four white transparent claw slashes in front of you (cat-paw hit fx)
@@ -4766,8 +4676,13 @@ function frame() {
     camera.position.y += (Math.random() - 0.5) * shake * 0.14;
     shake *= Math.pow(0.001, dt);
   }
-  // grenade local sim
+  // grenade local sim — a stuck satchel holds position and blinks instead
   for (const n of nades.values()) {
+    if (n.stuck) {
+      const lamp = n.mesh.getObjectByName?.('lamp');
+      if (lamp) lamp.visible = (cn * 3) % 1 < 0.55;   // slow pulse
+      continue;
+    }
     n.vy -= MOVE.gravity * 0.8 * dt;
     n.x += n.vx * dt; n.y += n.vy * dt; n.z += n.vz * dt;
     if (n.y < 0.15) { n.y = 0.15; n.vy *= -0.42; n.vx *= 0.8; n.vz *= 0.8; }
@@ -5121,9 +5036,9 @@ function frame() {
         // left hand: down to the pouch, up with the mag, slaps it home, then racks
         const fetch2 = sstep(0.1, 0.4, t) * (1 - sstep(0.4, 0.62, t));
         const seatHand = sstep(0.46, 0.72, t) * (1 - sstep(0.72, 0.84, t));
-        P.lArm.position.y -= fetch2 * 0.42;
-        P.lArm.position.x -= fetch2 * 0.12;
-        P.lArm.rotation.x -= fetch2 * 0.7;
+        P.lArm.position.y -= fetch2 * 0.24;
+        P.lArm.position.x -= fetch2 * 0.08;
+        P.lArm.rotation.x -= fetch2 * 0.45;
         P.lArm.position.y -= seatHand * 0.12;
         P.lArm.position.z += seatHand * 0.06;
         const rack2 = Math.sin(sstep(0.74, 0.9, t) * Math.PI);
@@ -5137,6 +5052,15 @@ function frame() {
         P.gun.rotation.z -= rack2 * 0.1;             // the gun kicks as it chambers
       }
       // ---- moving parts: slides/bolts kick with the shot ----
+      // Safety rail: no animation may drag an arm toward the camera far enough
+      // to reveal its open shoulder end, and none may drop a hand out of frame.
+      for (const arm of [P.rArm, P.lArm]) {
+        if (!arm) continue;
+        const b = vm.userData.base[arm === P.rArm ? 'rArm' : 'lArm'];
+        if (!b) continue;
+        arm.position.z = Math.min(arm.position.z, b.p.z + 0.22);
+        arm.position.y = Math.max(arm.position.y, b.p.y - 0.3);
+      }
       const FX = vm.userData.fx;
       if (FX) {
         // minigun: the barrel cluster spools up under the trigger and coasts

@@ -497,8 +497,28 @@ export function throwGrenade(m, thrower, dirX, dirY, dirZ, wid = 'grenade') {
     explodeAt: now + w.fuse,
     armAt: now + 0.14,   // brief arm so it can't detonate in your own face at throw
   };
+  if (WEAPONS[wid]?.maxPlaced) {
+    const mine = m.grenades.filter((x) => x.owner === thrower.id && x.wid === wid);
+    while (mine.length >= WEAPONS[wid].maxPlaced) {
+      const old = mine.shift();
+      const idx = m.grenades.indexOf(old);
+      if (idx >= 0) { m.grenades.splice(idx, 1); matchSend(m, { t: 'nade.gone', id: old.id }); }
+    }
+  }
   m.grenades.push(g);
   matchSend(m, { t: 'nade.spawn', g: { id: g.id, x: g.x, y: g.y, z: g.z, vx: g.vx, vy: g.vy, vz: g.vz, wid } });
+}
+
+// Press the detonator: every satchel this player has placed goes off together.
+// Returns how many were armed, so the client can react.
+export function detonateSatchels(m, fighter) {
+  let n = 0;
+  for (const g of m.grenades) {
+    if (g.owner !== fighter.id || g.wid !== 'satchel' || g.fire) continue;
+    g.fire = true; n++;
+  }
+  if (n) matchSend(m, { t: 'nade.detonate', by: fighter.id, count: n });
+  return n;
 }
 
 function tickGrenades(m, dt) {
@@ -507,6 +527,9 @@ function tickGrenades(m, dt) {
   for (let i = m.grenades.length - 1; i >= 0; i--) {
     const g = m.grenades[i];
     const w = WEAPONS[g.wid] || WEAPONS.grenade;   // grenade or satchel stats
+    // A stuck satchel is inert: it sits where it landed until its owner presses
+    // the detonator. `fire` is that press, and lets it fall through to the blast.
+    if (g.stuck && !g.fire) continue;
     g.vy -= MOVE.gravity * 0.8 * dt;
     // integrate; grenades explode on ANY solid impact (or on touching a
     // fighter once armed) — no bouncing. This is what enables grenade-jumps.
@@ -520,7 +543,13 @@ function tickGrenades(m, dt) {
       }
     }
 
-    if (impact || now >= g.explodeAt) {
+    // C4 sticks to whatever it hits rather than going off
+    if (impact && w.sticky && !g.fire) {
+      g.stuck = true; g.vx = g.vy = g.vz = 0;
+      matchSend(m, { t: 'nade.stick', id: g.id, x: g.x, y: g.y, z: g.z });
+      continue;
+    }
+    if (g.fire || impact || (w.fuse > 0 && now >= g.explodeAt)) {
       m.grenades.splice(i, 1);
       matchSend(m, { t: 'nade.boom', id: g.id, x: g.x, y: g.y, z: g.z });
       const owner = m.fighters.get(g.owner);

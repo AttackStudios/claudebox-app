@@ -5,10 +5,13 @@
 // family instead of a pile of one-offs. Nothing is a recoloured clone any more:
 // each weapon has its own silhouette, furniture and moving parts.
 //
-// Materials are physically-shaded with procedurally generated maps and a small
-// generated environment, which is what gives the metal its sheen. Geometry and
-// materials are cached and shared across instances — cloning a Mesh copies both
-// by reference, so 20 weapons cost a couple of dozen buffers.
+// ART DIRECTION — matched to RIVALS' own look rather than to realism:
+// clean low-poly forms, flat readable shading, a tight near-monochrome palette
+// (near-black body, two greys, white highlights) with a single accent per
+// weapon. Deliberately LESS surface detail than a photoreal gun: reference
+// models in that game run ~1.6k triangles, so busy brushed-metal and rivets
+// read as noise at viewmodel scale. Geometry and materials are cached and
+// shared — cloning a Mesh copies both by reference.
 
 import * as THREE from 'three';
 
@@ -104,18 +107,28 @@ const std = (o) => new THREE.MeshStandardMaterial({ envMapIntensity: 0.9, ...o }
 // The shared palette. Skins swap a mesh's material REFERENCE (they never mutate
 // these), so sharing across every weapon is safe.
 export const MAT = {
-  gunmetal: std({ color: '#454c58', metalness: 0.78, roughness: 0.4,  map: brushed(), roughnessMap: brushed(), envMapIntensity: 1.3 }),
-  blued:    std({ color: '#22262d', metalness: 0.86, roughness: 0.28, map: brushed(), envMapIntensity: 1.35 }),
-  steel:    std({ color: '#c2ccdb', metalness: 0.92, roughness: 0.2,  map: brushed(), roughnessMap: brushed(), envMapIntensity: 1.5 }),
-  chrome:   std({ color: '#eaeff6', metalness: 0.98, roughness: 0.08, envMapIntensity: 1.6 }),
-  polymer:  std({ color: '#282c33', metalness: 0.05, roughness: 0.84, map: stipple() }),
-  polyLite: std({ color: '#5a626e', metalness: 0.08, roughness: 0.72, map: stipple() }),
-  rubber:   std({ color: '#2a2e35', metalness: 0.02, roughness: 0.95, map: checker() }),
-  wood:     std({ color: '#b8763a', metalness: 0.02, roughness: 0.58, map: walnut() }),
-  gold:     std({ color: '#e3b452', metalness: 0.95, roughness: 0.2, envMapIntensity: 1.5 }),
-  brass:    std({ color: '#d8ae2e', metalness: 0.9,  roughness: 0.28, envMapIntensity: 1.4 }),
-  glass:    std({ color: '#7fd8ff', metalness: 0.1,  roughness: 0.05, transparent: true, opacity: 0.55,
+  // body greys — the whole arsenal is built from these three values
+  gunmetal: std({ color: '#3c424c', metalness: 0.35, roughness: 0.55, envMapIntensity: 0.7 }),
+  blued:    std({ color: '#23272e', metalness: 0.35, roughness: 0.5,  envMapIntensity: 0.7 }),
+  polymer:  std({ color: '#2b2f36', metalness: 0.06, roughness: 0.85 }),
+  polyLite: std({ color: '#575e6a', metalness: 0.08, roughness: 0.78 }),
+  rubber:   std({ color: '#1e2127', metalness: 0.02, roughness: 0.95 }),
+  // bright metal for small parts — this is where the eye goes
+  steel:    std({ color: '#cbd4e2', metalness: 0.55, roughness: 0.34, envMapIntensity: 1.0 }),
+  chrome:   std({ color: '#eef2f8', metalness: 0.7,  roughness: 0.2,  envMapIntensity: 1.15 }),
+  wood:     std({ color: '#b07440', metalness: 0.0,  roughness: 0.68 }),
+  // the single accent colour, used sparingly
+  gold:     std({ color: '#e8b64e', metalness: 0.6,  roughness: 0.32, envMapIntensity: 1.1 }),
+  brass:    std({ color: '#d8ae2e', metalness: 0.6,  roughness: 0.36, envMapIntensity: 1.0 }),
+  // blade steel reads brighter and flatter than gun steel
+  blade:    std({ color: '#dfe6f0', metalness: 0.5,  roughness: 0.26, envMapIntensity: 1.2 }),
+  edge:     new THREE.MeshBasicMaterial({ color: '#ffffff' }),
+  glass:    std({ color: '#7fd8ff', metalness: 0.1,  roughness: 0.06, transparent: true, opacity: 0.5,
                   emissive: '#2b6f9a', emissiveIntensity: 0.6 }),
+  olive:    std({ color: '#4a5a34', metalness: 0.08, roughness: 0.82 }),
+  teal:     std({ color: '#2fc4c4', metalness: 0.25, roughness: 0.45, emissive: '#0d5a5a', emissiveIntensity: 0.5 }),
+  violet:   std({ color: '#8b5cf6', metalness: 0.25, roughness: 0.42, emissive: '#3b1e7a', emissiveIntensity: 0.7 }),
+  danger:   std({ color: '#e04b3c', metalness: 0.2,  roughness: 0.5 }),
   reticle:  new THREE.MeshBasicMaterial({ color: '#ff4d5e' }),
   lamp:     new THREE.MeshBasicMaterial({ color: '#8ef0ff' }),
 };
@@ -160,12 +173,14 @@ const rod = (r, len, mat, x, y, z, seg = 12) => P(cylG(r, r, len, seg), mat, x, 
 // Reused across the roster — this is what makes the family feel designed.
 
 // picatinny rail: a base plus evenly spaced cross-slots
+// A rail is one clean strip with a few widely-spaced ribs. The old version drew
+// a slot every 5cm, which at viewmodel scale was just visual static.
 function rail(len, mat, x, y, z, slots = 0) {
-  const out = [bx(0.05, 0.018, len, mat, x, y, z, 0, 0, 0)];
-  const n = slots || Math.max(3, Math.round(len / 0.05));
+  const out = [bx(0.05, 0.02, len, mat, x, y, z, 0, 0, 0)];
+  const n = slots || Math.max(2, Math.round(len / 0.11));
   for (let i = 0; i < n; i++) {
-    const zz = z - len / 2 + 0.02 + i * ((len - 0.04) / Math.max(1, n - 1));
-    out.push(bx(0.056, 0.026, 0.012, mat, x, y + 0.006, zz));
+    const zz = z - len / 2 + 0.03 + i * ((len - 0.06) / Math.max(1, n - 1));
+    out.push(bx(0.056, 0.028, 0.018, mat, x, y + 0.006, zz));
   }
   return out;
 }
@@ -193,7 +208,7 @@ function magazine(w, h, d, mat, x, y, z, curve = 0) {
   g.add(bx(w, h, d, mat, 0, 0, 0, curve));
   g.add(bx(w * 1.08, 0.02, d * 1.04, mat, 0, h * 0.48, -curve * 0.02));      // feed lips
   g.add(bx(w * 0.5, 0.012, d * 0.5, MAT.steel, 0, -h * 0.5 + 0.006, 0));     // floorplate
-  for (let i = 0; i < 3; i++) g.add(bx(w * 1.02, 0.008, d * 0.7, MAT.polyLite, 0, h * 0.2 - i * 0.045, 0));  // witness ribs
+  g.add(bx(w * 1.03, 0.012, d * 0.72, MAT.polyLite, 0, -h * 0.16, 0));   // single grip band
   g.position.set(x, y, z);
   return g;
 }
@@ -659,6 +674,193 @@ BUILD.dmr = () => {
   ];
   bolt.userData.z0 = bolt.position.z; bolt.userData.y0 = bolt.position.y;
   return { parts, fx: { bolt, mag }, arms: [[0.055, -0.16, 0.24], [0.5, -0.1, 0], [-0.08, -0.11, -0.34], [0.35, 0.3, 0]] };
+};
+
+// ============================ MELEE ============================
+// Matched to the RIVALS melee line-up: a real scythe (not the pocket knife the
+// slot used to hold), a katana with a wrapped tsuka, twin daggers, a bat, and
+// the knife. Same flat low-poly language as the guns.
+
+// wrapped handle: a core plus alternating diamond bindings
+function wrapped(len, x, y, z, core = MAT.polymer, bindMat = MAT.rubber, r = 0.028) {
+  const out = [P(cylG(r, r, len, 8), core, x, y, z, Math.PI / 2)];
+  const n = Math.max(3, Math.round(len / 0.07));
+  for (let i = 0; i < n; i++) {
+    const zz = z - len / 2 + 0.035 + i * ((len - 0.07) / Math.max(1, n - 1));
+    out.push(bx(r * 2.3, r * 2.3, 0.022, bindMat, x, y, zz, 0, 0, Math.PI / 4));
+  }
+  return out;
+}
+
+// ---- SCYTHE: long haft, big crescent blade ----
+BUILD.scythe = () => {
+  // Crescent built in the X/Y plane then turned side-on, so it curves in the
+  // SAME plane as the shaft — the read that says "scythe" at a glance. Each
+  // segment is a flat plate laid tangent to the arc and overlapping its
+  // neighbour, so the blade is continuous from every angle.
+  const blade = new THREE.Group();
+  const SEG = 16, R = 0.38, A0 = 0.12, A1 = 2.05;
+  for (let i = 0; i < SEG; i++) {
+    const t = i / (SEG - 1);
+    const a = A0 + t * (A1 - A0);
+    const w = 0.14 * (1 - t * 0.8) + 0.024;          // broad at the heel, fine at the tip
+    const x = Math.sin(a) * R, y = Math.cos(a) * R;
+    blade.add(bx(0.1, w, 0.024, MAT.blade, x, y, 0, 0, 0, -a));
+    // honed edge along the inside of the curve
+    const ri = R - w * 0.5;
+    blade.add(bx(0.1, 0.018, 0.028, MAT.edge, Math.sin(a) * ri, Math.cos(a) * ri, 0, 0, 0, -a));
+  }
+  blade.rotation.y = Math.PI / 2;                     // turn the crescent side-on
+  blade.position.set(0.05, -0.02, -0.6);
+
+  const parts = [
+    ...wrapped(1.15, 0.05, -0.06, -0.02, MAT.polymer, MAT.rubber, 0.03),          // haft
+    P(cylG(0.05, 0.05, 0.12, 10), MAT.gunmetal, 0.05, -0.03, -0.56, Math.PI / 2), // head collar
+    bx(0.062, 0.062, 0.07, MAT.gold, 0.05, -0.02, -0.62),                          // accent block
+    P(cylG(0.038, 0.038, 0.06, 8), MAT.gunmetal, 0.05, -0.09, 0.53, Math.PI / 2),  // butt cap
+    blade,
+  ];
+  return { parts, fx: {}, arms: [[0.19, -0.2, 0.18], [0.55, -0.3, 0.1], [-0.16, -0.16, -0.16], [0.5, 0.4, -0.1]] };
+};
+
+// ---- KATANA: gently curved single edge, tsuba, wrapped tsuka ----
+BUILD.katana = () => {
+  const blade = new THREE.Group();
+  const SEG = 10;
+  for (let i = 0; i < SEG; i++) {
+    const t = i / (SEG - 1);
+    const z = -0.16 - t * 0.92;
+    const curve = t * t * 0.1;                    // sori — the curve of the blade
+    const w = 0.055 - t * 0.012;
+    blade.add(bx(0.017, w, 0.1, MAT.blade, 0, curve, z, 0, 0, 0));
+    blade.add(bx(0.02, 0.011, 0.098, MAT.edge, 0, curve - w * 0.5, z));   // hamon edge
+  }
+  blade.add(bx(0.017, 0.038, 0.09, MAT.blade, 0, 0.098, -1.13, -0.28));   // kissaki tip
+  const parts = [
+    blade,
+    P(cylG(0.075, 0.075, 0.016, 4), MAT.gold, 0, 0, -0.13, Math.PI / 2, 0, Math.PI / 4),   // tsuba
+    ...wrapped(0.3, 0, 0, 0.03, MAT.polymer, MAT.rubber, 0.026),                            // tsuka
+    P(cylG(0.032, 0.032, 0.03, 6), MAT.gold, 0, 0, 0.19, Math.PI / 2),                       // kashira
+  ];
+  return { parts, fx: {}, arms: [[0.12, -0.22, 0.2], [0.55, -0.25, 0.1], [-0.05, -0.24, 0.06], [0.55, 0.25, 0.1]] };
+};
+
+// ---- KNIFE: short clip-point blade ----
+BUILD.knife = () => {
+  const parts = [
+    bx(0.026, 0.055, 0.3, MAT.blade, 0, 0, -0.2),
+    bx(0.03, 0.014, 0.29, MAT.edge, 0, -0.026, -0.2),                    // edge
+    bx(0.02, 0.042, 0.09, MAT.blade, 0, 0.008, -0.39, -0.22),            // clip point
+    bx(0.05, 0.05, 0.04, MAT.gold, 0, 0, -0.03),                         // bolster
+    ...wrapped(0.2, 0, 0, 0.1, MAT.polymer, MAT.rubber, 0.026),          // handle
+    bx(0.04, 0.04, 0.02, MAT.gunmetal, 0, 0, 0.21),                      // pommel
+  ];
+  return { parts, fx: {}, arms: [[0.2, -0.24, 0.2], [0.6, -0.3, 0.15], [-0.5, -0.28, 0.02], [0.6, 0.55, -0.15]] };
+};
+
+// ---- DAGGERS: a matched pair, one per hand ----
+// These are returned as `hands`, not `parts`: each blade is parented to its own
+// arm so it can never drift away from the fist during the equip/pullout swing.
+BUILD.daggers = () => {
+  const one = () => {
+    const g = new THREE.Group();
+    // laid out in ARM-local space: the fist is at about z = -0.13, blade forward
+    g.add(bx(0.022, 0.05, 0.26, MAT.blade, 0, 0, -0.34));
+    g.add(bx(0.026, 0.012, 0.25, MAT.edge, 0, -0.024, -0.34));
+    g.add(bx(0.018, 0.036, 0.07, MAT.blade, 0, 0.005, -0.49, -0.25));      // point
+    g.add(bx(0.075, 0.02, 0.026, MAT.gold, 0, 0, -0.2));                    // crossguard
+    for (const m of wrapped(0.16, 0, 0, -0.11, MAT.polymer, MAT.rubber, 0.023)) g.add(m);
+    g.add(P(sphG(0.026, 8, 6), MAT.gold, 0, 0, -0.02));                     // pommel
+    // the hands must not be repainted by the arm-colour pass
+    g.traverse((o) => { if (o.isMesh) o.userData.heldItem = true; });
+    return g;
+  };
+  return { parts: [], hands: { r: [one()], l: [one()] }, fx: {},
+    arms: [[0.3, -0.24, 0.06], [0.5, -0.22, 0.04], [-0.3, -0.24, 0.06], [0.5, 0.22, -0.04]] };
+};
+
+// ---- BAT: tapered barrel, taped grip ----
+BUILD.bat = () => {
+  const g = [];
+  const SEG = 8;
+  for (let i = 0; i < SEG; i++) {
+    const t = i / (SEG - 1);
+    const r = 0.026 + t * 0.05;                    // handle -> barrel taper
+    g.push(P(cylG(r, r, 0.14, 10), MAT.wood, 0, 0, -0.1 - t * 0.55, Math.PI / 2));
+  }
+  const parts = [
+    ...g,
+    P(cylG(0.078, 0.078, 0.05, 10), MAT.wood, 0, 0, -0.78, Math.PI / 2),  // end cap
+    ...wrapped(0.26, 0, 0, 0.08, MAT.polymer, MAT.rubber, 0.03),          // taped grip
+    P(cylG(0.036, 0.036, 0.024, 8), MAT.gold, 0, 0, 0.21, Math.PI / 2),   // knob
+  ];
+  return { parts, fx: {}, arms: [[0.14, -0.24, 0.22], [0.5, -0.2, 0.08], [-0.02, -0.26, 0.08], [0.5, 0.22, 0.08]] };
+};
+
+// ---- FISTS: nothing but your hands (wraps drawn on the arms themselves) ----
+BUILD.fists = () => ({ parts: [], fx: {},
+  arms: [[0.58, -0.26, -0.04], [0.7, -0.45, -0.2], [-0.6, -0.25, -0.1], [0.7, 0.45, 0.2]] });
+
+// ============================ UTILITY ============================
+
+// ---- GRENADE: fragmentation body, spoon and pin ----
+BUILD.grenade = () => {
+  const body = P(sphG(0.1, 14, 12), MAT.olive, 0.36, -0.14, -0.06);
+  body.scale.y = 1.16;
+  const lever = bx(0.026, 0.11, 0.05, MAT.steel, 0.4, -0.06, -0.02, 0.25);
+  const pin = P(torG(0.026, 0.007, 6, 12), MAT.steel, 0.33, -0.005, -0.06, 0, Math.PI / 2, 0);
+  pin.userData.x0 = pin.position.x; pin.userData.y0 = pin.position.y;
+  const parts = [
+    body,
+    bx(0.062, 0.05, 0.062, MAT.gunmetal, 0.36, -0.03, -0.06),             // fuse cap
+    bx(0.104, 0.016, 0.104, MAT.olive, 0.36, -0.1, -0.06),                // banding
+    bx(0.104, 0.016, 0.104, MAT.olive, 0.36, -0.18, -0.06),
+    lever, pin,
+  ];
+  return { parts, fx: { lever, pin }, arms: [[0.38, -0.26, 0.08], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]] };
+};
+
+// ---- SATCHEL: sticky charge with a live indicator ----
+BUILD.satchel = () => {
+  const lamp = P(sphG(0.017, 8, 6), MAT.reticle, 0.4, -0.03, -0.16);
+  const parts = [
+    bx(0.17, 0.11, 0.2, MAT.danger, 0.37, -0.13, -0.06),                  // charge block
+    bx(0.175, 0.03, 0.205, MAT.polymer, 0.37, -0.07, -0.06),              // strap
+    bx(0.06, 0.05, 0.06, MAT.gunmetal, 0.4, -0.05, -0.14),                // detonator
+    lamp,
+    P(cylG(0.008, 0.008, 0.13, 6), MAT.steel, 0.32, -0.03, -0.1, 0.4),    // antenna
+  ];
+  return { parts, fx: { lamp }, arms: [[0.38, -0.26, 0.08], [0.6, -0.3, 0.12], [-0.55, -0.28, 0.0], [0.6, 0.5, -0.12]] };
+};
+
+// ---- JUMP PAD: folded deployable with arrow decal ----
+BUILD.jumppad = () => {
+  const prongA = bx(0.03, 0.09, 0.03, MAT.steel, 0.3, -0.1, -0.2, 0.3);
+  const prongB = bx(0.03, 0.09, 0.03, MAT.steel, 0.45, -0.1, -0.2, 0.3);
+  const parts = [
+    bx(0.28, 0.05, 0.28, MAT.gunmetal, 0.37, -0.15, -0.08),               // base plate
+    bx(0.23, 0.045, 0.23, MAT.teal, 0.37, -0.115, -0.08),                 // bounce surface
+    bx(0.05, 0.05, 0.13, MAT.edge, 0.37, -0.088, -0.11),                  // arrow shaft
+    bx(0.12, 0.05, 0.06, MAT.edge, 0.37, -0.088, -0.16),                  // arrow head
+    bx(0.29, 0.02, 0.06, MAT.polymer, 0.37, -0.175, -0.08),               // rubber feet
+    prongA, prongB,
+  ];
+  return { parts, fx: { prongA, prongB }, arms: [[0.38, -0.28, 0.1], [0.62, -0.3, 0.12], [-0.5, -0.3, 0.02], [0.62, 0.45, -0.1]] };
+};
+
+// ---- WARPER: portal projector ----
+BUILD.warper = () => {
+  const ring = P(torG(0.075, 0.016, 8, 18), MAT.violet, 0, 0.0, -0.34, 0, 0, 0);
+  const core = P(sphG(0.034, 10, 8), MAT.lamp, 0, 0.0, -0.34);
+  const parts = [
+    bx(0.09, 0.1, 0.26, MAT.gunmetal, 0, -0.01, -0.06),                   // body
+    bx(0.095, 0.035, 0.14, MAT.violet, 0, 0.05, -0.06),                   // energy channel
+    ...grip(MAT.polymer, 0, -0.13, 0.06, 0.24, 0.058, 0.16, 0.08),
+    ...trigger(MAT.gunmetal, 0, -0.04, -0.02),
+    P(cylG(0.05, 0.06, 0.14, 12), MAT.gunmetal, 0, 0, -0.24, Math.PI / 2), // emitter throat
+    ring, core,
+  ];
+  return { parts, fx: { ring, core }, arms: [[0.05, -0.17, 0.16], [0.45, 0, 0], [-0.085, -0.18, 0.12], [0.45, 0.3, 0.2]] };
 };
 
 // ---------------------------------------------------------------- api
