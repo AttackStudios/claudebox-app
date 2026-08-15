@@ -14,6 +14,7 @@ import { recoilStep, spreadFor, feelFor } from '/shared/rivals/gunfeel.js';
 import { MAPS, LOBBY, RANGE } from '/shared/rivals/maps.js';
 import { loadAudio, resumeAudio, playOne, playLoop, stopLoop } from './audio.js';
 import { createMover, tuning, PRESETS } from './movement.js';
+import { buildGun, hasGun, GUN_IDS, initWeaponEnv, MAT as WMAT } from './weapons.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -123,6 +124,7 @@ const platIcon = (k) => (k ? `<span class="plat" title="Playing on ${k}">${PLATF
 window.__rivals = {
   game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; },
   get anim() { return vmAnim; },
+  get viewmodels() { return viewmodels; },
   fns: {
     startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; },
     tryAirJump: () => tryAirJump(),   // double-jump probe (daggers / fists)
@@ -1231,8 +1233,16 @@ const vmScene = new THREE.Scene();
 vmScene.add(camera);   // viewRoot rides the camera; only vmScene draws it
 vmScene.add(new THREE.AmbientLight('#c4ccd8', 1.5));
 { const vmSun = new THREE.DirectionalLight('#fff2dc', 1.3); vmSun.position.set(2, 4, 1); vmScene.add(vmSun); }
+{ const vmRim = new THREE.DirectionalLight('#9fc8ff', 0.75); vmRim.position.set(-3, 1.5, -2); vmScene.add(vmRim); }
+// a generated environment is what gives the metal its sheen — without it a
+// metalness>0 material renders almost black
+vmScene.environment = initWeaponEnv(renderer);
 const viewmodels = {};
-function vmMat(c) { return new THREE.MeshLambertMaterial({ color: c }); }
+// Standard shading so blades, hafts and hands catch the same light the guns do.
+// Kept deliberately mid-range: high metalness would make wood and cloth wrong.
+function vmMat(c) {
+  return new THREE.MeshStandardMaterial({ color: c, metalness: 0.28, roughness: 0.55, envMapIntensity: 0.8 });
+}
 
 // your avatar's colours on YOUR hands — like the original's viewmodels
 const myR6Profile = identity.avatar?.r6 || R6_DEFAULT;
@@ -1343,42 +1353,15 @@ function makeBalisong() {   // the REAL articulated balisong — shared by the v
   return { pivot, bladeG, hA, hB, blurMesh, blurMesh2, blurDisc };
 }
 function buildViewmodels() {
-  // ---- assault rifle: stock/body/grip/mag/handguard/barrel/sights ----
-  {
+  // Every firearm comes from weapons.js — its own receiver, furniture, optic and
+  // moving parts. Nothing here is a recoloured copy of anything else.
+  for (const id of GUN_IDS) {
+    const b = buildGun(id);
+    if (!b) continue;
     const g = new THREE.Group();
-    const arBolt = box(0.028, 0.04, 0.26, DARK, 0, 0.08, -0.02);   // charging handle / top rail (cycles on fire)
-    const arMag = box(0.065, 0.18, 0.1, DARK, 0, -0.15, -0.06, 0.12);
-    arBolt.userData.z0 = arBolt.position.z;
-    rigWeapon(g, [
-      box(0.07, 0.11, 0.2, DARK, 0, -0.01, 0.32),          // stock
-      box(0.09, 0.12, 0.48, GOLD, 0, 0, 0),                // receiver
-      box(0.06, 0.13, 0.07, DARK, 0, -0.12, 0.12, 0.3),    // pistol grip
-      arMag,                                               // magazine
-      box(0.075, 0.085, 0.22, GOLD, 0, 0, -0.34),          // handguard
-      box(0.04, 0.04, 0.3, DARK, 0, 0.02, -0.58),          // barrel
-      box(0.055, 0.055, 0.06, GREY, 0, 0.02, -0.74),       // muzzle
-      arBolt,                                              // top rail
-      box(0.02, 0.05, 0.02, DARK, 0, 0.085, -0.42),        // front post
-    ], [0.06, -0.16, 0.22], [0.5, -0.12, 0], [-0.08, -0.1, -0.3], [0.35, 0.35, 0.1]);
-    arMag.userData.y0 = arMag.position.y;
-    g.userData.fx = { bolt: arBolt, mag: arMag };
-    viewmodels.ar = g;
-  }
-  // ---- handgun ----
-  {
-    const g = new THREE.Group();
-    const hgSlide = box(0.07, 0.075, 0.3, GREY, 0, 0.02, -0.02);
-    const hgSerr = box(0.074, 0.06, 0.06, STEEL, 0, 0.02, 0.1);
-    hgSlide.userData.z0 = hgSlide.position.z; hgSerr.userData.z0 = hgSerr.position.z;
-    rigWeapon(g, [
-      hgSlide,                                             // slide (blows back on fire)
-      hgSerr,                                              // rear serrations
-      box(0.065, 0.05, 0.26, DARK, 0, -0.03, -0.02),       // frame
-      box(0.06, 0.16, 0.085, DARK, 0, -0.13, 0.09, 0.22),  // grip
-      box(0.02, 0.025, 0.02, STEEL, 0, 0.068, -0.15),      // front sight
-    ], [0.045, -0.17, 0.17], [0.45, 0, 0], [-0.085, -0.18, 0.13], [0.45, 0.3, 0.2]);
-    g.userData.fx = { slide: hgSlide, serr: hgSerr };
-    viewmodels.handgun = g;
+    rigWeapon(g, b.parts, b.arms[0], b.arms[1], b.arms[2], b.arms[3]);
+    g.userData.fx = b.fx;
+    viewmodels[id] = g;
   }
   // ---- knife (small pocket knife in the right hand) ----
   {
@@ -1402,26 +1385,6 @@ function buildViewmodels() {
     ], [0.38, -0.26, 0.08], [0.6, -0.35, 0.15], [-0.58, -0.28, -0.02], [0.6, 0.55, -0.15]);
     g.userData.fx = { lever: g.__lever, pin: g.__pin };
     viewmodels.grenade = g;
-  }
-  // ---- sniper: long rifle + scope with objective ----
-  {
-    const g = new THREE.Group();
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.3, 10), vmMat('#15181d'));
-    tube.rotation.x = Math.PI / 2; tube.position.set(0, 0.12, -0.06);
-    const objective = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 10), vmMat('#0c0e12'));
-    objective.rotation.x = Math.PI / 2; objective.position.set(0, 0.12, -0.24);
-    rigWeapon(g, [
-      box(0.075, 0.12, 0.26, GREY, 0, -0.02, 0.36),        // stock
-      box(0.085, 0.12, 0.72, '#3a3125', 0, 0, -0.05),      // body
-      box(0.035, 0.035, 0.52, DARK, 0, 0.02, -0.65),       // barrel
-      box(0.06, 0.06, 0.08, GREY, 0, 0.02, -0.92),         // brake
-      box(0.06, 0.13, 0.09, DARK, 0, -0.13, 0.05, 0.25),   // grip
-      box(0.055, 0.12, 0.09, DARK, 0, -0.12, -0.16),       // mag
-      (() => { const b = box(0.09, 0.035, 0.035, STEEL, 0.08, 0.02, 0.12); b.userData.z0 = b.position.z; b.userData.y0 = b.position.y; g.__bolt = b; return b; })(),   // bolt (cycles after each shot)
-      tube, objective,
-    ], [0.05, -0.16, 0.24], [0.5, -0.1, 0], [-0.085, -0.11, -0.32], [0.35, 0.3, 0]);
-    g.userData.fx = { bolt: g.__bolt };
-    viewmodels.sniper = g;
   }
   // ---- fists: two big shirt-colour cubes ----
   {
@@ -1617,7 +1580,8 @@ function buildViewmodels() {
   for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
 }
 buildViewmodels();
-// wave-mode guns: tinted/scaled variants of the base viewmodels
+// every gun now has a bespoke model (weapons.js); vmVariant survives only for
+// one-off tinted spawns elsewhere
 function vmVariant(srcKey, scale, tint) {
   const src = viewmodels[srcKey];
   if (!src) return null;
@@ -1649,21 +1613,9 @@ function vmVariant(srcKey, scale, tint) {
   viewRoot.add(g);
   return g;
 }
-viewmodels.smg = vmVariant('ar', 0.8, '#57e0ff');
-viewmodels.shotgun = vmVariant('ar', 0.95, '#ff9a3c');
-viewmodels.dmr = vmVariant('sniper', 0.9, '#59d185');
-viewmodels.minigun = vmVariant('ar', 1.3, '#39404e');
 // extra selectable weapons — reuse base viewmodels, behaviour-only for now
-viewmodels.burst = vmVariant('ar', 0.92, '#c0c8d4');
-viewmodels.revolver = vmVariant('handgun', 1.08, '#caa46a');
-viewmodels.uzi = vmVariant('handgun', 0.9, '#2ec5e0');
-viewmodels.shorty = vmVariant('handgun', 1.0, '#8a6a44');
 // katana / bat / butterfly / daggers / jumppad now have their own real models (built above)
 // roster expansion — guns reuse base gun models
-viewmodels.carbine = vmVariant('ar', 0.86, '#8ea0b8');
-viewmodels.battle = vmVariant('ar', 1.05, '#3f4653');
-viewmodels.autosniper = vmVariant('sniper', 0.95, '#4a5568');
-viewmodels.deagle = vmVariant('handgun', 1.12, '#c9a24a');
 // satchel now has its own two-handed model (built above)
 
 // ---- weapon skins: re-material a gun group with an equipped skin ----
@@ -2183,6 +2135,7 @@ let vmBob = 0, vmKick = 0;
 // ---- swingy animation state (springs + one-shot clips) ----
 const vmAnim = {
   swayYaw: 0, swayPitch: 0, roll: 0, sprintK: 0, slideK: 0, airK: 0, landK: 0,
+  spool: 0, cylIdx: 0, lastKick: 0,   // minigun spin-up, revolver cylinder index
   lastRy: 0, lastPitch: 0,
   equipT: 1,                    // 0→1 raise-with-flick on weapon swap
   reloadStart: 0, reloadDur: 0, // hand-animated reload
@@ -5186,8 +5139,24 @@ function frame() {
       // ---- moving parts: slides/bolts kick with the shot ----
       const FX = vm.userData.fx;
       if (FX) {
+        // minigun: the barrel cluster spools up under the trigger and coasts
+        // back down afterwards — the signature tell of the weapon
+        if (FX.barrels) {
+          const want = (mouseDown && !me.dead && (me.ammo?.minigun?.mag ?? 1) > 0) ? 1 : 0;
+          vmAnim.spool += (want - vmAnim.spool) * Math.min(1, dt * (want ? 2.4 : 1.1));
+          FX.barrels.rotation.z += vmAnim.spool * dt * 30;
+        }
+        // revolver: the cylinder indexes one chamber per shot
+        if (FX.cylinder) {
+          if (vmKick > vmAnim.lastKick + 0.15) vmAnim.cylIdx += 1;
+          const target = vmAnim.cylIdx * (Math.PI * 2 / 6);
+          FX.cylinder.rotation.z += (target - FX.cylinder.rotation.z) * Math.min(1, dt * 14);
+        }
+        vmAnim.lastKick = vmKick;
         if (FX.slide && !me.reloading) { FX.slide.position.z = FX.slide.userData.z0 + vmKick * 0.11; FX.serr.position.z = FX.serr.userData.z0 + vmKick * 0.11; }
-        if (FX.bolt && vmKey === 'ar' && !me.reloading) FX.bolt.position.z = FX.bolt.userData.z0 + vmKick * 0.07;   // reload owns the bolt while it runs
+        // every self-loading gun cycles its bolt on the shot (the bolt-action sniper
+// is driven separately, below)
+if (FX.bolt && vmKey !== 'sniper' && !me.reloading) FX.bolt.position.z = FX.bolt.userData.z0 + vmKick * 0.07;
         if (FX.mag && vmAnim.bfInspectT >= 1 && !me.reloading) { FX.mag.position.y = FX.mag.userData.y0 ?? -0.15; FX.mag.rotation.z = 0; FX.mag.visible = true; }   // reset after mag-check inspect
         // sniper: work the bolt between shots — hand comes up, bolt back + forward
         if (FX.bolt && vmKey === 'sniper') {
