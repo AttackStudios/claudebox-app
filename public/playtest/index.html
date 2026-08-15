@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0d16">
+<title>ClaudeBox Playtest</title>
+<link rel="stylesheet" href="/playtest/css/playtest.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+</head>
+<body>
+
+<!-- drifting background -->
+<div id="bg"><span></span><span></span><span></span></div>
+
+<!-- ============ 1. ATTRACT SCREEN ============ -->
+<section id="start" class="screen on">
+  <div class="start-inner">
+    <div id="start-mark">🎮</div>
+    <h1 id="start-word">TAP TO START</h1>
+    <p id="start-sub">ClaudeBox Playtest</p>
+  </div>
+</section>
+
+<!-- ============ 2. GAME PICKER ============ -->
+<section id="picker" class="screen">
+  <header id="pick-head">
+    <div>
+      <div class="eyebrow">Choose your game</div>
+      <h2 id="pick-name">—</h2>
+      <div id="pick-tag">—</div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <button class="arrow" id="arrow-l" aria-label="Previous game">‹</button>
+    <div id="rail"></div>
+    <button class="arrow" id="arrow-r" aria-label="Next game">›</button>
+  </div>
+
+  <div id="dots"></div>
+  <button id="play" class="big-btn">▶ PLAY</button>
+  <p id="pick-hint">Swipe or use ← → · tap the game to play</p>
+</section>
+
+<!-- gear (dev) -->
+<button id="gear" aria-label="Settings">⚙</button>
+
+<!-- ============ PASSWORD ============ -->
+<div id="lock" class="scrim">
+  <div class="card pop">
+    <h3>🔒 Dev access</h3>
+    <p class="sub">Enter the playtest password.</p>
+    <input id="pw" type="password" inputmode="text" autocomplete="off" placeholder="Password">
+    <div id="pw-err" class="err"></div>
+    <div class="row">
+      <button id="pw-cancel" class="btn ghost">Cancel</button>
+      <button id="pw-go" class="btn primary">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DEV MENU ============ -->
+<div id="dev" class="scrim">
+  <div class="card pop">
+    <h3>⚙ Playtest settings</h3>
+    <p class="sub">How long each session lasts before it returns here.</p>
+    <div id="mins-row">
+      <button class="step" id="mins-down">−</button>
+      <div id="mins-val"><b>10</b><small>minutes</small></div>
+      <button class="step" id="mins-up">+</button>
+    </div>
+    <div id="presets"></div>
+    <div class="row">
+      <button id="dev-close" class="btn primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="/playtest/js/playtest.js"></script>
+</body>
+</html>

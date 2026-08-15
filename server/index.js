@@ -90,6 +90,7 @@ app.get('/games/bab', (req, res) => res.sendFile(path.join(ROOT, 'public', 'bab'
 app.get('/games/webrush', (req, res) => res.sendFile(path.join(ROOT, 'public', 'webrush', 'index.html')));
 app.get('/games/pizza', (req, res) => res.sendFile(path.join(ROOT, 'public', 'pizza', 'index.html')));
 app.get('/mod', (req, res) => res.sendFile(path.join(ROOT, 'public', 'mod', 'index.html')));
+app.get('/playtest', (req, res) => res.sendFile(path.join(ROOT, 'public', 'playtest', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.use('/api', hubRouter());

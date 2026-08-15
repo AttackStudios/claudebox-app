@@ -163,6 +163,10 @@
   try {
     const gm = document.createElement('script');
     gm.src = '/js/gamemenu.js'; gm.async = true;
+    // playtest kiosk timer — inert unless a session was started from /playtest
+    const pt = document.createElement('script');
+    pt.src = '/js/playtest-session.js'; pt.async = true;
+    document.head.appendChild(pt);
     (document.head || document.documentElement).appendChild(gm);
   } catch {}
 })();

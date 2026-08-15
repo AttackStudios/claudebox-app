@@ -991,7 +991,10 @@ function stepSail(dt, t) {
   // buoyancy: float ratio above 1 keeps the deck dry, below 1 and you go under
   const target = s.float >= 1 ? 0 : -(1 - Math.min(s.float, 1)) * 9;
   boat.y = lerp(boat.y, target, 1 - Math.exp(-1.4 * dt));
-  if (boat.y < -5.5) { finishRun(false); return; }
+  // Once the deck goes under you are finished. The old threshold (-5.5) let a
+  // sinking boat drop below every hazard and coast the rest of the river
+  // untouchable, which was the whole exploit.
+  if (boat.y < -1.2) { finishRun(false); return; }
 
   // forward motion: the current plus whatever thrust is bolted on, scaled by
   // how well the hull actually floats
@@ -1005,7 +1008,13 @@ function stepSail(dt, t) {
   steer = clamp(steer, -1, 1);
   boat.x += steer * 7 * dt;
   if (boat.z < STAGE_LEN) boat.x = lerp(boat.x, 0, 1 - Math.exp(-1.1 * dt));
-  boat.x = clamp(boat.x, -RIVER.width / 2 + 1, RIVER.width / 2 - 1);
+  // clamp by the hull's actual half-width, not its centre, so a wide build
+  // cannot hang through the bank
+  let halfW = 0.5;
+  for (const b of blocks.values()) halfW = Math.max(halfW, Math.abs(b.gx - (PS - 1) / 2) + 0.5);
+  const lane = Math.max(1, RIVER.width / 2 - halfW);
+  boat.x = clamp(boat.x, -lane, lane);
+  grindWalls();
 
   // stage tracking + payout pips
   const stages = stagesOf(mapId);
@@ -1097,6 +1106,27 @@ function cullHazards() {
   for (const h of hazards) {
     const near = Math.abs(h.z - z) < HAZ_DRAW;
     if (h.mesh.visible !== near) h.mesh.visible = near;
+  }
+}
+
+// Anything sticking out past the bank is scraped off against the wall. Without
+// this a boat wider than the river simply clipped through the scenery.
+let grindAt = 0;
+function grindWalls() {
+  const edge = RIVER.width / 2;
+  if (clockNowMs() < grindAt) return;
+  for (const [k, b] of blocks) {
+    const wx = boat.x + (b.gx - (PS - 1) / 2);
+    if (Math.abs(wx) < edge) continue;
+    const wy = boat.y + b.gy + 0.5;
+    const wz = boat.z + (b.gz - (PS - 1) / 2);
+    parts.burst(new THREE.Vector3(wx, wy, wz), BLOCK_BY_ID[b.id]?.color || '#b3803f', 8, { spread: 5, up: 4 });
+    sfx.breakBlock();
+    removeBlock(k);
+    settleStructure(false);
+    shake = Math.min(1, shake + 0.4);
+    grindAt = clockNowMs() + 120;     // one block at a time, so it grinds down
+    return;
   }
 }
 
