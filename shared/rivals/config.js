@@ -52,6 +52,7 @@ export const WEAPONS = {
   scythe: {
     slot: 3, name: 'Knife', class: 'melee', auto: false, melee: true,
     dmg: 45, rate: 0.5, range: 3.4, backstabOneshot: true,
+    vm: 'knife',          // this id is the knife slot; the Scythe is `reaper`
   },
   fists: {
     slot: 6, name: 'Fists', class: 'melee', auto: true, melee: true,
@@ -126,11 +127,24 @@ export const WEAPONS = {
   },
   katana: {
     slot: 3, name: 'Katana', class: 'melee', auto: false, melee: true,
-    dmg: 55, rate: 0.45, range: 4.2, backstabOneshot: true, vm: 'scythe',
+    dmg: 55, rate: 0.45, range: 4.2, backstabOneshot: true, vm: 'katana',
+  },
+  // The Scythe. Its "attack" is a forward launch, not a swing: you get a burst
+  // of speed along your view for `boostDur`, then whatever of that burst is
+  // still in your velocity is taken back out so it never compounds.
+  reaper: {
+    slot: 3, name: 'Scythe', class: 'melee', auto: false, melee: true,
+    dmg: 50, rate: 0.55, range: 4.0, backstabOneshot: true,
+    vm: 'scythe',
+    boost: true,
+    boostSpeed: 34,       // horizontal launch along your view
+    boostUp: 3.4,         // slight lift so you clear lips and rails
+    boostDur: 0.42,       // how long the burst is yours to keep
+    boostCd: 2.6,
   },
   bat: {
     slot: 3, name: 'Bat', class: 'melee', auto: false, melee: true,
-    dmg: 40, rate: 0.55, range: 3.6, knockback: 14, vm: 'scythe',
+    dmg: 40, rate: 0.55, range: 3.6, knockback: 14, vm: 'bat',
   },
 
   // ---- roster expansion (behaviour-distinct; reuse base viewmodels) ----

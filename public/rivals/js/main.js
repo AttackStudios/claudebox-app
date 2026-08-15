@@ -125,8 +125,10 @@ window.__rivals = {
   game, net, camera, get scene() { return scene; }, get me() { return me; }, get others() { return others; },
   get anim() { return vmAnim; },
   get viewmodels() { return viewmodels; },
+  get charm() { return { root: charmRoot, swing: charmSwing, equipped: charmEquipped, owned: iHaveOwnerCharm }; },
   fns: {
     startReload: (...a) => startReload(...a), switchWeapon: (...a) => switchWeapon(...a), setRight: (v) => { rightDown = !!v; },
+    scytheBoost: () => triggerScytheBoost(), quickUse: (c) => quickUse(c),
     tryAirJump: () => tryAirJump(),   // double-jump probe (daggers / fists)
     tryFire: () => tryFire(), gunshot: (id, v) => gunshot(id, v),   // shooting-feel probes
     spawnDummy: (g, w, ry, dx, dz) => { const fid = 'dummy_' + g + '_' + (w || 'ar') + '_' + (ry || 0); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x + (dx || 0), y: 0, z: me.pos.z + (dz || 6) }, ry: ry || 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
@@ -578,7 +580,8 @@ document.addEventListener('mousemove', (e) => {
 // ---------------- rebindable keybinds ----------------
 const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
-  jump: 'Space', sprint: 'ControlLeft', crouch: 'ShiftLeft', reload: 'KeyR', queue: 'KeyE', inspect: 'KeyF',
+  jump: 'Space', sprint: 'ControlLeft', crouch: 'ShiftLeft', reload: 'KeyR', queue: 'KeyE', inspect: 'KeyV',
+  quickMelee: 'KeyF', quickUtil: 'KeyG',
   weapon1: 'Digit1', weapon2: 'Digit2', weapon3: 'Digit3', weapon4: 'Digit4', weapon5: 'Digit5', weapon6: 'Digit6',
 };
 let binds = (() => {
@@ -588,6 +591,9 @@ let binds = (() => {
     // only apply NON-empty saved binds so an accidentally-unbound action
     // (e.g. jump) always falls back to its default instead of being dead
     for (const k in DEFAULT_BINDS) if (saved[k]) out[k] = saved[k];
+    // F is quick-melee now; anyone whose saved binds still had inspect on F
+    // gets moved to the new default rather than losing quick-melee
+    if (out.inspect === out.quickMelee) out.inspect = DEFAULT_BINDS.inspect;
   } catch {}
   return out;
 })();
@@ -612,6 +618,8 @@ addEventListener('keydown', (e) => {
   if (c === binds.queue && game.phase === 'lobby') toggleModes();
   if (c === binds.reload) startReload();
   for (let i = 1; i <= 6; i++) if (c === binds['weapon' + i]) switchWeapon(myLoadout()[i - 1]);
+  if (c === (binds.quickMelee || 'KeyF')) quickUse('melee');
+  if (c === (binds.quickUtil || 'KeyG')) quickUse('utility');
   if (c === binds.sprint || c === binds.crouch) tryCrouch(true);   // Shift OR Ctrl = slide/crouch
   if (c === binds.jump) tryAirJump();                              // Daggers/Fists: mid-air double jump
   if (c === (binds.inspect || 'KeyF') && !me.dead && !me.reloading
@@ -939,6 +947,7 @@ function onRightDown() {
     sfx.dash(); net.send({ t: 'dash' });
     return;
   }
+  if (WEAPONS[me.weapon]?.boost) { triggerScytheBoost(); return; }
   if (me.weapon === 'satchel') {
     // DETONATOR — the satchel is C4: you throw charges that stick where they
     // land, then press this to set every one of them off at once. (The old
@@ -1561,7 +1570,13 @@ function showSkinUnlockToast(def) {
 }
 const iOwnCatpaw = () => Array.isArray(mySkins.owned) && mySkins.owned.includes('catpaw');
 // which viewmodel to actually SHOW for the held weapon (cat paw replaces the knife)
-function activeVmKey() { return (me.weapon === 'scythe' && catpawEquipped()) ? 'catpaw' : me.weapon; }
+function activeVmKey() {
+  if (me.weapon === 'scythe' && catpawEquipped()) return 'catpaw';
+  // `vm` lets several weapons share a model, and keeps the knife slot (id
+  // 'scythe') on the knife now that a real Scythe exists as `reaper`
+  const key = WEAPONS[me.weapon]?.vm || me.weapon;
+  return viewmodels[key] ? key : me.weapon;
+}
 async function loadMySkins() {
   try {
     const d = await fetch('/api/rivals/skins?name=' + encodeURIComponent(identity.name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } }).then((r) => r.json());
@@ -1609,16 +1624,26 @@ function syncCharm() {
 }
 function tickCharm(dt) {
   if (!charmRoot) return;
-  const show = iHaveOwnerCharm && charmEquipped && (window.__charmForce || (!inLobbyMode() && !me.dead));
+  // Visible whenever you own it and have it equipped — including the lobby.
+  // It used to be hidden outside a live match, which is why an owner could go a
+  // whole session without ever seeing their charm.
+  const show = iHaveOwnerCharm && charmEquipped && !me.dead;
   charmRoot.visible = show;
   if (!show) return;
-  // hang from the RIGHT HAND so it rides equip/swing/recoil animation
+  // Hang from the RIGHT HAND so it rides equip/swing/recoil. In the lobby the
+  // viewmodels are force-hidden every frame, so key off the mode rather than the
+  // transient `visible` flag, and fall back to a fixed spot when there is no gun.
   const vmNow = viewmodels[typeof activeVmKey === 'function' ? activeVmKey() : me.weapon];
-  const hand = vmNow?.visible ? vmNow.userData?.rArm : null;
-  if (hand) {
-    if (charmRoot.parent !== hand) {
-      hand.add(charmRoot);
-      charmRoot.position.set(0.105, -0.055, 0.055);   // right on the outer edge of the fist
+  // Ride the WEAPON, not the arm. Arm rotations differ enormously per weapon —
+  // the old arm-local offset projected to NDC y = -1.53 on the AR (below the
+  // screen) and off the top on pistols, which is why the charm was never
+  // actually visible in a match. This offset was solved against every weapon
+  // class and lands on screen for all of them.
+  const holder = (!inLobbyMode() && vmNow) ? vmNow.userData?.gun : null;
+  if (holder) {
+    if (charmRoot.parent !== holder) {
+      holder.add(charmRoot);
+      charmRoot.position.set(0.2, -0.24, -0.4);     // hangs off the right of the weapon
       charmRoot.scale.setScalar(1 / 0.68);          // undo the viewmodel shrink
     }
   } else if (charmRoot.parent !== viewRoot) {
@@ -2013,6 +2038,7 @@ let vmBob = 0, vmKick = 0;
 const vmAnim = {
   swayYaw: 0, swayPitch: 0, roll: 0, sprintK: 0, slideK: 0, airK: 0, landK: 0,
   spool: 0, cylIdx: 0, lastKick: 0,   // minigun spin-up, revolver cylinder index
+  scytheT: 1,                   // Scythe launch: reach back, then sweep through
   lastRy: 0, lastPitch: 0,
   equipT: 1,                    // 0→1 raise-with-flick on weapon swap
   reloadStart: 0, reloadDur: 0, // hand-animated reload
@@ -2823,6 +2849,88 @@ function freshAmmo() {
   for (const [k, w] of Object.entries(WEAPONS)) if (w.mag) a[k] = { mag: w.mag, res: w.reserve };
   return a;
 }
+// ---------------------------------------------------------------- Scythe
+// Its ability is a launch, not a swing: a burst of speed along your view that
+// you keep for boostDur, after which whatever of that burst is STILL in your
+// velocity is taken back out. That stops it compounding across repeat uses
+// while never yanking you backwards.
+const boostState = { vx: 0, vz: 0, until: 0, cdUntil: 0 };
+function scytheWeaponId() {
+  for (const id of myLoadout()) if (WEAPONS[id]?.boost) return id;
+  return WEAPONS[me.weapon]?.boost ? me.weapon : null;
+}
+function triggerScytheBoost() {
+  const id = WEAPONS[me.weapon]?.boost ? me.weapon : scytheWeaponId();
+  const w = WEAPONS[id]; if (!w?.boost) return false;
+  const now = clockNow();
+  if (me.dead || now < boostState.cdUntil) return false;
+  if (['freeze', 'vote', 'teleport', 'podium'].includes(game.phase)) return false;
+  boostState.cdUntil = now + w.boostCd;
+  const dx = -Math.sin(me.ry), dz = -Math.cos(me.ry);
+  const vx = dx * w.boostSpeed, vz = dz * w.boostSpeed;
+  me.vel.x += vx; me.vel.z += vz;
+  me.vel.y = Math.max(me.vel.y, w.boostUp);
+  me.grounded = false; me.sliding = false;
+  boostState.vx = vx; boostState.vz = vz; boostState.until = now + w.boostDur;
+  vmAnim.scytheT = 0;                       // the custom activation animation
+  vmAnim.swingT = 1;                        // it is not a swing
+  sfx.dash?.(); net.send({ t: 'dash' });
+  return true;
+}
+// called every frame from the movement step
+function tickScytheBoost() {
+  if (!boostState.until || clockNow() < boostState.until) return;
+  const bx = boostState.vx, bz = boostState.vz;
+  boostState.until = 0;
+  const mag2 = bx * bx + bz * bz;
+  if (mag2 < 0.0001) return;
+  // remove only the part of the burst still present, so a player who has since
+  // turned or been slowed is not shoved backwards
+  const k = Math.max(0, Math.min(1, (me.vel.x * bx + me.vel.z * bz) / mag2));
+  me.vel.x -= bx * k; me.vel.z -= bz * k;
+}
+
+// ---------------------------------------------------------------- quick slots
+// F and G reach past whatever you are holding: swap to your melee (or utility),
+// use it once, then put your original weapon back.
+const quick = { back: null, at: 0 };
+const carriedOfClass = (want) => {
+  for (const id of myLoadout()) {
+    const w = WEAPONS[id]; if (!w) continue;
+    if (want === 'melee' ? w.melee : w.utility) return id;
+  }
+  return null;
+};
+function quickUse(want) {
+  // the lobby's practice range is a legitimate place to use these; tryFire()
+  // still decides whether the swing/throw actually lands
+  if (quick.back || me.dead || me.reloading) return;
+  if (['freeze', 'vote', 'teleport', 'podium'].includes(game.phase)) return;
+  const id = carriedOfClass(want);
+  if (!id) return;
+  const prev = me.weapon;
+  if (id !== prev) switchWeapon(id);
+  const act = () => {
+    if (WEAPONS[id]?.boost) triggerScytheBoost();          // Scythe launches instead of swinging
+    else if (id === 'satchel') {
+      tryFire();                                           // throw it…
+      setTimeout(() => {                                   // …then set it off, like a nade jump
+        if (game.phase === 'live') net.send({ t: 'detonate' }); else detonateLocalNades();
+        vmAnim.satchelBtnT = 0;
+      }, 110);
+    } else tryFire();
+  };
+  // one frame of grace so the viewmodel has actually swapped before it fires
+  if (id !== prev) setTimeout(act, 70); else act();
+  const hold = (WEAPONS[id]?.rate || 0.4) + (id === 'satchel' ? 0.45 : 0.3);
+  if (id !== prev) { quick.back = prev; quick.at = clockNow() + hold; }
+}
+function tickQuickSlot() {
+  if (!quick.back || clockNow() < quick.at) return;
+  const back = quick.back; quick.back = null;
+  if (!me.dead) switchWeapon(back);
+}
+
 function switchWeapon(id) {
   if (!id || id === me.weapon || me.reloading) return;
   me.weapon = id;
@@ -2925,6 +3033,7 @@ function tryFire() {
   if (game.phase === 'freeze' || game.phase === 'vote' || game.phase === 'teleport' || game.phase === 'podium') return;
   const now = clockNow();
   const w = WEAPONS[me.weapon];
+  if (w?.boost) { triggerScytheBoost(); return; }   // the Scythe's attack IS the launch
   if (w?.melee) {
     if (now - me.swingAt < w.rate) return;
     me.swingAt = now;
@@ -3404,7 +3513,7 @@ function buildQuickPick() {
   };
 }
 
-const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨', daggers: '⚔️', warper: '🌀' };
+const WEAPON_ICONS = { ar: '🔫', handgun: '🔫', scythe: '🔪', grenade: '💣', jumppad: '🔼', sniper: '🔭', fists: '👊', smg: '🌀', shotgun: '💥', dmr: '🎯', minigun: '⚙️', burst: '🔫', revolver: '🔫', uzi: '🔫', shorty: '💥', katana: '🗡️', bat: '🏏', carbine: '🔫', battle: '🔫', autosniper: '🔭', deagle: '🔫', butterfly: '🦋', satchel: '🧨', daggers: '⚔️', warper: '🌀', reaper: '🌾' };
 function updateLoadoutHud() {
   hud.loadout.innerHTML = '';
   myLoadout().forEach((id, i) => {
@@ -4645,6 +4754,8 @@ function frame() {
   const cn = clockNow();
 
   stepMe(dt);
+  tickScytheBoost();     // hand back whatever of the launch is still in you
+  tickQuickSlot();       // put the previous weapon back after a quick melee/utility
   tickRecoil(dt);
   tickCharm(dt);
   tickAimAssist(dt);
@@ -5002,6 +5113,22 @@ function frame() {
           const knuck = Math.sin(sstep(0.25, 0.7, t) * Math.PI);
           for (const arm of [P.rArm, P.lArm]) { arm.position.y += raise * 0.16; arm.position.z -= raise * 0.2; arm.rotation.x -= raise * 0.55; }
           P.rArm.rotation.z += knuck * 0.85; P.lArm.rotation.z -= knuck * 0.85;
+        }
+      }
+      // ---- Scythe launch: wind the blade back, then sweep it through ----
+      if (vmAnim.scytheT < 1) {
+        vmAnim.scytheT = Math.min(1, vmAnim.scytheT + dt / 0.5);
+        const t = vmAnim.scytheT;
+        const wind = sstep(0, 0.24, t) * (1 - sstep(0.24, 0.42, t));   // pull back
+        const sweep = EASES.outExpo(sstep(0.22, 0.62, t));              // drive through
+        const settle = 1 - sstep(0.62, 1, t);
+        P.gun.rotation.x += wind * 0.5 - sweep * 1.15 * settle;
+        P.gun.rotation.z += wind * 0.35 - sweep * 0.7 * settle;
+        P.gun.position.z += wind * 0.24 - sweep * 0.5 * settle;
+        P.gun.position.y += wind * 0.14 - sweep * 0.1 * settle;
+        for (const arm of [P.rArm, P.lArm]) {
+          arm.position.z += (wind * 0.14 - sweep * 0.2) * settle;
+          arm.rotation.x += (wind * 0.4 - sweep * 0.6) * settle;
         }
       }
       // ---- universal idle breathing (per class) ----
