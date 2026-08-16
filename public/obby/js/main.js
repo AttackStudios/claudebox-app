@@ -368,6 +368,14 @@ let onIce = false;
 // business climbing. This is deliberate, not an oversight — the course builds
 // walls around it from stage 5 on. Do not "fix" it.
 const wallHop = { touchAt: -1, nx: 0, nz: 0, flickAt: -1, lastRy: 0, chain: 0 };
+// Facing oblique to the wall face means a shoulder is buried in it — the same
+// trick as the flick, held rather than snapped. A mouse can snap a facing in one
+// frame; a thumbstick cannot, so without this the hop is desktop-only. Running
+// straight at the wall (into ~ 1) still gives you nothing: it has to be angled.
+function shoulderInWall() {
+  const into = -(Math.sin(player.ry) * wallHop.nx + Math.cos(player.ry) * wallHop.nz);
+  return into > 0.12 && into < 0.9;
+}
 const FLICK_RATE = 5.5;      // rad/s of turn that counts as a flick
 const WALL_GRACE = 0.28;     // how long wall contact stays usable
 const FLICK_GRACE = 0.36;    // how long a flick stays usable
@@ -537,7 +545,8 @@ function updatePlayer(dt, input, time) {
     player.vel.y = JUMP * (gj?.jump || 1); player.grounded = false;
     coyoteUntil = 0; jumpAt = -1; sfx.jump();
   } else if (recentlyPressed && !frozen && !player.grounded
-             && nowS - wallHop.touchAt < WALL_GRACE && nowS - wallHop.flickAt < FLICK_GRACE) {
+             && nowS - wallHop.touchAt < WALL_GRACE
+             && (nowS - wallHop.flickAt < FLICK_GRACE || shoulderInWall())) {
     // Shoulder is inside the wall, so the jump finds "ground" and fires. Each
     // hop needs its own flick, which is what makes chaining them a skill.
     const gj = heldDef();
@@ -917,42 +926,43 @@ addEventListener('mousemove', (e) => {
 function unlock() { if (locked) document.exitPointerLock?.(); }
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(0.3, Math.min(20, orbit.dist + e.deltaY * 0.01)); }, { passive: false });
 
-// two-finger pinch = zoom (same clamp as the wheel); one finger stays free for look/joystick
+// All camera touches in one place, tracked by the touches that BEGAN on the
+// world canvas. Counting e.touches instead would include the finger parked on
+// the joystick, so holding the stick made every look drag read as a two-finger
+// pinch — you could never move and look at the same time, which makes a wall
+// hop (hold into the wall, flick the camera) impossible.
+// One canvas touch = look, two = pinch zoom. The canvas is touch-action:none,
+// so these can stay passive.
+const camTouches = new Map();
 let pinchGap = 0;
-const touchGap = (e) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-canvas.addEventListener('touchstart', (e) => { if (e.touches.length === 2) pinchGap = touchGap(e); }, { passive: true });
-canvas.addEventListener('touchmove', (e) => {
-  if (e.touches.length !== 2) return;
-  e.preventDefault();
-  const gap = touchGap(e);
-  if (pinchGap > 0) orbit.dist = Math.max(0.3, Math.min(20, orbit.dist * (pinchGap / gap)));
-  pinchGap = gap;
-}, { passive: false });
-canvas.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinchGap = 0; }, { passive: true });
-
-// One finger dragging the world = look. Camera rotation used to be mousedown/
-// mousemove only, so on a phone there was no way to turn the camera at all —
-// touches never produce a mousemove stream. The joystick and the buttons capture
-// their own touches, so anything that reaches the canvas is a look drag.
-let lookTouch = null, lookX = 0, lookY = 0;
+const gapOf = () => { const [a, b] = [...camTouches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
 canvas.addEventListener('touchstart', (e) => {
-  if (e.touches.length !== 1) { lookTouch = null; return; }
-  const t = e.changedTouches[0];
-  lookTouch = t.identifier; lookX = t.clientX; lookY = t.clientY;
+  for (const t of e.changedTouches) camTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+  if (camTouches.size === 2) pinchGap = gapOf();
 }, { passive: true });
 canvas.addEventListener('touchmove', (e) => {
-  if (lookTouch === null || e.touches.length !== 1) return;
   for (const t of e.changedTouches) {
-    if (t.identifier !== lookTouch) continue;
-    orbit.yaw -= (t.clientX - lookX) * 0.006;
-    orbit.pitch += (t.clientY - lookY) * 0.006;
-    orbit.pitch = Math.max(-0.3, Math.min(1.3, orbit.pitch));
-    lookX = t.clientX; lookY = t.clientY;
+    const p = camTouches.get(t.identifier);
+    if (!p) continue;
+    if (camTouches.size === 1) {
+      orbit.yaw -= (t.clientX - p.x) * 0.006;
+      orbit.pitch += (t.clientY - p.y) * 0.006;
+      orbit.pitch = Math.max(-0.3, Math.min(1.3, orbit.pitch));
+    }
+    p.x = t.clientX; p.y = t.clientY;
+  }
+  if (camTouches.size === 2) {
+    const gap = gapOf();
+    if (pinchGap > 0 && gap > 0) orbit.dist = Math.max(0.3, Math.min(20, orbit.dist * (pinchGap / gap)));
+    pinchGap = gap;
   }
 }, { passive: true });
-const endLook = (e) => { for (const t of e.changedTouches) if (t.identifier === lookTouch) lookTouch = null; };
-canvas.addEventListener('touchend', endLook, { passive: true });
-canvas.addEventListener('touchcancel', endLook, { passive: true });
+const endCamTouch = (e) => {
+  for (const t of e.changedTouches) camTouches.delete(t.identifier);
+  if (camTouches.size < 2) pinchGap = 0;
+};
+canvas.addEventListener('touchend', endCamTouch, { passive: true });
+canvas.addEventListener('touchcancel', endCamTouch, { passive: true });
 
 function readInput() {
   const x = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
@@ -1224,9 +1234,15 @@ function frame(now) {
   // input + player
   const input = readInput();
   if (mobileStick) { input.x += mobileStick.x; input.z += mobileStick.z; }
-  // Held jump re-arms only while grounded, so it bunny-hops like the keyboard's
-  // key repeat without handing out free mid-air jumps.
-  if (keys.has('Space') && player.grounded) jumpAt = performance.now() / 1000;
+  // A held jump re-arms in exactly two places: on the ground (bunny-hopping,
+  // matching the keyboard's key repeat) and while pressed against a wall (so a
+  // wall hop can be chained by holding the button instead of demanding a
+  // frame-perfect mid-air tap). Anywhere else in the air it stays disarmed, so
+  // this never becomes a free flight button.
+  if (keys.has('Space')) {
+    const t = performance.now() / 1000;
+    if (player.grounded || (!player.grounded && t - wallHop.touchAt < WALL_GRACE)) jumpAt = t;
+  }
   if (myAvatar.ctrl) {
     updatePlayer(dt, input, time);
     myAvatar.ctrl.setAnim(player.anim);
@@ -1299,5 +1315,5 @@ function frame(now) {
   requestAnimationFrame(frame);
   window.__obby = { net, player, remotes, game, scene, orbit, camera, lasers, gear, GEAR, renderer,
     buyGear, equipGear, useSkip, deployCarpet, courseObjs, staticMeshes,
-    lookLock: lookLockOn, wallHop, resolveWalls };   // debug/test hook
+    lookLock: lookLockOn, wallHop, resolveWalls, __jumpAt: () => jumpAt };   // debug/test hook
 })();
