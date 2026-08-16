@@ -930,6 +930,30 @@ canvas.addEventListener('touchmove', (e) => {
 }, { passive: false });
 canvas.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinchGap = 0; }, { passive: true });
 
+// One finger dragging the world = look. Camera rotation used to be mousedown/
+// mousemove only, so on a phone there was no way to turn the camera at all —
+// touches never produce a mousemove stream. The joystick and the buttons capture
+// their own touches, so anything that reaches the canvas is a look drag.
+let lookTouch = null, lookX = 0, lookY = 0;
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) { lookTouch = null; return; }
+  const t = e.changedTouches[0];
+  lookTouch = t.identifier; lookX = t.clientX; lookY = t.clientY;
+}, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  if (lookTouch === null || e.touches.length !== 1) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier !== lookTouch) continue;
+    orbit.yaw -= (t.clientX - lookX) * 0.006;
+    orbit.pitch += (t.clientY - lookY) * 0.006;
+    orbit.pitch = Math.max(-0.3, Math.min(1.3, orbit.pitch));
+    lookX = t.clientX; lookY = t.clientY;
+  }
+}, { passive: true });
+const endLook = (e) => { for (const t of e.changedTouches) if (t.identifier === lookTouch) lookTouch = null; };
+canvas.addEventListener('touchend', endLook, { passive: true });
+canvas.addEventListener('touchcancel', endLook, { passive: true });
+
 function readInput() {
   const x = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
   const z = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
@@ -965,8 +989,16 @@ function setupMobile() {
     }
   }, { passive: true });
   zone.addEventListener('touchend', () => { touchId = null; stick.x = stick.z = 0; knob.style.left = '35px'; knob.style.top = '35px'; }, { passive: true });
-  $('#btn-jump').addEventListener('touchstart', () => keys.add('Space'), { passive: true });
+  // The jump itself is driven by `jumpAt` (buffered jump), not by the key set —
+  // the touch button only added 'Space' to `keys`, which nothing reads for
+  // jumping, so the button did nothing at all.
+  $('#btn-jump').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    keys.add('Space');
+    jumpAt = performance.now() / 1000;
+  }, { passive: false });
   $('#btn-jump').addEventListener('touchend', () => keys.delete('Space'), { passive: true });
+  $('#btn-jump').addEventListener('touchcancel', () => keys.delete('Space'), { passive: true });
   mobileStick = stick;
 }
 
@@ -1192,6 +1224,9 @@ function frame(now) {
   // input + player
   const input = readInput();
   if (mobileStick) { input.x += mobileStick.x; input.z += mobileStick.z; }
+  // Held jump re-arms only while grounded, so it bunny-hops like the keyboard's
+  // key repeat without handing out free mid-air jumps.
+  if (keys.has('Space') && player.grounded) jumpAt = performance.now() / 1000;
   if (myAvatar.ctrl) {
     updatePlayer(dt, input, time);
     myAvatar.ctrl.setAnim(player.anim);
