@@ -31,6 +31,10 @@ const STAGE_COLORS = [
 export const RAINBOW = ['#ff2d2d', '#ff7a00', '#ffc400', '#ffee00', '#00cc44', '#00c8ff', '#2e3bff', '#c02eff'];
 
 const platforms = [];
+// Walls are the only geometry in the course with SIDE collision. Everything
+// else supports you from above only, which is how the original 100 stages were
+// tuned — keeping walls separate means adding them can't change any of them.
+const walls = [];
 const checkpoints = [];
 const movers = [];
 const spinners = [];
@@ -53,6 +57,14 @@ function pad(x, y, z, w, d, kind, stage, h = 1) {
   platforms.push(p);
   return p;
 }
+// A wall stands ON the surface: pass the surface height, get a slab whose base
+// sits on it. Its top is walkable like any other platform.
+function wallBlock(x, base, z, w, h, d, stage) {
+  const o = { x, y: base + h / 2, z, w, h, d, color: STAGE_COLORS[stage % STAGE_COLORS.length] };
+  walls.push(o);
+  return o;
+}
+
 function checkpoint(x, y, z, n) {
   pad(x, y, z, 8, 8, 'normal', n);
   // a bright pad you can see from a stage away
@@ -218,6 +230,22 @@ cx = 13;
 let y = 0;
 
 // Every segment takes (stage, y, difficulty 0..1) and returns the new y.
+// A run of walls too tall to jump. The only way over is the wall hop: press
+// into the face, flick left/right so a shoulder clips inside, and jump off the
+// wall itself. `hops` is how many flicks one wall needs back to back.
+// One clean jump clears ~3 studs, and every hop buys another.
+function wallHopRun(stage, yy, hops, count) {
+  for (let i = 0; i < count; i++) {
+    pad(cx + 5, yy, 0, 10, 11, 'normal', stage);
+    cx += 11;
+    wallBlock(cx, yy + 0.5, 0, 2.4, 2.1 + hops * 2.8, 12, stage);
+    cx += 9;
+  }
+  pad(cx + 3, yy, 0, 10, 11, 'normal', stage);
+  cx += 10;
+  return yy;
+}
+
 const SEGMENTS = [
   { id: 'gaps',      min: 0.00, w: 1.0, f: (s, yy, d) => { gapJumps(s, yy, 3 + Math.round(d * 4), 4.4 - d * 1.7); return yy; } },
   { id: 'beam',      min: 0.00, w: 0.8, f: (s, yy, d) => { narrowBeam(s, yy, 20 + d * 22, 2.0 - d * 0.9); return yy; } },
@@ -232,6 +260,8 @@ const SEGMENTS = [
   { id: 'ice',       min: 0.20, w: 0.7, f: (s, yy, d) => { iceRink(s, yy); return yy; } },
   { id: 'bounce',    min: 0.18, w: 0.7, f: (s, yy, d) => bouncerChain(s, yy, 2 + Math.round(d * 2)) },
   { id: 'laser',     min: 0.30, w: 0.9, f: (s, yy, d) => { laserGrid(s, yy, 2 + Math.round(d * 3)); return yy; } },
+  // diff = (stage-1)/99, so min 0.04 puts the first wall at stage 5
+  { id: 'wallhop',   min: 0.04, w: 0.85, f: (s, yy, d) => wallHopRun(s, yy, 1 + Math.round(d * 2), d > 0.45 ? 2 : 1) },
   { id: 'zigzag',    min: 0.14, w: 0.8, f: (s, yy, d) => { zigzagBeams(s, yy, 2 + Math.round(d * 2)); return yy; } },
 ];
 
@@ -254,7 +284,9 @@ for (let stage = 1; stage <= STAGE_COUNT; stage++) {
   const segs = 1 + (rnd() < 0.25 + diff * 0.5 ? 1 : 0) + (rnd() < diff * 0.35 ? 1 : 0);
   let last = null;
   for (let k = 0; k < segs; k++) {
-    const sg = pickSegment(diff, last);
+    // Stage 5 always introduces the wall hop, so the mechanic has a fixed place
+    // to be learned instead of turning up whenever the shuffle feels like it.
+    const sg = (stage === 5 && k === 0) ? SEGMENTS.find((x) => x.id === 'wallhop') : pickSegment(diff, last);
     y = sg.f(stage, y, diff);
     last = sg.id;
   }
@@ -305,12 +337,12 @@ export const props = [];
 }
 
 export const COURSE = {
-  platforms, checkpoints, movers, spinners, conveyors, blinkers, pendulums, lasers, arches, props,
+  platforms, walls, checkpoints, movers, spinners, conveyors, blinkers, pendulums, lasers, arches, props,
   killY: KILL_Y, finishStage: FINISH_STAGE, length: cx + 28,
 };
 
 const _DEFAULT = {
-  platforms: [...platforms], checkpoints: [...checkpoints], movers: [...movers],
+  platforms: [...platforms], walls: [...walls], checkpoints: [...checkpoints], movers: [...movers],
   spinners: [...spinners], conveyors: [...conveyors], blinkers: [...blinkers],
   pendulums: [...pendulums], lasers: [...lasers], arches: [...arches], props: [...props],
   killY: COURSE.killY, finishStage: COURSE.finishStage, length: COURSE.length,
@@ -319,7 +351,7 @@ const _DEFAULT = {
 export function applyCourse(c) {
   const src = c || _DEFAULT;   // null/empty → restore the default course
   const swap = (arr, next) => { arr.length = 0; for (const x of (next || [])) arr.push(x); };
-  swap(platforms, src.platforms); swap(checkpoints, src.checkpoints);
+  swap(platforms, src.platforms); swap(walls, src.walls); swap(checkpoints, src.checkpoints);
   swap(movers, src.movers); swap(spinners, src.spinners);
   swap(conveyors, src.conveyors); swap(blinkers, src.blinkers);
   swap(pendulums, src.pendulums); swap(lasers, src.lasers); swap(arches, src.arches);

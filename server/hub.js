@@ -199,6 +199,27 @@ export const DEFAULT_AVATAR = {
   face: 'happy',
 };
 
+// One-off grants, applied once at boot and recorded on the user so a restart
+// (or an Upstash restore) can never pay out twice.
+const ONE_OFF_GRANTS = [
+  { id: 'af15-100k-cubes', name: 'attackface15', cubes: 100000 },
+];
+function applyOneOffGrants() {
+  let changed = false;
+  for (const g of ONE_OFF_GRANTS) {
+    const u = ensureUser(g.name);           // creates it if it somehow isn't there
+    ensureWallet(u);
+    if (!u.grants || typeof u.grants !== 'object') u.grants = {};
+    if (u.grants[g.id]) continue;           // already paid
+    u.cubes = (u.cubes || 0) + (g.cubes || 0);
+    u.stars = (u.stars || 0) + (g.stars || 0);
+    u.grants[g.id] = new Date().toISOString();
+    changed = true;
+    console.log(`[hub] granted ${g.cubes || 0} ${CURRENCY.name} to ${u.name} (${g.id})`);
+  }
+  if (changed) save();
+}
+
 function loadPlatform() {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
@@ -644,6 +665,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 export function hubRouter() {
+  applyOneOffGrants();
   const r = express.Router();
   r.use(express.json({ limit: '2mb' }));   // levels can be large
 

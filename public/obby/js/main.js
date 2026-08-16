@@ -202,6 +202,30 @@ function buildCourse() {
     scene.add(mesh);
     courseObjs.push({ kind: 'blinker', spec: b, mesh, x: b.x });
   }
+  // walls — the only solid-sided geometry in the course, built for wall hopping
+  for (const w of COURSE.walls || []) {
+    const mesh = new THREE.Mesh(boxGeo(w.w, w.h, w.d), matFor(w.color));
+    mesh.position.set(w.x, w.y, w.z);
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    staticMeshes.push({ mesh, x: w.x });
+    // scuff bands up the face so the wall reads as something to climb rather
+    // than a dead end
+    const marks = new THREE.Group();
+    const n = Math.max(2, Math.round(w.h / 2.6));
+    for (let i = 0; i < n; i++) {
+      const band = new THREE.Mesh(boxGeo(w.w * 1.05, 0.2, 2.0), matFor('#ffffff', { transparent: true, opacity: 0.55 }));
+      band.position.set(w.x, w.y - w.h / 2 + 1.3 + i * (w.h - 2.2) / Math.max(1, n - 1), w.z);
+      marks.add(band);
+    }
+    // a lighter lip on the crown, so from the ground you can see there IS a top
+    const lip = new THREE.Mesh(boxGeo(w.w * 1.14, 0.36, w.d * 1.02), matFor('#ffffff', { transparent: true, opacity: 0.35 }));
+    lip.position.set(w.x, w.y + w.h / 2 - 0.18, w.z);
+    marks.add(lip);
+    scene.add(marks);
+    staticMeshes.push({ mesh: marks, x: w.x });
+  }
+
   // pendulums — a swinging wrecking ball on a chain
   for (const pd of COURSE.pendulums || []) {
     const g = new THREE.Group();
@@ -212,6 +236,11 @@ function buildCourse() {
       new THREE.MeshLambertMaterial({ color: '#c0241a', emissive: '#3a0b06' }));
     ball.castShadow = true;
     const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1, 6), matFor('#7a8394'));
+    // Place them now: the per-frame update is skipped for distant pendulums, so
+    // without this every off-screen ball sits piled at the world origin.
+    const wp0 = pendulumPos(pd, 0);
+    ball.position.set(wp0.x, wp0.y, wp0.z);
+    chain.position.set((pd.x + wp0.x) / 2, (pd.y + wp0.y) / 2, (pd.z + wp0.z) / 2);
     g.add(ball, chain);
     scene.add(g);
     courseObjs.push({ kind: 'pendulum', spec: pd, mesh: g, ball, chain, anchor, x: pd.x });
@@ -297,6 +326,13 @@ function supportUnder(x, z, fromY, time) {
       if (top <= fromY + 0.6 && top > best) { best = top; plat = p; moverHit = null; }
     }
   }
+  // the top of a wall is walkable like anything else
+  for (const w of COURSE.walls || []) {
+    if (x > w.x - w.w/2 - R && x < w.x + w.w/2 + R && z > w.z - w.d/2 - R && z < w.z + w.d/2 + R) {
+      const top = w.y + w.h/2;
+      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
+    }
+  }
   // conveyors hold you up and shove you along
   for (const c of COURSE.conveyors || []) {
     if (x > c.x - c.w/2 - R && x < c.x + c.w/2 + R && z > c.z - c.d/2 - R && z < c.z + c.d/2 + R) {
@@ -324,6 +360,55 @@ function supportUnder(x, z, fromY, time) {
 
 let standMover = null, standMoverPrev = null;
 let onIce = false;
+
+// ---- wall hopping (an intentional bug, faithfully reproduced) ----
+// The classic Roblox wall hop: press into a wall, flick your character left or
+// right so a shoulder clips inside the face, and the jump registers off the
+// wall instead of thin air. Chain the flicks and you scale walls you have no
+// business climbing. This is deliberate, not an oversight — the course builds
+// walls around it from stage 5 on. Do not "fix" it.
+const wallHop = { touchAt: -1, nx: 0, nz: 0, flickAt: -1, lastRy: 0, chain: 0 };
+const FLICK_RATE = 5.5;      // rad/s of turn that counts as a flick
+const WALL_GRACE = 0.28;     // how long wall contact stays usable
+const FLICK_GRACE = 0.36;    // how long a flick stays usable
+
+// Push the player out of any wall they have walked into, and report the face
+// they hit. Walls are the only geometry with sides; platforms still support
+// from above only, so the original stages behave exactly as before.
+function resolveWalls() {
+  let hit = null;
+  const feet = player.pos.y, head = player.pos.y + 1.7;
+  for (const w of COURSE.walls || []) {
+    if (Math.abs(w.x - player.pos.x) > w.w / 2 + R + 1) continue;
+    const top = w.y + w.h / 2, bot = w.y - w.h / 2;
+    if (feet > top - 0.05 || head < bot) continue;        // standing on top, or clear below
+    const dx = player.pos.x - w.x, dz = player.pos.z - w.z;
+    const ox = w.w / 2 + R - Math.abs(dx);
+    const oz = w.d / 2 + R - Math.abs(dz);
+    if (ox <= 0 || oz <= 0) continue;
+    if (ox < oz) {                                         // pushed out along X
+      const sgn = dx >= 0 ? 1 : -1;
+      player.pos.x = w.x + sgn * (w.w / 2 + R); player.vel.x = 0;
+      hit = { nx: sgn, nz: 0 };
+    } else {                                               // pushed out along Z
+      const sgn = dz >= 0 ? 1 : -1;
+      player.pos.z = w.z + sgn * (w.d / 2 + R); player.vel.z = 0;
+      hit = { nx: 0, nz: sgn };
+    }
+  }
+  return hit;
+}
+
+// a scuff of dust where the shoulder went through
+const scuffs = [];
+function wallScuff() {
+  const m = new THREE.Mesh(boxGeo(0.28, 0.28, 0.28),
+    new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75 }));
+  m.position.set(player.pos.x - wallHop.nx * 0.3, player.pos.y + 1.0, player.pos.z - wallHop.nz * 0.3);
+  scene.add(m);
+  scuffs.push({ mesh: m, t: 0 });
+}
+
 const lookLockOn = () => !!(window.ClaudeBox?.settings?.lookLock);
 function updatePlayer(dt, input, time) {
   if (game.dead || game.carried) return;
@@ -361,10 +446,23 @@ function updatePlayer(dt, input, time) {
   } else {
     player.vel.x = wishX * sp; player.vel.z = wishZ * sp;
   }
-  // Look Lock turns you to face the camera at all times; otherwise you face
-  // the way you are moving.
-  if (lookLockOn()) player.ry = orbit.yaw;
+  // Look Lock turns you to face where the CAMERA is looking; otherwise you face
+  // the way you are moving. The camera sits at (sin yaw, cos yaw) from the
+  // player and looks back at them, so its view direction is the opposite —
+  // without the half turn the model stands there facing its own camera.
+  if (lookLockOn()) player.ry = orbit.yaw + Math.PI;
   else if (moving) player.ry = Math.atan2(wishX, wishZ);
+
+  // A fast turn is the "flick" that clips a shoulder into a wall. Measured off
+  // the facing itself, so it works whether you flick with strafe keys or by
+  // swinging the camera in Look Lock.
+  {
+    let d = player.ry - wallHop.lastRy;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    if (dt > 0 && Math.abs(d) / dt > FLICK_RATE) wallHop.flickAt = performance.now() / 1000;
+    wallHop.lastRy = player.ry;
+  }
 
   // ride a mover horizontally
   standMoverPrev = standMover;
@@ -375,13 +473,26 @@ function updatePlayer(dt, input, time) {
   player.pos.z += player.vel.z * dt;
   player.pos.y += player.vel.y * dt;
 
+  // walls block you horizontally — and being pressed against one is what makes
+  // a wall hop possible
+  const wallHit = resolveWalls();
+  if (wallHit) {
+    wallHop.touchAt = performance.now() / 1000;
+    wallHop.nx = wallHit.nx; wallHop.nz = wallHit.nz;
+    // nudge the player toward the trick once, the first time a wall stops them
+    if (!wallHop.hinted) {
+      wallHop.hinted = true;
+      toast('Too tall to jump — flick left/right against it and jump to wall hop');
+    }
+  }
+
   const sup = supportUnder(player.pos.x, player.pos.z, prevY, time);
   player.grounded = false; standMover = null;
   const wasAir = !player.grounded;
   onIce = false;
   if (player.vel.y <= 0 && sup.top > -Infinity && player.pos.y <= sup.top && prevY >= sup.top - 0.5) {
     player.pos.y = sup.top; player.vel.y = 0; player.grounded = true;
-    gear.airJumps = 0;
+    gear.airJumps = 0; wallHop.chain = 0;
     if (wasAir && player.vel.y > -1) sfx.land();
     if (sup.plat?.kind === 'kill') return die('lava');
     if (sup.plat?.kind === 'finish') win();
@@ -425,6 +536,17 @@ function updatePlayer(dt, input, time) {
     const gj = heldDef();
     player.vel.y = JUMP * (gj?.jump || 1); player.grounded = false;
     coyoteUntil = 0; jumpAt = -1; sfx.jump();
+  } else if (recentlyPressed && !frozen && !player.grounded
+             && nowS - wallHop.touchAt < WALL_GRACE && nowS - wallHop.flickAt < FLICK_GRACE) {
+    // Shoulder is inside the wall, so the jump finds "ground" and fires. Each
+    // hop needs its own flick, which is what makes chaining them a skill.
+    const gj = heldDef();
+    player.vel.y = JUMP * (gj?.jump || 1);
+    jumpAt = -1; wallHop.flickAt = -1; wallHop.chain++;
+    // stay glued to the face, ready for the next flick
+    player.pos.x -= wallHop.nx * 0.05;
+    player.pos.z -= wallHop.nz * 0.05;
+    sfx.jump(); wallScuff();
   } else if (recentlyPressed && !frozen && !player.grounded && hasGear('jump') && gear.airJumps < 1) {
     // Double Jump gear — one extra push per airtime
     gear.airJumps++; jumpAt = -1;
@@ -952,17 +1074,26 @@ function tickGear(dt, time) {
     }
     if (now > c.until) { scene.remove(c.mesh); gear.carpet = null; buildHotbar(); toast('Carpet faded'); }
   }
-  // rainbow trail
-  if (hasGear('trail') && !game.dead) {
+  // rainbow trail. It only emits while you are actually moving — standing still
+  // used to stack every puff on the same spot, which built a solid coloured
+  // block glued to your chest (and sat dead centre of the Look Lock camera).
+  const trailSpeed = Math.hypot(player.vel.x, player.vel.z);
+  if (hasGear('trail') && !game.dead && trailSpeed > 1.5) {
     if (!tickGear._t || now - tickGear._t > 0.05) {
       tickGear._t = now;
       const hue = (now * 120) % 360;
       const puff = new THREE.Mesh(boxGeo(0.4, 0.4, 0.4),
         new THREE.MeshBasicMaterial({ color: new THREE.Color(`hsl(${hue},90%,60%)`), transparent: true, opacity: 0.9 }));
-      puff.position.set(player.pos.x, player.pos.y + 0.5, player.pos.z);
+      puff.position.set(player.pos.x, player.pos.y + 0.25, player.pos.z);
       scene.add(puff);
       gear.trail.push({ mesh: puff, t: 0 });
     }
+  }
+  for (let i = scuffs.length - 1; i >= 0; i--) {
+    const sc = scuffs[i]; sc.t += dt;
+    sc.mesh.material.opacity = Math.max(0, 0.75 - sc.t / 0.45);
+    sc.mesh.scale.setScalar(1 + sc.t * 3);
+    if (sc.t > 0.45) { scene.remove(sc.mesh); scuffs.splice(i, 1); }
   }
   for (let i = gear.trail.length - 1; i >= 0; i--) {
     const p2 = gear.trail[i]; p2.t += dt;
@@ -1133,5 +1264,5 @@ function frame(now) {
   requestAnimationFrame(frame);
   window.__obby = { net, player, remotes, game, scene, orbit, camera, lasers, gear, GEAR, renderer,
     buyGear, equipGear, useSkip, deployCarpet, courseObjs, staticMeshes,
-    lookLock: lookLockOn };   // debug/test hook
+    lookLock: lookLockOn, wallHop, resolveWalls };   // debug/test hook
 })();
