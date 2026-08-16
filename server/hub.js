@@ -383,7 +383,7 @@ function sanitizeAvatar(a = {}) {
     shoes: pick(a.shoes, ['none', 'sneakers', 'hightops', 'boots', 'dress', 'sandals'], 'sneakers'),
     shoeColor: cleanColor(a.shoeColor, DEFAULT_AVATAR.shoeColor),
     // clothing for the 3D model (ids must match avatar3d.js CLOTHING catalog)
-    hat: pick(a.hat, ['none', 'cap', 'beanie', 'tophat', 'crown', 'cowboy', 'headphones', 'halo', 'horns', 'wizard', 'bandana', 'flower', 'pirate', 'party', 'chef', 'football', 'propeller'], 'none'),
+    hat: pick(a.hat, ['none', 'cap', 'snapback', 'beanie', 'tophat', 'crown', 'cowboy', 'headphones', 'halo', 'horns', 'wizard', 'bandana', 'flower', 'pirate', 'party', 'chef', 'football', 'propeller'], 'none'),
     hatColor: cleanColor(a.hatColor, DEFAULT_AVATAR.hatColor),
     back: pick(a.back, ['none', 'backpack', 'wings', 'cape', 'jetpack', 'sword', 'angelwings', 'balloon', 'guitar'], 'none'),
     backColor: cleanColor(a.backColor, '#4a7ec0'),

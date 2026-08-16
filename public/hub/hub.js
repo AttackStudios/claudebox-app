@@ -1289,13 +1289,26 @@ const avatarEditor = (() => {
     }
 
     const grid = document.createElement('div'); grid.className = 'item-grid';
+    const allowed = unlockedValues(row.key);
     for (const [value, label] of row.values) {
+      const locked = allowed && !allowed.has(value);
       const btn = document.createElement('button');
-      btn.className = 'opt-btn' + ((av[row.key] || 'none') === value ? ' selected' : '');
-      btn.textContent = label;
+      btn.className = 'opt-btn' + ((av[row.key] || 'none') === value ? ' selected' : '') + (locked ? ' locked' : '');
+      btn.textContent = locked ? `${label} 🔒` : label;
+      if (locked) btn.title = 'Buy this in the Store to wear it';
       btn.addEventListener('click', () => {
+        if (locked) { sfx.tap(); toast('Buy this in the Store to wear it', '🔒'); selectTab('store'); return; }
         av[row.key] = value; sfx.tap(); markDirty();
-        grid.querySelectorAll('.opt-btn').forEach((b) => b.classList.toggle('selected', b === btn));
+        // An item designed around specific colours (a branded cap) adopts them
+        // on pick, so it looks like its artwork straight away.
+        const picked = CLOTHING[itemCatOf(row.key)]?.find((i) => i.id === value);
+        if (picked?.pri && row.color) {
+          av[row.color] = picked.pri;
+          if (row.color2) av[row.color2] = picked.sec;
+        }
+        // Rebuild the panel, not just the button states: the colour pickers
+        // belong to the chosen item and appear/disappear with it.
+        buildOptionsUI();
         rebuild();
       });
       grid.appendChild(btn);
@@ -1318,6 +1331,19 @@ const avatarEditor = (() => {
 
   const CAT_OF = { hair: 'hair', hat: 'hats', back: 'backs', face2: 'faces', suit: 'suits', shoes: 'shoes', shirt: 'shirts' };
   const itemCatOf = (key) => CAT_OF[key] || key;
+
+  // Slots the server gates on ownership, and the starter items that are free in
+  // each. Mirrors FREE_AVATAR in server/hub.js — picking an unowned paid item
+  // used to look like it worked and then quietly revert to 'none' on save.
+  const FREE_AV = { hat: ['none', 'cap', 'beanie'], back: ['none', 'backpack'], face2: ['none', 'glasses'], suit: ['none', 'swim'] };
+  function unlockedValues(slot) {
+    const free = FREE_AV[slot];
+    if (!free) return null;                    // this slot isn't gated at all
+    const set = new Set(free);
+    const owned = new Set(wallet().ownedAvatar || []);
+    for (const it of AVATAR_SHOP) if (it.slot === slot && owned.has(it.id)) set.add(it.value);
+    return set;
+  }
 
   function randomize() {
     const av = stateHub.me.avatar;

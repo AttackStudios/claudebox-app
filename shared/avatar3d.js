@@ -514,6 +514,7 @@ export const CLOTHING = {
   hats: [
     { id: 'none', label: 'None', emoji: '🚫' },
     { id: 'cap', label: 'Cap', emoji: '🧢', bone: 'Neck', build: 'cap', sec: '#1f2430' },
+    { id: 'snapback', label: 'Snapback', emoji: '🧢', bone: 'Neck', build: 'snapback', pri: '#141419', sec: '#d8322a', logo: 'AOTP' },
     { id: 'beanie', label: 'Beanie', emoji: '🧶', bone: 'Neck', build: 'beanie', sec: '#f4f6fa' },
     { id: 'tophat', label: 'Top Hat', emoji: '🎩', bone: 'Neck', build: 'tophat', sec: '#c0392b' },
     { id: 'crown', label: 'Crown', emoji: '👑', bone: 'Neck', build: 'crown', sec: '#e2412f' },
@@ -715,6 +716,65 @@ export function shirtArt(design, primary = '#3a7bd5', secondary = '#ffffff') {
   return t;
 }
 
+// ---- cap wordmark ----
+// An arched, heavy-slab wordmark whose letters are filled with a patchwork of
+// colour blocks and outlined in near-black. Drawn rather than imported so it
+// stays sharp at any size and costs one texture.
+const capLogoCache = new Map();
+function capLogoTexture(text) {
+  if (typeof document === 'undefined') return null;
+  if (capLogoCache.has(text)) return capLogoCache.get(text);
+  const W = 640, H = 320;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+
+  // the patchwork swatch the letters are filled with
+  const pc = document.createElement('canvas'); pc.width = pc.height = 128;
+  const px = pc.getContext('2d');
+  const COLS = ['#c62828', '#c62828', '#c62828', '#2e4fa8', '#4f9d3a', '#e8c63a', '#e07a2a', '#3aa8a0', '#8a4fd6'];
+  px.fillStyle = '#c62828'; px.fillRect(0, 0, 128, 128);
+  let r = 20260815;
+  const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = 0; i < 30; i++) {
+    px.fillStyle = COLS[Math.floor(rnd() * COLS.length)];
+    px.save();
+    px.translate(rnd() * 128, rnd() * 128);
+    px.rotate(rnd() * Math.PI);
+    px.fillRect(-18 - rnd() * 20, -12 - rnd() * 14, 34 + rnd() * 40, 22 + rnd() * 30);
+    px.restore();
+  }
+  const pat = x.createPattern(pc, 'repeat');
+
+  const FONT = '900 150px "Arial Black", Impact, "Helvetica Neue", sans-serif';
+  x.font = FONT;
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  // Letters ride a circle whose centre is below the canvas, so the ends drop
+  // and tilt outward the way a real arched wordmark does. The angular step per
+  // letter comes from its measured width, otherwise wide letters collide.
+  const radius = 520, cx = W / 2, cy = 150 + radius;
+  const chars = [...text];
+  const widths = chars.map((ch) => x.measureText(ch).width * 1.04);
+  let a = -(widths.reduce((p, q) => p + q, 0) / 2) / radius;
+  for (let i = 0; i < chars.length; i++) {
+    const step = widths[i] / radius;
+    x.save();
+    x.translate(cx, cy);
+    x.rotate(a + step / 2);
+    x.translate(0, -radius);
+    x.font = FONT; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineJoin = 'round'; x.lineWidth = 18; x.strokeStyle = '#0a0a0c';
+    x.strokeText(chars[i], 0, 0);
+    x.fillStyle = pat;
+    x.fillText(chars[i], 0, 0);
+    x.restore();
+    a += step;
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  capLogoCache.set(text, t);
+  return t;
+}
+
 // Clothing is built around the attach anchor at origin (head center for hats/
 // faces, chest for backs, the ankle for shoes). +Y is up, +Z*F is the way the
 // face/front points.
@@ -810,6 +870,80 @@ function buildClothing(item, head, torso, foot) {
       at(sph(R * 0.1, cloth(c2), 10, 8), 0, TOP + R * 0.42, 0);        // button
       at(box(R * 0.7, R * 0.16, 0.03, cloth(c2)), 0, TOP - R * 0.28, -R * 1.02 * F);   // rear strap
       at(box(R * 0.16, R * 0.13, 0.04, metal(STEEL)), 0, TOP - R * 0.28, -R * 1.05 * F);
+      break;
+    }
+    // A flat-brim snapback: structured six-panel crown, rounded flat brim, the
+    // little button on the crown, and an open rear closed by a perforated
+    // plastic strap. Cut to the head's real box — a sphere-based crown lets a
+    // squared-off head poke through at the corners — and stepped inward toward
+    // the top so it domes instead of reading as a slab.
+    case 'snapback': {
+      const HW = head?.hw || R, HH = head?.hh || R, HD = head?.hd || R;
+      const CW = HW * 1.08, CD = HD * 1.08;       // crown half-extents at the band
+      const baseY = HH * 0.2;                     // bottom rim, clear of the brow
+      const gapH = HH * 0.34;                     // lower band / height of the rear opening
+      const upperH = HH * 0.62;                   // everything above the band
+      const bandTop = baseY + gapH;
+      // the taper: each tier is shorter and narrower than the one below it
+      const TIERS = [[0.5, 1.0], [0.22, 0.97], [0.17, 0.915], [0.11, 0.82]];
+      let ty = bandTop;
+      for (const [hFrac, wFrac] of TIERS) {
+        const h = upperH * hFrac;
+        at(box(CW * 2 * wFrac, h, CD * 2 * wFrac, cloth(c)), 0, ty + h / 2, 0);
+        ty += h;
+      }
+      const topY = ty;
+      // the band wraps the front and sides only, leaving the back open
+      at(box(CW * 2, gapH, CD * 1.34, cloth(c)), 0, baseY + gapH / 2, CD * 0.33 * F);
+      for (const sd of [-1, 1]) at(box(CW * 0.62, gapH, CD * 0.66, cloth(c)), sd * CW * 0.69, baseY + gapH / 2, -CD * 0.67 * F);
+
+      // panel seams — the six-panel look reads entirely off these. They stop at
+      // the first taper so nothing pokes above the crown.
+      // The front seam runs only above the wordmark, so it never cuts through
+      // the lettering the way a full-height seam does.
+      const seamH = gapH + upperH * 0.55;
+      const seamMid = baseY + seamH / 2;
+      at(box(CW * 0.06, upperH * 0.3, CD * 0.08, cloth(dk)), 0, bandTop + upperH * 0.62, CD * 1.0 * F);
+      at(box(CW * 0.06, upperH * 0.55, CD * 0.08, cloth(dk)), 0, bandTop + upperH * 0.28, -CD * 1.0 * F);
+      for (const sd of [-1, 1]) at(box(CW * 0.08, seamH, CD * 0.06, cloth(dk)), sd * CW * 1.0, seamMid, 0);
+
+      // front wordmark, alpha-tested so it never sorts against the crown
+      const logoTex = capLogoTexture(item.logo || 'AOTP');
+      if (logoTex) {
+        const logo = new THREE.Mesh(
+          new THREE.PlaneGeometry(CW * 1.96, upperH * 0.72),
+          new THREE.MeshLambertMaterial({ map: logoTex, transparent: true, alphaTest: 0.45 }),
+        );
+        logo.position.set(0, bandTop + upperH * 0.24, CD * 1.02 * F);
+        if (F < 0) logo.rotation.y = Math.PI;
+        g.add(logo);
+      }
+
+      // Flat brim: a HALF disc so it projects forward only. A full disc reaches
+      // out behind the head and reads as a bowler hat.
+      const brimR = CW * 1.0, brimZ = (CD * 1.72) / brimR;
+      const brim = new THREE.Group();
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(brimR, brimR, HH * 0.07, 26, 1, false, -Math.PI / 2, Math.PI), cloth(c));
+      const lip = new THREE.Mesh(new THREE.CylinderGeometry(brimR * 0.97, brimR * 0.97, HH * 0.03, 26, 1, false, -Math.PI / 2, Math.PI), cloth(dk2));
+      lip.position.y = -HH * 0.05;
+      brim.add(plate, lip);
+      brim.scale.z = brimZ;
+      brim.position.set(0, baseY + HH * 0.01, CD * 0.3 * F);
+      brim.rotation.x = -0.05 * F;
+      if (F < 0) brim.rotation.y = Math.PI;
+      g.add(brim);
+
+      at(box(CW * 0.24, HH * 0.12, CD * 0.24, cloth(c2)), 0, topY + HH * 0.05, 0);   // squatchee button
+
+      // snapback strap across the rear opening, with its two rows of holes
+      at(box(CW * 1.5, gapH * 0.58, CD * 0.16, cloth(c2)), 0, baseY + gapH * 0.4, -CD * 1.02 * F);
+      for (let col = -2; col <= 2; col++) {
+        for (const row of [-1, 1]) {
+          const hole = at(cyl(CW * 0.05, CW * 0.05, CD * 0.1, cloth('#1a1013'), 8),
+            col * CW * 0.27, baseY + gapH * 0.4 + row * gapH * 0.12, -CD * 1.06 * F);
+          hole.rotation.x = Math.PI / 2;
+        }
+      }
       break;
     }
     case 'beanie': {

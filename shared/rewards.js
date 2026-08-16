@@ -98,6 +98,7 @@ export const AVATAR_SHOP = [
   // ---- Hats ----
   A('av-hat-football', 'Hats', 'hat', 'football', '🏈', 'Golden Football Helmet', 80, true),
   A('av-hat-crown',    'Hats', 'hat', 'crown',    '👑', 'Royal Crown',            60, true),
+  A('av-hat-snapback', 'Hats', 'hat', 'snapback', '🧢', 'AOTP Snapback',          55, true),
   A('av-hat-halo',     'Hats', 'hat', 'halo',     '😇', 'Angel Halo',             50),
   A('av-hat-pirate',   'Hats', 'hat', 'pirate',   '🏴‍☠️', 'Pirate Hat',           45, true),
   A('av-hat-wizard',   'Hats', 'hat', 'wizard',   '🧙', 'Wizard Hat',             35),

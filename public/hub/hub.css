@@ -431,6 +431,8 @@ main {
 }
 .sw:hover { transform: scale(1.14); }
 .sw.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+.opt-btn.locked { opacity: .45; }
+.opt-btn.locked:hover { border-color: var(--glass-brd); transform: none; }
 .av-actions { display: flex; gap: 8px; }
 .av-ghost {
   flex: 1; padding: 10px 12px; border-radius: var(--r-md); cursor: pointer;
