@@ -19,12 +19,16 @@ export const KILL_Y = -26;
 export const FINISH_STAGE = 100;   // 100 generated stages, room to grow
 
 // one hue per stage so progress reads at a glance
+// Full-saturation primaries, cycled per stage. Deliberately loud — this is the
+// bright rainbow-obby look, not a muted one.
 const STAGE_COLORS = [
-  '#dfe7f0', '#e8563f', '#e8803f', '#e8b23f', '#d6d64b', '#9ad64b',
-  '#4bd67a', '#4bd6b6', '#4bbfe8', '#4b8ee8', '#5a6ee8', '#8c5ae8',
-  '#b45ae8', '#d65ad6', '#e85aa8', '#e85a74', '#e87a5a', '#e8a15a',
-  '#c9d65a', '#7fd65a', '#ffd84a',
+  '#ff2d2d', '#ff7a00', '#ffc400', '#ffee00', '#8cdd00', '#00cc44',
+  '#00c8a0', '#00c8ff', '#0080ff', '#2e3bff', '#7a2eff', '#c02eff',
+  '#ff2ec0', '#ff2e7a', '#ff5a2e', '#ffa02e', '#e0e000', '#5ae000',
+  '#00e0a0', '#00a0ff', '#ffffff',
 ];
+// the rainbow used for striped surfaces and arches
+export const RAINBOW = ['#ff2d2d', '#ff7a00', '#ffc400', '#ffee00', '#00cc44', '#00c8ff', '#2e3bff', '#c02eff'];
 
 const platforms = [];
 const checkpoints = [];
@@ -52,7 +56,8 @@ function pad(x, y, z, w, d, kind, stage, h = 1) {
 function checkpoint(x, y, z, n) {
   pad(x, y, z, 8, 8, 'normal', n);
   // a bright pad you can see from a stage away
-  platforms.push({ x, y: y + 0.55, z, w: 5.4, h: 0.2, d: 5.4, color: '#ffffff', kind: 'cp' });
+  platforms.push({ x, y: y + 0.52, z, w: 6.6, h: 0.24, d: 6.6, color: '#ff2d2d', kind: 'cpEdge' });
+  platforms.push({ x, y: y + 0.6, z, w: 5.4, h: 0.24, d: 5.4, color: '#ffffff', kind: 'cp' });
   checkpoints.push({ x, y: y + 1, z, n });
 }
 const mover = (o) => { movers.push(o); return o; };
@@ -75,7 +80,8 @@ function gapJumps(stage, y, count = 5, size = 3.4) {
 
 function narrowBeam(stage, y, len = 26, w = 1.5) {
   cx += 5;
-  pad(cx + len / 2, y, 0, len, w, 'normal', stage);
+  const p2 = pad(cx + len / 2, y, 0, len, w, 'normal', stage);
+  p2.striped = true;                 // long lanes render as rainbow stripes
   cx += len + 5;
 }
 
@@ -147,7 +153,7 @@ function blinkRun(stage, y, count = 6) {
 function pendulumAlley(stage, y, count = 4) {
   cx += 4;
   const len = 9 * count;
-  pad(cx + len / 2, y, 0, len, 6, 'normal', stage);
+  const run = pad(cx + len / 2, y, 0, len, 6, 'normal', stage); run.striped = true;
   for (let i = 0; i < count; i++) {
     pendulums.push({ x: cx + 5 + i * 9, y: y + 9.5, z: 0, len: 8, r: 1.35,
       speed: 1.1 + rnd() * 0.4, phase: i * 1.1, swing: 1.05, color: '#2b3242' });
@@ -158,7 +164,7 @@ function pendulumAlley(stage, y, count = 4) {
 function iceRink(stage, y) {
   cx += 4;
   const len = 30;
-  pad(cx + len / 2, y, 0, len, 9, 'ice', stage);
+  const ice = pad(cx + len / 2, y, 0, len, 9, 'ice', stage); ice.striped = false;
   // a couple of shoves to make the slide matter
   spinner({ x: cx + 11, y: y + 1.3, z: 0, r: 0.4, len: 11, h: 0.8, color: '#7fb6d6', speed: 1.4 });
   spinner({ x: cx + 23, y: y + 1.3, z: 0, r: 0.4, len: 11, h: 0.8, color: '#7fb6d6', speed: -1.6 });
@@ -180,7 +186,7 @@ function bouncerChain(stage, y, count = 3) {
 function laserGrid(stage, y, count = 4) {
   cx += 4;
   const len = 8 * count;
-  pad(cx + len / 2, y, 0, len, 7, 'normal', stage);
+  const run2 = pad(cx + len / 2, y, 0, len, 7, 'normal', stage); run2.striped = true;
   for (let i = 0; i < count; i++) {
     lasers.push({ x: cx + 5 + i * 8, y: y + 1.6, z: 0, w: 0.4, h: 3.2, d: 8,
       period: 2.2, on: 0.5, phase: (i * 0.3) % 1, color: '#ff3a5e' });
@@ -264,15 +270,49 @@ pad(cx, y, 0, 16, 16, 'normal', FINISH_STAGE);
 for (let i = 0; i < 5; i++) pad(cx + 3 + i * 3.2, y + 2.2 + i * 2.4, 0, 4.2, 9, 'normal', FINISH_STAGE);
 pad(cx + 20, y + 13, 0, 14, 14, 'finish', FINISH_STAGE);
 
+// ---- decorative rainbow arches, the signature of this style ----
+export const arches = [];
+for (let i = 0; i < stageMarks.length; i += 7) {
+  const m = stageMarks[i];
+  // r is the OUTER radius; the bands stack inward one per rainbow colour and
+  // stop, leaving an opening wide enough to run a lane through.
+  arches.push({ x: m.x + 16, y: m.y, z: 0, r: 11, sides: 12, thick: 0.8 });
+}
+
+// ---- decorative props: the spheres, cones and pillars that dress the course ----
+// Purely visual and always well clear of the lane, so they never block a jump.
+export const props = [];
+{
+  const KINDS = ['sphere', 'cone', 'cylinder', 'wedge'];
+  let r = 4242;
+  const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (const m of stageMarks) {
+    if (m.n === 0) continue;
+    const n = 3;
+    for (let i = 0; i < n; i++) {
+      const side = rnd() < 0.5 ? -1 : 1;
+      const size = 1.6 + rnd() * 3.4;
+      const x = m.x + (rnd() - 0.5) * 34;
+      const z = side * (14 + rnd() * 10);
+      const kind = KINDS[Math.floor(rnd() * KINDS.length)];
+      const color = RAINBOW[Math.floor(rnd() * RAINBOW.length)];
+      // never poke through an arch, and never grow into a neighbour
+      if (arches.some((a) => Math.abs(a.x - x) < size + 5 && Math.abs(z) < a.r + size)) continue;
+      if (props.some((q) => Math.hypot(q.x - x, q.z - z) < q.size + size + 2)) continue;
+      props.push({ kind, x, y: m.y - 0.5, z, size, color });
+    }
+  }
+}
+
 export const COURSE = {
-  platforms, checkpoints, movers, spinners, conveyors, blinkers, pendulums, lasers,
+  platforms, checkpoints, movers, spinners, conveyors, blinkers, pendulums, lasers, arches, props,
   killY: KILL_Y, finishStage: FINISH_STAGE, length: cx + 28,
 };
 
 const _DEFAULT = {
   platforms: [...platforms], checkpoints: [...checkpoints], movers: [...movers],
   spinners: [...spinners], conveyors: [...conveyors], blinkers: [...blinkers],
-  pendulums: [...pendulums], lasers: [...lasers],
+  pendulums: [...pendulums], lasers: [...lasers], arches: [...arches], props: [...props],
   killY: COURSE.killY, finishStage: COURSE.finishStage, length: COURSE.length,
   start: { x: START.x, y: START.y, z: START.z },
 };
@@ -282,7 +322,8 @@ export function applyCourse(c) {
   swap(platforms, src.platforms); swap(checkpoints, src.checkpoints);
   swap(movers, src.movers); swap(spinners, src.spinners);
   swap(conveyors, src.conveyors); swap(blinkers, src.blinkers);
-  swap(pendulums, src.pendulums); swap(lasers, src.lasers);
+  swap(pendulums, src.pendulums); swap(lasers, src.lasers); swap(arches, src.arches);
+  swap(props, src.props);
   COURSE.killY = src.killY ?? KILL_Y;
   COURSE.finishStage = src.finishStage ?? FINISH_STAGE;
   COURSE.length = src.length ?? 400;

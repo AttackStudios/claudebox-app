@@ -10,6 +10,7 @@ import { Net, InterpBuffer } from './net.js';
 import { COURSE, START, moverPos, spinAngle, KILL_Y, checkpointById, FINISH_STAGE, applyCourse,
          blinkOn, blinkPhase, pendulumPos, laserOn } from '/shared/obby/course.js';
 import { GEAR, GEAR_BY_ID } from '/shared/obby/gear.js';
+import { RAINBOW } from '/shared/obby/course.js';
 import * as sfx from './sfx.js';
 import { toObbyCourse } from '/shared/studio/adapters.js';
 
@@ -21,44 +22,87 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#0e1626');
-scene.fog = new THREE.Fog('#0e1626', 60, 240);
+// Bright cyan sky and near-flat lighting: this style reads by pure saturated
+// colour, so shading is kept minimal on purpose.
+scene.background = new THREE.Color('#7fd8f2');
+scene.fog = new THREE.Fog('#a8e6fa', 220, 620);
 
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1200);
 function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-const hemi = new THREE.HemisphereLight('#bcd8ff', '#243049', 0.95); scene.add(hemi);
-const sun = new THREE.DirectionalLight('#fff4e0', 1.0);
+const hemi = new THREE.HemisphereLight('#ffffff', '#cfeaf5', 1.35); scene.add(hemi);
+scene.add(new THREE.AmbientLight('#ffffff', 0.55));
+const sun = new THREE.DirectionalLight('#ffffff', 0.65);
 sun.position.set(60, 120, 40); sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -120; sun.shadow.camera.right = 120;
 sun.shadow.camera.top = 120; sun.shadow.camera.bottom = -120; sun.shadow.camera.far = 400;
 scene.add(sun); scene.add(sun.target);
 
-// starfield backdrop
+// soft clouds drifting under a daylight sky (the starfield suited the old night look)
+const clouds = [];
 {
-  const g = new THREE.BufferGeometry();
-  const n = 600, arr = new Float32Array(n * 3);
-  let s = 7;
-  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  for (let i = 0; i < n; i++) { arr[i*3] = (rnd()*2-1)*600; arr[i*3+1] = rnd()*400 - 60; arr[i*3+2] = (rnd()*2-1)*600; }
-  g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: '#9fb6e0', size: 1.3, sizeAttenuation: false })));
+  let s2 = 7;
+  const rnd = () => ((s2 = (s2 * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const cloudMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.92 });
+  for (let i = 0; i < 60; i++) {
+    const g = new THREE.Group();
+    const puffs = 3 + Math.floor(rnd() * 3);
+    for (let k = 0; k < puffs; k++) {
+      const r = 6 + rnd() * 9;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 6), cloudMat);
+      m.position.set((rnd() - 0.5) * 22, (rnd() - 0.5) * 5, (rnd() - 0.5) * 12);
+      m.scale.y = 0.62;
+      g.add(m);
+    }
+    g.position.set(rnd() * 8600 - 200, 55 + rnd() * 90, (rnd() - 0.5) * 700);
+    scene.add(g);
+    clouds.push(g);
+  }
 }
 
 const lam = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
 // 900+ course objects — share buffers or the GPU upload alone stalls the load
 const _geo = new Map(), _mat = new Map();
 const boxGeo = (w, h, d) => { const k = `b${w}|${h}|${d}`; if (!_geo.has(k)) _geo.set(k, new THREE.BoxGeometry(w, h, d)); return _geo.get(k); };
+// A long lane painted with rainbow bands. Drawn once to a canvas and repeated
+// along the platform, so a striped lane still costs exactly one draw call.
+let _stripeTex = null;
+function stripeTex() {
+  if (_stripeTex) return _stripeTex;
+  const n = RAINBOW.length, px = 32;
+  const c = document.createElement('canvas');
+  c.width = n * px; c.height = px;
+  const g = c.getContext('2d');
+  RAINBOW.forEach((col, i) => { g.fillStyle = col; g.fillRect(i * px, 0, px, px); });
+  _stripeTex = new THREE.CanvasTexture(c);
+  _stripeTex.wrapS = _stripeTex.wrapT = THREE.RepeatWrapping;
+  _stripeTex.magFilter = THREE.NearestFilter;
+  return _stripeTex;
+}
+const _stripeMats = new Map();
+function stripedMat(reps) {
+  const k = Math.max(1, Math.round(reps));
+  if (!_stripeMats.has(k)) {
+    const t = stripeTex().clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(k, 1);
+    _stripeMats.set(k, new THREE.MeshLambertMaterial({ map: t }));
+  }
+  return _stripeMats.get(k);
+}
+
 const matFor = (c, o) => { const k = c + JSON.stringify(o || {}); if (!_mat.has(k)) _mat.set(k, lam(c, o)); return _mat.get(k); };
 
 // ---------- build the course ----------
 function buildCourse() {
   for (const p of COURSE.platforms) {
-    const mat = p.kind === 'kill' ? new THREE.MeshLambertMaterial({ color: '#c0241a', emissive: '#5a0d06' })
-      : p.kind === 'finish' ? new THREE.MeshLambertMaterial({ color: '#ffd84a', emissive: '#6b5300' })
-      : lam(p.color);
+    const mat = p.kind === 'kill' ? matFor('#ff1a1a', { emissive: '#7a0000' })
+      : p.kind === 'finish' ? matFor('#ffee00', { emissive: '#7a6b00' })
+      : p.striped ? stripedMat(Math.max(2, p.w / 3.2))
+      : matFor(p.color);
     const m = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, p.d), mat);
     m.position.set(p.x, p.y, p.z); m.receiveShadow = true; m.castShadow = true;
     scene.add(m);
@@ -76,6 +120,64 @@ function buildCourse() {
     flag.userData.spin = true; spinFlags.push(flag);
     staticMeshes.push({ mesh: flag, x: c.x });
   }
+  // Big rainbow rings you pass through — the signature landmark of this style.
+  for (const a of COURSE.arches || []) {
+    const g = new THREE.Group();
+    const step = (Math.PI * 2) / a.sides;
+    // Concentric bands, outermost first, one colour each. They stop after the
+    // last colour, so what is left in the middle is the opening you run through.
+    for (let band = 0; band < RAINBOW.length; band++) {
+      const rr = a.r - band * a.thick;
+      const col = RAINBOW[band % RAINBOW.length];
+      // Corner-to-corner length is set by the band's OUTER radius, so the
+      // polygon closes without gaps.
+      const segLen = 2 * (rr + a.thick / 2) * Math.tan(step / 2);
+      for (let i = 0; i < a.sides; i++) {
+        const ang = i * step;
+        // Ring lies in the Y-Z plane (you run through it along X). Rotating a
+        // box by +ang about X sends its local +Y radial and its +Z tangential,
+        // so the box is (depth along the course, thickness, side length).
+        const seg = new THREE.Mesh(boxGeo(3.4, a.thick, segLen), matFor(col));
+        seg.position.set(0, Math.cos(ang) * rr, Math.sin(ang) * rr);
+        seg.rotation.x = ang;
+        g.add(seg);
+      }
+    }
+    // Sit the ring so the bottom of the opening is just above the lane; the
+    // lower bands bury themselves in the course, which is how these look.
+    const hole = a.r - (RAINBOW.length - 1) * a.thick - a.thick / 2;
+    g.position.set(a.x, a.y + hole + 0.7, a.z);
+    scene.add(g);
+    staticMeshes.push({ mesh: g, x: a.x });
+  }
+
+  // Decorative shapes flanking the lanes. Cached per (kind,size) bucket so a
+  // few hundred of them still cost only a handful of geometries.
+  const propGeo = (kind, size) => {
+    const q = Math.round(size * 4) / 4;                 // bucket to 0.25 studs
+    const key = kind + q;
+    let g = _geo.get(key);
+    if (!g) {
+      g = kind === 'sphere'   ? new THREE.SphereGeometry(q, 16, 12)
+        : kind === 'cone'     ? new THREE.ConeGeometry(q, q * 2, 18)
+        : kind === 'cylinder' ? new THREE.CylinderGeometry(q * 0.7, q * 0.7, q * 2.4, 16)
+        :                       new THREE.ConeGeometry(q, q * 1.5, 4);   // wedge
+      _geo.set(key, g);
+    }
+    return g;
+  };
+  for (const pr of COURSE.props || []) {
+    const mesh = new THREE.Mesh(propGeo(pr.kind, pr.size), matFor(pr.color));
+    const h = pr.kind === 'sphere' ? pr.size
+            : pr.kind === 'cylinder' ? pr.size * 1.2
+            : pr.kind === 'cone' ? pr.size : pr.size * 0.75;
+    mesh.position.set(pr.x, pr.y + h, pr.z);
+    if (pr.kind === 'wedge') mesh.rotation.y = Math.PI / 4;
+    mesh.castShadow = false; mesh.receiveShadow = true;
+    scene.add(mesh);
+    staticMeshes.push({ mesh, x: pr.x });
+  }
+
   // conveyors — arrows show which way they shove you
   for (const c of COURSE.conveyors || []) {
     const mesh = new THREE.Mesh(boxGeo(c.w, c.h, c.d), matFor(c.color));
@@ -949,6 +1051,7 @@ function frame(now) {
       o.extra.position.x = o.spec.x + (((time * o.spec.dx * 0.35) % 3.2) + 3.2) % 3.2 - 1.6;
     }
   }
+  for (const c of clouds) { c.position.x -= dt * 1.6; if (c.position.x < player.pos.x - 900) c.position.x += 1800; }
   // animate course
   for (const f of spinFlags) f.rotation.y += dt * 1.5;
   for (const mm of moverMeshes) { const wp = moverPos(mm.spec, time); mm.mesh.position.set(wp.x, wp.y, wp.z); }
@@ -1028,7 +1131,7 @@ function frame(now) {
   await loadGear();
 
   requestAnimationFrame(frame);
-  window.__obby = { net, player, remotes, game, scene, lasers, gear, GEAR, renderer,
+  window.__obby = { net, player, remotes, game, scene, orbit, camera, lasers, gear, GEAR, renderer,
     buyGear, equipGear, useSkip, deployCarpet, courseObjs, staticMeshes,
     lookLock: lookLockOn };   // debug/test hook
 })();
