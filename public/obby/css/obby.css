@@ -84,13 +84,21 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0e1626;
 #death-veil span, #win-veil span { font-size: 90px; }
 #death-veil p, #win-veil p { font-size: 26px; font-weight: bold; margin-top: 8px; }
 
-/* mobile */
-#move-cluster { position: absolute; bottom: 24px; right: 24px; }
-#joystick-zone { position: absolute; bottom: 10px; left: -78vw; width: 150px; height: 150px; }
-#joystick-base { position: absolute; width: 120px; height: 120px; border-radius: 50%;
+/* mobile.
+   The cluster lives inside #hud, which is pointer-events:none with only
+   button/input re-enabled — so the joystick, being a div, has to opt back in
+   explicitly or every drag falls through to the canvas and you cannot move.
+   Both controls are positioned against the viewport rather than off each other;
+   the old joystick was placed with left:-78vw relative to a bottom-RIGHT anchor,
+   which put it partly off the left edge on every phone width. */
+#move-cluster { position: fixed; inset: 0; pointer-events: none; z-index: 32; }
+#joystick-zone { position: fixed; left: 8px; bottom: 16px; width: 160px; height: 160px;
+  pointer-events: auto; touch-action: none; }
+#joystick-base { position: absolute; left: 20px; top: 20px; width: 120px; height: 120px; border-radius: 50%;
   background: rgba(255,255,255,.1); border: 2px solid rgba(255,255,255,.25); }
 #joystick-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%;
   background: rgba(255,255,255,.45); }
+#btn-jump { position: fixed; right: 22px; bottom: 34px; pointer-events: auto; touch-action: none; }
 .move-btn { width: 78px; height: 78px; border-radius: 50%; border: none; font-size: 30px;
   background: rgba(43,143,255,.5); color: #fff; }
 .round-btn:active, .move-btn:active { transform: scale(.92); }
@@ -155,8 +163,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0e1626;
 #shop-list .buy.have { background: rgba(255,255,255,.08); color: #93a0b4; cursor: default; }
 
 @media (max-width: 700px) {
-  #progress { bottom: 150px; width: 76vw; }
-  #gear-bar { bottom: 84px; }
+  /* Stacked bottom-up so nothing sits on anything else:
+     jump 34-112, shop 124-173, gear bar 186-238, progress 248-270.
+     The joystick occupies 16-176 but only on the left, clear of all of them. */
+  #shop-btn { bottom: 124px; right: 12px; padding: 10px 14px; font-size: 12.5px; }
+  #gear-bar { bottom: 186px; }
   .gear-slot { width: 52px; height: 52px; }
-  #shop-btn { bottom: 84px; right: 10px; padding: 10px 14px; font-size: 12.5px; }
+  /* the stage badge clears the row of round buttons in the top-left, and the
+     progress bar reads as a status strip under it rather than floating
+     halfway up the screen */
+  #stage-banner { top: 68px; font-size: 17px; padding: 6px 18px; }
+  #progress { top: 112px; bottom: auto; width: 76vw; }
 }

@@ -62,9 +62,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1aa0d8;
 #out-veil small { opacity: .8; font-size: 15px; }
 
 /* mobile */
-#move-cluster { position: absolute; bottom: 24px; right: 24px; }
-#joystick-zone { position: absolute; bottom: 10px; left: -78vw; width: 150px; height: 150px; }
-#joystick-base { position: absolute; width: 120px; height: 120px; border-radius: 50%;
+/* Same fix as the obby: the cluster sits inside #hud (pointer-events:none, only
+   button/input re-enabled), so the joystick div has to opt back in or every drag
+   falls through to the canvas. Positioned against the viewport instead of off a
+   bottom-RIGHT anchor with left:-78vw, which put it off the left edge. */
+#move-cluster { position: fixed; inset: 0; pointer-events: none; z-index: 32; }
+#joystick-zone { position: fixed; left: 8px; bottom: 16px; width: 160px; height: 160px;
+  pointer-events: auto; touch-action: none; }
+#btn-jump { position: fixed; right: 22px; bottom: 34px; pointer-events: auto; touch-action: none; }
+#joystick-base { position: absolute; left: 20px; top: 20px; width: 120px; height: 120px; border-radius: 50%;
   background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.35); }
 #joystick-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%;
   background: rgba(255,255,255,.5); }
