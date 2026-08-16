@@ -16,10 +16,22 @@
   // ---- settings (persisted, exposed for games to read) ----
   const SKEY = 'claudebox.settings';
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch {}
-  const settings = Object.assign({ fov: 78, sensitivity: 1.0, volume: 1.0 }, saved);
+  const settings = Object.assign({ fov: 78, sensitivity: 1.0, volume: 1.0, lookLock: false }, saved);
   const setCbs = [];
   CB.settings = settings;
   CB.onSettingsChange = (fn) => { setCbs.push(fn); try { fn(settings); } catch {} };
+  // The crosshair belongs to the menu, so turning Look Lock on shows one in
+  // every game without each game having to draw its own.
+  const cross = document.createElement('div');
+  cross.id = 'cbx-crosshair';
+  cross.innerHTML = '<i></i><i></i><i></i><i></i><b></b>';
+  const mountCross = () => (document.body || document.documentElement).appendChild(cross);
+  if (document.body) mountCross(); else addEventListener('DOMContentLoaded', mountCross);
+  CB.onSettingsChange((s2) => cross.classList.toggle('on', !!s2.lookLock));
+  // also poll, so the crosshair still matches if a game (or a test) flips the
+  // setting directly without going through the menu
+  setInterval(() => cross.classList.toggle('on', !!settings.lookLock), 250);
+  CB.lookLock = () => !!settings.lookLock;
   function commitSettings() { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch {} setCbs.forEach((f) => { try { f(settings); } catch {} }); }
 
   // ---- game hooks ----
@@ -30,6 +42,26 @@
   // ---- styles ----
   const style = document.createElement('style');
   style.textContent = `
+  /* ---- Look Lock: shared toggle + the crosshair every game inherits ---- */
+  .cbx-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .cbx-toggle-row label { display:flex; flex-direction:column; gap:3px; }
+  .cbx-toggle-row small { font-weight:700; font-size:11.5px; color:#93a0b4; max-width:290px; line-height:1.35; }
+  .cbx-toggle { border:2.5px solid rgba(255,255,255,.18); border-bottom:5px solid rgba(0,0,0,.4);
+    border-radius:999px; background:#222b3c; color:#93a0b4; font-weight:900; font-size:12.5px;
+    padding:9px 18px; cursor:pointer; transition:all .14s; flex:none; }
+  .cbx-toggle.on { background:linear-gradient(180deg,#48d98a,#2aa862); color:#06301c; border-color:#fff; }
+  #cbx-crosshair { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:22px; height:22px; z-index:2147482000; pointer-events:none; display:none; }
+  #cbx-crosshair.on { display:block; }
+  #cbx-crosshair i { position:absolute; background:rgba(255,255,255,.92);
+    box-shadow:0 0 3px rgba(0,0,0,.8); border-radius:1px; }
+  #cbx-crosshair i:nth-child(1) { left:50%; top:0; width:2px; height:7px; margin-left:-1px; }
+  #cbx-crosshair i:nth-child(2) { left:50%; bottom:0; width:2px; height:7px; margin-left:-1px; }
+  #cbx-crosshair i:nth-child(3) { top:50%; left:0; height:2px; width:7px; margin-top:-1px; }
+  #cbx-crosshair i:nth-child(4) { top:50%; right:0; height:2px; width:7px; margin-top:-1px; }
+  #cbx-crosshair b { position:absolute; left:50%; top:50%; width:3px; height:3px; margin:-1.5px 0 0 -1.5px;
+    background:rgba(255,255,255,.95); border-radius:50%; box-shadow:0 0 3px rgba(0,0,0,.8); }
+
   #cbx-menu-btn{position:fixed;top:12px;left:12px;z-index:100000;width:46px;height:46px;padding:7px;border:none;border-radius:13px;
     background:rgba(20,24,34,.72);backdrop-filter:blur(10px);box-shadow:0 4px 16px rgba(0,0,0,.45);cursor:pointer;transition:transform .12s,background .15s;-webkit-appearance:none;}
   #cbx-menu-btn:hover{background:rgba(30,36,50,.85);transform:translateY(-1px);}
@@ -314,8 +346,19 @@
       <div class="cbx-set"><label>Field of View <span id="cbx-fovv">${settings.fov}°</span></label><input type="range" id="cbx-fov" min="60" max="100" step="1" value="${settings.fov}"></div>
       <div class="cbx-set"><label>Mouse Sensitivity <span id="cbx-senv">${settings.sensitivity.toFixed(2)}×</span></label><input type="range" id="cbx-sen" min="0.2" max="2.5" step="0.05" value="${settings.sensitivity}"></div>
       <div class="cbx-set"><label>Volume <span id="cbx-volv">${Math.round(settings.volume * 100)}%</span></label><input type="range" id="cbx-vol" min="0" max="1" step="0.05" value="${settings.volume}"></div>
+      <div class="cbx-set cbx-toggle-row">
+        <label>Look Lock<small>Camera sits over your shoulder, a crosshair appears, and your character turns to face wherever you look.</small></label>
+        <button id="cbx-looklock" class="cbx-toggle ${settings.lookLock ? 'on' : ''}">${settings.lookLock ? 'ON' : 'OFF'}</button>
+      </div>
       <div class="cbx-set"><label>Keybinds</label>${kb.map((k) => `<div class="cbx-kb"><span>${esc(k.action)}</span><kbd>${esc(k.keys)}</kbd></div>`).join('')}</div>`;
     const bind = (id, key, fmt, el) => body().querySelector(id).addEventListener('input', (e) => { settings[key] = +e.target.value; body().querySelector(el).textContent = fmt(settings[key]); commitSettings(); });
+    const ll = body().querySelector('#cbx-looklock');
+    if (ll) ll.addEventListener('click', () => {
+      settings.lookLock = !settings.lookLock;
+      ll.classList.toggle('on', settings.lookLock);
+      ll.textContent = settings.lookLock ? 'ON' : 'OFF';
+      commitSettings();
+    });
     bind('#cbx-fov', 'fov', (v) => v + '°', '#cbx-fovv');
     bind('#cbx-sen', 'sensitivity', (v) => v.toFixed(2) + '×', '#cbx-senv');
     bind('#cbx-vol', 'volume', (v) => Math.round(v * 100) + '%', '#cbx-volv');

@@ -225,6 +225,12 @@ function gamesWithStats() {
   });
 }
 const OWNER_NAME = 'attackface15';
+// mirrors shared/obby/gear.js — the server owns the prices so a client cannot
+// name its own
+const OBBY_GEAR = {
+  speed: { price: 20 }, gravity: { price: 35 }, carpet: { price: 60 },
+  jump: { price: 30 }, skip: { price: 45 }, trail: { price: 15 },
+};
 const OFFICIAL_NAME = 'claudebox studios';
 const STUDIO_AVATAR = { ...DEFAULT_AVATAR, body: 'boy', skin: '#93a1b5', shirtColor: '#38b6e8', hat: 'headphones', hatColor: '#1a1c22', face2: 'shades' };
 // games a creator is credited on (collaborators all count)
@@ -613,6 +619,17 @@ const levelSlug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '
   cbs.isBot = true;
   cbs.avatar = sanitizeAvatar(STUDIO_AVATAR);
 })();
+
+// A kiosk that loses power leaves its guest behind; clear anything older than
+// two hours on an interval so they never pile up.
+setInterval(() => {
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  let n = 0;
+  for (const [nl, u] of Object.entries(platform.users || {})) {
+    if (u && u.guest && (u.guestAt || 0) < cutoff) { delete platform.users[nl]; n++; }
+  }
+  if (n) save();
+}, 30 * 60 * 1000);
 
 export function hubRouter() {
   const r = express.Router();
@@ -1057,6 +1074,59 @@ export function hubRouter() {
     u.cubes += payout;
     save();
     res.json({ ok: true, wins: u.babLegendWins, payout, cubes: u.cubes });
+  });
+
+  // ---- Playtest guests: throwaway accounts that clean themselves up ----
+  // Created on launch from the kiosk and deleted the moment the session ends,
+  // so a public machine never accumulates hundreds of dead profiles.
+  const GUEST_RE = /^Guest\d{4}$/;
+  r.post('/playtest/guest', (req, res) => {
+    // find a free Guest#### rather than trampling an existing one
+    let name = null;
+    for (let i = 0; i < 40 && !name; i++) {
+      const n = 'Guest' + (1000 + Math.floor(Math.random() * 9000));
+      if (!platform.users[n.toLowerCase()]) name = n;
+    }
+    if (!name) name = 'Guest' + (1000 + Math.floor(Math.random() * 9000));
+    const u = ensureUser(name);
+    u.guest = true;                 // marks it deletable
+    u.guestAt = Date.now();
+    save();
+    res.json({ ok: true, name: u.name, avatar: u.avatar });
+  });
+  r.post('/playtest/release', (req, res) => {
+    const name = clean(req.body?.name);
+    const nl = String(name || '').toLowerCase();
+    const u = platform.users[nl];
+    // only ever delete something this system created
+    if (!u || !u.guest || !GUEST_RE.test(u.name)) return res.json({ ok: false });
+    delete platform.users[nl];
+    save();
+    res.json({ ok: true, released: u.name });
+  });
+
+  // ---- Obby gear: bought once with ClaudeBux, kept forever ----
+  r.get('/obby/gear', (req, res) => {
+    const u = getUser(clean(req.query.name).toLowerCase());
+    if (!u) return res.json({ owned: [], cubes: 0 });
+    ensureWallet(u);
+    res.json({ owned: u.obbyGear || [], cubes: u.cubes });
+  });
+  r.post('/obby/gear/buy', (req, res) => {
+    const name = clean(req.body?.name);
+    const id = String(req.body?.gear || '');
+    if (!name || !id) return res.status(400).json({ ok: false, error: 'bad request' });
+    const item = OBBY_GEAR[id];
+    if (!item) return res.status(404).json({ ok: false, error: 'unknown gear' });
+    const u = ensureUser(name);
+    ensureWallet(u);
+    if (!Array.isArray(u.obbyGear)) u.obbyGear = [];
+    if (u.obbyGear.includes(id)) return res.json({ ok: true, owned: u.obbyGear, cubes: u.cubes });
+    if (u.cubes < item.price) return res.status(400).json({ ok: false, error: 'not enough', cubes: u.cubes });
+    u.cubes -= item.price;
+    u.obbyGear.push(id);
+    save();
+    res.json({ ok: true, owned: u.obbyGear, cubes: u.cubes });
   });
 
   // searchable directory of everyone on the platform (names are public in-game)

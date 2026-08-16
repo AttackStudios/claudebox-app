@@ -39,6 +39,15 @@
     </div>
   </div>
 
+  <!-- stage progress -->
+  <div id="progress"><i id="progress-fill"></i><span id="progress-label">Stage 0 / 100</span></div>
+
+  <!-- gear you own -->
+  <div id="gear-bar" class="hidden"></div>
+
+  <!-- shop launcher -->
+  <button id="shop-btn">🛒 Shop</button>
+
   <!-- mobile controls -->
   <div id="move-cluster" class="hidden">
     <div id="joystick-zone"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
@@ -61,5 +70,18 @@
 <script src="/js/claudebox.js"></script>
 <script type="module" src="/js/voice.js"></script>
 <script type="module" src="/obby/js/main.js"></script>
+<!-- ============ GEAR SHOP ============ -->
+<div id="shop" class="scrim hidden">
+  <div class="shop-card">
+    <div class="shop-head">
+      <h2>🛒 Gear Shop</h2>
+      <span class="bux">🔷 <b id="shop-bux">0</b></span>
+      <button id="shop-close">✕</button>
+    </div>
+    <p class="shop-sub">Bought once, kept forever. Every stage is beatable with nothing equipped.</p>
+    <div id="shop-list"></div>
+  </div>
+</div>
+
 </body>
 </html>

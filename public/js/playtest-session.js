@@ -15,7 +15,32 @@
   const GRACE = 5000;              // how long TIME'S UP stays up
   let ended = false;
 
-  function bounce() { try { localStorage.removeItem(KEY); } catch {} location.replace(BACK); }
+  // Release the throwaway guest account before leaving. Uses sendBeacon where
+  // possible so it still fires when the tab is being torn down.
+  function releaseGuest() {
+    let who = null;
+    try { who = (session && session.guest) || localStorage.getItem('claudebox.user'); } catch {}
+    if (!who || !/^Guest\d{4}$/.test(who)) return;
+    const body = JSON.stringify({ name: who });
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/playtest/release', new Blob([body], { type: 'application/json' }));
+      } else {
+        fetch('/api/playtest/release', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      }
+    } catch {}
+    try { localStorage.removeItem('claudebox.user'); } catch {}
+  }
+
+  function bounce() {
+    releaseGuest();
+    try { localStorage.removeItem(KEY); } catch {}
+    location.replace(BACK);
+  }
+
+  // closing the tab or navigating away ends the session too
+  addEventListener('pagehide', releaseGuest);
+  addEventListener('beforeunload', releaseGuest);
 
   // ---------------------------------------------------------------- styles
   const css = document.createElement('style');

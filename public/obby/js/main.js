@@ -7,7 +7,10 @@ import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { Net, InterpBuffer } from './net.js';
-import { COURSE, START, moverPos, spinAngle, KILL_Y, checkpointById, FINISH_STAGE, applyCourse } from '/shared/obby/course.js';
+import { COURSE, START, moverPos, spinAngle, KILL_Y, checkpointById, FINISH_STAGE, applyCourse,
+         blinkOn, blinkPhase, pendulumPos, laserOn } from '/shared/obby/course.js';
+import { GEAR, GEAR_BY_ID } from '/shared/obby/gear.js';
+import * as sfx from './sfx.js';
 import { toObbyCourse } from '/shared/studio/adapters.js';
 
 const $ = (s) => document.querySelector(s);
@@ -45,6 +48,10 @@ scene.add(sun); scene.add(sun.target);
 }
 
 const lam = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
+// 900+ course objects — share buffers or the GPU upload alone stalls the load
+const _geo = new Map(), _mat = new Map();
+const boxGeo = (w, h, d) => { const k = `b${w}|${h}|${d}`; if (!_geo.has(k)) _geo.set(k, new THREE.BoxGeometry(w, h, d)); return _geo.get(k); };
+const matFor = (c, o) => { const k = c + JSON.stringify(o || {}); if (!_mat.has(k)) _mat.set(k, lam(c, o)); return _mat.get(k); };
 
 // ---------- build the course ----------
 function buildCourse() {
@@ -55,6 +62,7 @@ function buildCourse() {
     const m = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, p.d), mat);
     m.position.set(p.x, p.y, p.z); m.receiveShadow = true; m.castShadow = true;
     scene.add(m);
+    staticMeshes.push({ mesh: m, x: p.x });
   }
   // checkpoint beacons + numbers
   for (const c of COURSE.checkpoints) {
@@ -62,15 +70,71 @@ function buildCourse() {
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 14, 8),
       new THREE.MeshBasicMaterial({ color: c.n >= COURSE.finishStage ? '#ffd84a' : '#5fe08a', transparent: true, opacity: 0.32 }));
     beam.position.set(c.x, c.y + 7, c.z); scene.add(beam);
+    staticMeshes.push({ mesh: beam, x: c.x });
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.4), new THREE.MeshBasicMaterial({ map: numberTex(c.n), transparent: true, side: THREE.DoubleSide }));
     flag.position.set(c.x, c.y + 4, c.z); scene.add(flag);
     flag.userData.spin = true; spinFlags.push(flag);
+    staticMeshes.push({ mesh: flag, x: c.x });
+  }
+  // conveyors — arrows show which way they shove you
+  for (const c of COURSE.conveyors || []) {
+    const mesh = new THREE.Mesh(boxGeo(c.w, c.h, c.d), matFor(c.color));
+    mesh.position.set(c.x, c.y, c.z); mesh.receiveShadow = true;
+    scene.add(mesh);
+    const arrows = new THREE.Group();
+    const n = Math.max(2, Math.round(c.w / 3.2));
+    for (let i = 0; i < n; i++) {
+      const a = new THREE.Mesh(boxGeo(1.5, 0.08, 0.5), matFor('#0d1422'));
+      a.position.set(-c.w / 2 + 1.8 + i * (c.w - 3.2) / Math.max(1, n - 1), c.h / 2 + 0.06, 0);
+      arrows.add(a);
+    }
+    arrows.position.set(c.x, c.y, c.z);
+    scene.add(arrows);
+    courseObjs.push({ kind: 'conveyor', spec: c, mesh, extra: arrows, x: c.x });
+  }
+  // blinkers — phase in and out
+  for (const b of COURSE.blinkers || []) {
+    const mesh = new THREE.Mesh(boxGeo(b.w, b.h, b.d),
+      new THREE.MeshLambertMaterial({ color: b.color, transparent: true, opacity: 1 }));
+    mesh.position.set(b.x, b.y, b.z); mesh.receiveShadow = true;
+    scene.add(mesh);
+    courseObjs.push({ kind: 'blinker', spec: b, mesh, x: b.x });
+  }
+  // pendulums — a swinging wrecking ball on a chain
+  for (const pd of COURSE.pendulums || []) {
+    const g = new THREE.Group();
+    const anchor = new THREE.Mesh(boxGeo(1, 0.6, 1), matFor('#3a4150'));
+    anchor.position.set(pd.x, pd.y, pd.z);
+    scene.add(anchor);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(pd.r, 14, 12),
+      new THREE.MeshLambertMaterial({ color: '#c0241a', emissive: '#3a0b06' }));
+    ball.castShadow = true;
+    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1, 6), matFor('#7a8394'));
+    g.add(ball, chain);
+    scene.add(g);
+    courseObjs.push({ kind: 'pendulum', spec: pd, mesh: g, ball, chain, anchor, x: pd.x });
+  }
+  // lasers — lethal while lit
+  for (const l of COURSE.lasers || []) {
+    const beam = new THREE.Mesh(boxGeo(l.w, l.h, l.d),
+      new THREE.MeshBasicMaterial({ color: l.color, transparent: true, opacity: 0.75 }));
+    beam.position.set(l.x, l.y, l.z);
+    scene.add(beam);
+    const emitters = new THREE.Group();
+    for (const zz of [-l.d / 2, l.d / 2]) {
+      const e = new THREE.Mesh(boxGeo(0.7, 0.7, 0.5), matFor('#3a4150'));
+      e.position.set(l.x, l.y, l.z + zz);
+      emitters.add(e);
+    }
+    scene.add(emitters);
+    courseObjs.push({ kind: 'laser', spec: l, mesh: beam, extra: emitters, x: l.x });
   }
   // movers
   for (const m of COURSE.movers) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(m.w, m.h, m.d), lam('#cfd8e6'));
     mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh);
     moverMeshes.push({ spec: m, mesh });
+    staticMeshes.push({ mesh, x: m.x });
   }
   // spinners
   for (const s of COURSE.spinners) {
@@ -80,9 +144,14 @@ function buildCourse() {
     const bar = new THREE.Mesh(new THREE.BoxGeometry(s.len, s.h, 0.7), new THREE.MeshLambertMaterial({ color: '#e8563f', emissive: '#3a0f08' }));
     bar.castShadow = true; pivot.add(bar);
     spinnerMeshes.push({ spec: s, pivot });
+    staticMeshes.push({ mesh: pivot, x: s.x });
   }
 }
 const spinFlags = [], moverMeshes = [], spinnerMeshes = [];
+// everything cullable, indexed by course X so we only draw what is near you
+const courseObjs = [];
+const staticMeshes = [];   // {mesh, x} for plain platforms
+const DRAW = 130;          // how far along the course we render
 
 function numberTex(n) {
   const c = document.createElement('canvas'); c.width = c.height = 128;
@@ -101,15 +170,44 @@ const player = {
   pos: { x: START.x, y: START.y, z: START.z }, vel: { x: 0, y: 0, z: 0 },
   ry: 0, grounded: false, anim: 'idle', flying: false, sprint: false,
 };
+// ---------------------------------------------------------------- gear
+// Owned gear comes from the server (see /api/obby/gear) so it cannot be faked.
+const gear = {
+  owned: new Set(),
+  held: null,            // the 'hold' item currently in hand
+  carpet: null,          // { mesh, until } while deployed
+  carpetCdUntil: 0,
+  skipCdUntil: 0,
+  airJumps: 0,
+  trail: [],
+};
+const hasGear = (id) => gear.owned.has(id);
+const heldDef = () => (gear.held ? GEAR_BY_ID[gear.held] : null);
+
 const game = { dead: false, dying: false, won: false, stage: 0, carried: false, frozenUntil: 0, staff: false, owner: false, role: 'player', scale: 1 };
 
 // returns highest support top under (x,z) that you were standing at/above
 function supportUnder(x, z, fromY, time) {
-  let best = -Infinity, plat = null, moverHit = null;
+  let best = -Infinity, plat = null, moverHit = null, conveyorHit = null;
   for (const p of COURSE.platforms) {
     if (x > p.x - p.w/2 - R && x < p.x + p.w/2 + R && z > p.z - p.d/2 - R && z < p.z + p.d/2 + R) {
       const top = p.y + p.h/2;
       if (top <= fromY + 0.6 && top > best) { best = top; plat = p; moverHit = null; }
+    }
+  }
+  // conveyors hold you up and shove you along
+  for (const c of COURSE.conveyors || []) {
+    if (x > c.x - c.w/2 - R && x < c.x + c.w/2 + R && z > c.z - c.d/2 - R && z < c.z + c.d/2 + R) {
+      const top = c.y + c.h/2;
+      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = c; }
+    }
+  }
+  // a blinker only holds you while it is phased in
+  for (const b of COURSE.blinkers || []) {
+    if (!blinkOn(b, time)) continue;
+    if (x > b.x - b.w/2 - R && x < b.x + b.w/2 + R && z > b.z - b.d/2 - R && z < b.z + b.d/2 + R) {
+      const top = b.y + b.h/2;
+      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
     }
   }
   for (const mm of moverMeshes) {
@@ -119,10 +217,12 @@ function supportUnder(x, z, fromY, time) {
       if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = { m, wp }; }
     }
   }
-  return { top: best, plat, moverHit };
+  return { top: best, plat, moverHit, conveyorHit };
 }
 
 let standMover = null, standMoverPrev = null;
+let onIce = false;
+const lookLockOn = () => !!(window.ClaudeBox?.settings?.lookLock);
 function updatePlayer(dt, input, time) {
   if (game.dead || game.carried) return;
   const frozen = Date.now() < game.frozenUntil;
@@ -147,26 +247,66 @@ function updatePlayer(dt, input, time) {
     return;
   }
 
-  const sp = (player.sprint ? RUN : MOVE);
-  player.vel.x = wishX * sp; player.vel.z = wishZ * sp;
-  if (moving) player.ry = Math.atan2(wishX, wishZ);
+  const gd = heldDef();
+  const speedMul = gd?.mult || 1;
+  const sp = (player.sprint ? RUN : MOVE) * speedMul;
+  // Ice keeps your momentum: you accelerate slowly and slide when you let go.
+  if (onIce) {
+    const grip = 2.4 * dt;
+    player.vel.x += (wishX * sp - player.vel.x) * grip;
+    player.vel.z += (wishZ * sp - player.vel.z) * grip;
+    if (moving && Math.random() < dt * 3) sfx.slip();
+  } else {
+    player.vel.x = wishX * sp; player.vel.z = wishZ * sp;
+  }
+  // Look Lock turns you to face the camera at all times; otherwise you face
+  // the way you are moving.
+  if (lookLockOn()) player.ry = orbit.yaw;
+  else if (moving) player.ry = Math.atan2(wishX, wishZ);
 
   // ride a mover horizontally
   standMoverPrev = standMover;
 
   const prevY = player.pos.y;
-  player.vel.y -= G * dt;
+  player.vel.y -= G * (gd?.gravity ?? 1) * dt;
   player.pos.x += player.vel.x * dt;
   player.pos.z += player.vel.z * dt;
   player.pos.y += player.vel.y * dt;
 
   const sup = supportUnder(player.pos.x, player.pos.z, prevY, time);
   player.grounded = false; standMover = null;
+  const wasAir = !player.grounded;
+  onIce = false;
   if (player.vel.y <= 0 && sup.top > -Infinity && player.pos.y <= sup.top && prevY >= sup.top - 0.5) {
     player.pos.y = sup.top; player.vel.y = 0; player.grounded = true;
+    gear.airJumps = 0;
+    if (wasAir && player.vel.y > -1) sfx.land();
     if (sup.plat?.kind === 'kill') return die('lava');
     if (sup.plat?.kind === 'finish') win();
+    if (sup.plat?.kind === 'ice') onIce = true;
+    if (sup.plat?.kind === 'bouncy') {
+      player.vel.y = JUMP * 1.85 * (gd?.jump || 1);
+      player.grounded = false;
+      sfx.bounce();
+    }
     if (sup.moverHit) standMover = sup.moverHit;
+    // a conveyor keeps shoving while you stand on it
+    if (sup.conveyorHit) {
+      player.pos.x += sup.conveyorHit.dx * dt;
+      player.pos.z += sup.conveyorHit.dz * dt;
+    }
+  }
+  // swinging balls and live lasers are lethal on contact
+  const hx = player.pos.x, hy = player.pos.y + 0.9, hz = player.pos.z;
+  for (const pd of COURSE.pendulums || []) {
+    if (Math.abs(pd.x - hx) > 14) continue;
+    const wp = pendulumPos(pd, time);
+    if (Math.hypot(wp.x - hx, wp.y - hy, wp.z - hz) < pd.r + 0.55) return die('wrecked');
+  }
+  for (const l of COURSE.lasers || []) {
+    if (Math.abs(l.x - hx) > 12 || !laserOn(l, time)) continue;
+    if (Math.abs(hx - l.x) < l.w / 2 + 0.4 && Math.abs(hz - l.z) < l.d / 2
+        && hy > l.y - l.h / 2 - 0.3 && hy < l.y + l.h / 2 + 0.9) { sfx.laserZap(); return die('lasered'); }
   }
   // carry along the mover you're standing on
   if (standMover && standMoverPrev && standMover.m === standMoverPrev.m) {
@@ -180,7 +320,15 @@ function updatePlayer(dt, input, time) {
   if (player.grounded) coyoteUntil = nowS + 0.1;
   const recentlyPressed = jumpAt >= 0 && nowS - jumpAt < 0.15;
   if (recentlyPressed && nowS < coyoteUntil && !frozen) {
-    player.vel.y = JUMP; player.grounded = false; coyoteUntil = 0; jumpAt = -1;
+    const gj = heldDef();
+    player.vel.y = JUMP * (gj?.jump || 1); player.grounded = false;
+    coyoteUntil = 0; jumpAt = -1; sfx.jump();
+  } else if (recentlyPressed && !frozen && !player.grounded && hasGear('jump') && gear.airJumps < 1) {
+    // Double Jump gear — one extra push per airtime
+    gear.airJumps++; jumpAt = -1;
+    const gj = heldDef();
+    player.vel.y = JUMP * (gj?.jump || 1) * 0.92;
+    sfx.doubleJump();
   }
 
   // spinner fling
@@ -209,21 +357,35 @@ function updatePlayer(dt, input, time) {
   // fall death
   if (player.pos.y < COURSE.killY) die('fell');
 
-  // checkpoint pass-through
+  // checkpoint pass-through — 100 checkpoints, so only test the nearby ones
   for (const c of COURSE.checkpoints) {
-    if (c.n > game.stage && Math.hypot(c.x - player.pos.x, c.z - player.pos.z) < 6 && Math.abs(c.y - player.pos.y) < 4) {
+    if (c.n <= game.stage || Math.abs(c.x - player.pos.x) > 12) continue;
+    if (Math.hypot(c.x - player.pos.x, c.z - player.pos.z) < 6 && Math.abs(c.y - player.pos.y) < 4) {
+      game.stage = c.n;                 // reflect it locally so the bar moves at once
+      sfx.checkpoint();
+      updateProgress();
       net.send({ t: 'checkpoint', n: c.n });
     }
   }
 }
 
+function updateProgress() {
+  const fill = $('#progress-fill'), lab = $('#progress-label');
+  if (!fill) return;
+  const pct = Math.max(0, Math.min(1, (game.stage || 0) / FINISH_STAGE));
+  fill.style.right = `${(1 - pct) * 100}%`;
+  lab.textContent = `Stage ${game.stage || 0} / ${FINISH_STAGE}`;
+}
+
 function die(cause) {
   if (game.dead || game.dying) return;
   game.dying = true;
+  if (cause === 'lava') sfx.lava(); else sfx.die();
   net.send({ t: 'die', cause });
 }
 function win() {
   if (game.won) return; game.won = true;
+  sfx.win();
   window.ClaudeBox?.completeChallenge('obby-finish');
   net.send({ t: 'checkpoint', n: COURSE.finishStage });
   $('#win-veil').classList.remove('hidden');
@@ -232,17 +394,45 @@ function win() {
 
 // ---------- camera (third-person orbit) ----------
 const orbit = { yaw: Math.PI, pitch: 0.42, dist: 9 };
+// Jump — routed through here so gear (higher jump, an extra air jump) and the
+// sound all live in one place.
+function tryJump() {
+  if (game.dead || player.flying) return;
+  const gd = heldDef();
+  const power = JUMP * (gd?.jump || 1);
+  if (player.grounded) {
+    player.vel.y = power; player.grounded = false; sfx.jump();
+    return;
+  }
+  // Double Jump gear: one extra push per time you leave the ground
+  if (hasGear('jump') && gear.airJumps < 1) {
+    gear.airJumps++;
+    player.vel.y = power * 0.92;
+    sfx.doubleJump();
+  }
+}
+
 function updateCamera() {
   // camera framing tracks your size: tiny → close & low, giant → far & high
   const s = game.scale;
   const dist = orbit.dist * s;
   const tx = player.pos.x, ty = player.pos.y + 1.4 * s, tz = player.pos.z;
   const cp = Math.cos(orbit.pitch);
-  const cx = tx + Math.sin(orbit.yaw) * cp * dist;
+  let cx = tx + Math.sin(orbit.yaw) * cp * dist;
   const cy = ty + Math.sin(orbit.pitch) * dist;
-  const cz = tz + Math.cos(orbit.yaw) * cp * dist;
+  let cz = tz + Math.cos(orbit.yaw) * cp * dist;
+  // Look Lock: slide the camera off to one side so your character is not
+  // sitting under the crosshair, and aim at the same offset so the reticle
+  // stays true to where you are pointing.
+  let lx = tx, lz = tz;
+  if (lookLockOn()) {
+    const sx = Math.cos(orbit.yaw), sz = -Math.sin(orbit.yaw);   // camera-right
+    const off = 1.15 * s;
+    cx += sx * off; cz += sz * off;
+    lx += sx * off; lz += sz * off;
+  }
   camera.position.lerp(new THREE.Vector3(cx, cy, cz), 0.6);
-  camera.lookAt(tx, ty, tz);
+  camera.lookAt(lx, ty, lz);
   const targetFov = 60 + (s - 1) * 9;   // giant widens the view, tiny narrows it
   if (Math.abs(camera.fov - targetFov) > 0.1) { camera.fov += (targetFov - camera.fov) * 0.12; camera.updateProjectionMatrix(); }
 }
@@ -467,6 +657,14 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Enter') openChat();
   if (e.code === 'KeyT' && game.staff) $('#troll-btn').click();
   if (e.code === 'KeyR') die('reset');
+  sfx.unlock();
+  // 1-9 pick gear you own
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 9) {
+    const mine = GEAR.filter((g) => hasGear(g.id) && g.slot !== 'passive');
+    if (mine[n - 1]) equipGear(mine[n - 1].id);
+  }
+  if (e.code === 'KeyB') $('#shop').classList.toggle('hidden');
   if (e.code === 'Escape') $('#troll-menu').classList.add('hidden');
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -550,14 +748,212 @@ function setupMobile() {
 
 // ---------- main loop ----------
 let last = performance.now();
+// ---------------------------------------------------------------- gear
+const codeHdr = () => ({ 'x-cbx-code': localStorage.getItem('claudebox.code') || '' });
+const myName = () => localStorage.getItem('claudebox.user') || '';
+
+async function loadGear() {
+  try {
+    const r = await fetch('/api/obby/gear?name=' + encodeURIComponent(myName()), { headers: codeHdr() });
+    const j = await r.json();
+    gear.owned = new Set(j.owned || []);
+    myBux = j.cubes ?? myBux;
+  } catch {}
+  buildHotbar(); renderShop();
+}
+
+let myBux = 0;
+async function buyGear(id) {
+  const g = GEAR_BY_ID[id]; if (!g || hasGear(id)) return;
+  try {
+    const r = await fetch('/api/obby/gear/buy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...codeHdr() },
+      body: JSON.stringify({ name: myName(), gear: id }),
+    });
+    const j = await r.json();
+    if (!j.ok) { sfx.deny(); toast(j.error === 'not enough' ? 'Not enough ClaudeBux' : (j.error || 'Purchase failed')); return; }
+    gear.owned = new Set(j.owned || []);
+    myBux = j.cubes;
+    sfx.buy(); toast(`Bought ${g.name}!`);
+    buildHotbar(); renderShop();
+  } catch { toast('Purchase failed'); }
+}
+
+// hold-type gear toggles in and out of your hand
+function equipGear(id) {
+  const g = GEAR_BY_ID[id];
+  if (!g || !hasGear(id)) { sfx.deny(); return; }
+  if (g.slot === 'hold') {
+    gear.held = (gear.held === id) ? null : id;
+    sfx.equip();
+  } else if (g.slot === 'deploy') deployCarpet();
+  else if (g.slot === 'use') useSkip();
+  buildHotbar();
+}
+
+// ---- Magic Carpet: a platform you ride, steered with your look ----
+function deployCarpet() {
+  const now = performance.now() / 1000;
+  if (now < gear.carpetCdUntil) { sfx.deny(); toast('Carpet is recharging'); return; }
+  if (gear.carpet) return;
+  const g = GEAR_BY_ID.carpet;
+  const grp = new THREE.Group();
+  const rug = new THREE.Mesh(boxGeo(4.2, 0.25, 3), new THREE.MeshLambertMaterial({ color: '#8c5ae8' }));
+  const trim = new THREE.Mesh(boxGeo(4.5, 0.12, 3.3), new THREE.MeshLambertMaterial({ color: '#ffd84a' }));
+  trim.position.y = -0.1;
+  grp.add(rug, trim);
+  grp.position.set(player.pos.x, player.pos.y - 0.2, player.pos.z);
+  scene.add(grp);
+  gear.carpet = { mesh: grp, until: now + g.life };
+  gear.carpetCdUntil = now + g.cooldown;
+  sfx.carpet(); toast('🧞 Carpet deployed — stand on it and steer with your look');
+  buildHotbar();
+}
+
+// ---- Stage Skip: warp to the next checkpoint ----
+function useSkip() {
+  const now = performance.now() / 1000;
+  if (now < gear.skipCdUntil) {
+    toast(`Skip recharging (${Math.ceil(gear.skipCdUntil - now)}s)`); sfx.deny(); return;
+  }
+  const next = COURSE.checkpoints.find((c) => c.n === (game.stage || 0) + 1);
+  if (!next) { sfx.deny(); toast('No stage to skip to'); return; }
+  gear.skipCdUntil = now + GEAR_BY_ID.skip.cooldown;
+  player.pos.x = next.x; player.pos.y = next.y + 1.2; player.pos.z = next.z;
+  player.vel.x = player.vel.y = player.vel.z = 0;
+  game.stage = next.n; net.send({ t: 'checkpoint', n: next.n });
+  sfx.warp(); toast(`⏭️ Skipped to stage ${next.n}`);
+  buildHotbar();
+}
+
+function tickGear(dt, time) {
+  const now = performance.now() / 1000;
+  // carpet: ride it, steer with your look, and it expires
+  if (gear.carpet) {
+    const c = gear.carpet;
+    const on = Math.abs(player.pos.x - c.mesh.position.x) < 2.3
+            && Math.abs(player.pos.z - c.mesh.position.z) < 1.7
+            && Math.abs(player.pos.y - (c.mesh.position.y + 0.32)) < 1.1;
+    if (on) {
+      const g = GEAR_BY_ID.carpet;
+      const fx = -Math.sin(orbit.yaw), fz = -Math.cos(orbit.yaw);
+      const inp = readInput();
+      const drive = (inp.z || 0);
+      c.mesh.position.x += fx * drive * g.flySpeed * dt;
+      c.mesh.position.z += fz * drive * g.flySpeed * dt;
+      c.mesh.position.y += ((inp.up ? 1 : 0) - (inp.down ? 1 : 0)) * g.flySpeed * 0.6 * dt;
+      c.mesh.rotation.y = orbit.yaw;
+      // carry the rider
+      player.pos.x = c.mesh.position.x; player.pos.z = c.mesh.position.z;
+      player.pos.y = c.mesh.position.y + 0.32;
+      player.vel.y = 0; player.grounded = true; gear.airJumps = 0;
+    }
+    if (now > c.until) { scene.remove(c.mesh); gear.carpet = null; buildHotbar(); toast('Carpet faded'); }
+  }
+  // rainbow trail
+  if (hasGear('trail') && !game.dead) {
+    if (!tickGear._t || now - tickGear._t > 0.05) {
+      tickGear._t = now;
+      const hue = (now * 120) % 360;
+      const puff = new THREE.Mesh(boxGeo(0.4, 0.4, 0.4),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(`hsl(${hue},90%,60%)`), transparent: true, opacity: 0.9 }));
+      puff.position.set(player.pos.x, player.pos.y + 0.5, player.pos.z);
+      scene.add(puff);
+      gear.trail.push({ mesh: puff, t: 0 });
+    }
+  }
+  for (let i = gear.trail.length - 1; i >= 0; i--) {
+    const p2 = gear.trail[i]; p2.t += dt;
+    p2.mesh.material.opacity = Math.max(0, 0.9 - p2.t / 0.9);
+    p2.mesh.scale.setScalar(Math.max(0.05, 1 - p2.t));
+    if (p2.t > 0.9) { scene.remove(p2.mesh); gear.trail.splice(i, 1); }
+  }
+}
+
+// ---- hotbar + shop UI ----
+function buildHotbar() {
+  const bar = $('#gear-bar'); if (!bar) return;
+  const mine = GEAR.filter((g) => hasGear(g.id) && g.slot !== 'passive');
+  bar.innerHTML = '';
+  bar.classList.toggle('hidden', mine.length === 0);
+  mine.forEach((g, i) => {
+    const b = document.createElement('button');
+    b.className = 'gear-slot' + (gear.held === g.id ? ' on' : '');
+    const now = performance.now() / 1000;
+    const cd = g.id === 'skip' ? gear.skipCdUntil - now : g.id === 'carpet' ? gear.carpetCdUntil - now : 0;
+    b.innerHTML = `<span class="k">${i + 1}</span><i>${g.emoji}</i><small>${g.name.split(' ')[0]}</small>`
+      + (cd > 0 ? `<span class="cd">${Math.ceil(cd)}s</span>` : '');
+    b.addEventListener('click', () => { sfx.click(); equipGear(g.id); });
+    bar.appendChild(b);
+  });
+}
+function renderShop() {
+  const list = $('#shop-list'); if (!list) return;
+  $('#shop-bux').textContent = myBux;
+  list.innerHTML = '';
+  for (const g of GEAR) {
+    const owned = hasGear(g.id);
+    const row = document.createElement('div');
+    row.className = 'shop-row' + (owned ? ' owned' : '');
+    row.innerHTML = `<span class="ico">${g.emoji}</span>
+      <span class="who"><b>${g.name}</b><small>${g.blurb}</small></span>`;
+    const btn = document.createElement('button');
+    btn.className = 'buy' + (owned ? ' have' : '');
+    btn.textContent = owned ? 'Owned' : `🔷 ${g.price}`;
+    btn.disabled = owned;
+    if (!owned) btn.addEventListener('click', () => buyGear(g.id));
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
+
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const time = serverTime || now / 1000;
 
+  // ---- cull: 900+ objects over 8000 studs, so only draw what is near you ----
+  const px = player.pos.x;
+  for (const o of staticMeshes) {
+    const near = Math.abs(o.x - px) < DRAW;
+    if (o.mesh.visible !== near) o.mesh.visible = near;
+  }
+  for (const o of courseObjs) {
+    const near = Math.abs(o.x - px) < DRAW;
+    if (o.mesh.visible !== near) {
+      o.mesh.visible = near;
+      if (o.extra) o.extra.visible = near;
+      if (o.anchor) o.anchor.visible = near;
+    }
+    if (!near) continue;
+    if (o.kind === 'blinker') {
+      // fade out over the last of the solid window, so you get a warning
+      const ph = blinkPhase(o.spec, time);
+      const on = blinkOn(o.spec, time);
+      o.mesh.material.opacity = on ? (ph > 0.7 ? 1 - (ph - 0.7) / 0.3 * 0.75 : 1) : 0.14;
+    } else if (o.kind === 'pendulum') {
+      const wp = pendulumPos(o.spec, time);
+      o.ball.position.set(wp.x, wp.y, wp.z);
+      // stretch the chain between the anchor and the ball
+      const ax = o.spec.x, ay = o.spec.y, az = o.spec.z;
+      o.chain.position.set((ax + wp.x) / 2, (ay + wp.y) / 2, (az + wp.z) / 2);
+      const dy = wp.y - ay, dz = wp.z - az;
+      o.chain.scale.y = Math.hypot(dy, dz);
+      o.chain.rotation.x = Math.atan2(dz, -dy);
+    } else if (o.kind === 'laser') {
+      const on = laserOn(o.spec, time);
+      o.mesh.material.opacity = on ? 0.8 : 0.1;
+      o.mesh.scale.x = on ? 1 : 0.35;
+    } else if (o.kind === 'conveyor' && o.extra) {
+      // slide the arrows to show the direction of travel
+      const w = o.spec.w;
+      o.extra.position.x = o.spec.x + (((time * o.spec.dx * 0.35) % 3.2) + 3.2) % 3.2 - 1.6;
+    }
+  }
   // animate course
   for (const f of spinFlags) f.rotation.y += dt * 1.5;
   for (const mm of moverMeshes) { const wp = moverPos(mm.spec, time); mm.mesh.position.set(wp.x, wp.y, wp.z); }
   for (const sm of spinnerMeshes) sm.pivot.rotation.y = spinAngle(sm.spec, time);
+  tickGear(dt, time);
 
   // input + player
   const input = readInput();
@@ -624,6 +1020,15 @@ function frame(now) {
     if (game.carried) return null;
     return { t: 'move', x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), ry: +player.ry.toFixed(3), anim: player.anim };
   });
+  // shop wiring
+  $('#shop-btn')?.addEventListener('click', () => { sfx.unlock(); sfx.click(); renderShop(); $('#shop').classList.remove('hidden'); });
+  $('#shop-close')?.addEventListener('click', () => { sfx.click(); $('#shop').classList.add('hidden'); });
+  $('#shop')?.addEventListener('click', (e) => { if (e.target.id === 'shop') $('#shop').classList.add('hidden'); });
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => addEventListener(ev, () => sfx.unlock(), { once: true }));
+  await loadGear();
+
   requestAnimationFrame(frame);
-  window.__obby = { net, player, remotes, game, scene, lasers };   // debug/test hook
+  window.__obby = { net, player, remotes, game, scene, lasers, gear, GEAR, renderer,
+    buyGear, equipGear, useSkip, deployCarpet, courseObjs, staticMeshes,
+    lookLock: lookLockOn };   // debug/test hook
 })();

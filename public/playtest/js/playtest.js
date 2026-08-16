@@ -24,7 +24,21 @@ const setMinutes = (v) => localStorage.setItem(MINUTES_KEY, String(Math.max(1, M
 
 // Arriving here means the session is over (or never started) — clear it so the
 // in-game overlay does not fire on the next launch.
-try { localStorage.removeItem(SESSION_KEY); } catch {}
+try {
+  // Arriving here means a session just ended (or never started). Delete the
+  // guest account it was using so throwaway profiles never accumulate.
+  const prev = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  const stale = (prev && prev.guest) || localStorage.getItem('claudebox.user');
+  if (stale && /^Guest\d{4}$/.test(stale)) {
+    fetch('/api/playtest/release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' },
+      body: JSON.stringify({ name: stale }),
+    }).catch(() => {});
+    localStorage.removeItem('claudebox.user');
+  }
+  localStorage.removeItem(SESSION_KEY);
+} catch {}
 
 // ---------------------------------------------------------------- screens
 let screen = 'start';
@@ -104,12 +118,35 @@ function begin() { show('picker'); }
 $('#start').addEventListener('click', begin);
 
 // ---------------------------------------------------------------- launch
-function launch() {
+// Every playtest session plays as a fresh guest — nobody at a kiosk should be
+// asked to sign in. The account is registered server-side first, otherwise the
+// games look up an unknown user and bounce to the login page.
+async function makeGuest() {
+  const name = 'Guest' + (1000 + Math.floor(Math.random() * 9000));
+  try {
+    const r = await fetch('/api/playtest/guest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-cbx-code': localStorage.getItem('claudebox.code') || '' },
+      body: JSON.stringify({}),
+    });
+    const j = await r.json();
+    if (j && j.ok && j.name) {
+      localStorage.setItem('claudebox.user', j.name);
+      return j.name;
+    }
+  } catch {}
+  // even if the call failed, give the games a name to work with
+  localStorage.setItem('claudebox.user', name);
+  return name;
+}
+
+async function launch() {
   const g = GAMES[index];
   const mins = getMinutes();
+  const guest = await makeGuest();
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
-      game: g.id, name: g.name, endsAt: Date.now() + mins * 60000, minutes: mins,
+      game: g.id, name: g.name, endsAt: Date.now() + mins * 60000, minutes: mins, guest,
     }));
   } catch {}
 
@@ -118,7 +155,7 @@ function launch() {
   wipe.id = 'wipe';
   wipe.innerHTML = `<div><div class="w-art"><img src="${g.art}" alt=""></div>
     <div class="w-name">${g.name}</div>
-    <div class="w-sub">${mins} minute session</div></div>`;
+    <div class="w-sub">${mins} minute session &middot; playing as ${guest}</div></div>`;
   document.body.appendChild(wipe);
   requestAnimationFrame(() => wipe.classList.add('on'));
   setTimeout(() => { location.href = g.url; }, 900);
