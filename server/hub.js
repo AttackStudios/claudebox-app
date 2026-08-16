@@ -374,11 +374,13 @@ function sanitizeAvatar(a = {}) {
     skin: cleanColor(a.skin, DEFAULT_AVATAR.skin),
     hair: pick(a.hair, ['none', 'short', 'long', 'spiky', 'bun', 'curly'], 'short'),
     hairColor: cleanColor(a.hairColor, DEFAULT_AVATAR.hairColor),
-    shirt: pick(a.shirt, ['tee', 'hoodie', 'jacket', 'tank'], 'tee'),
+    // 'hoodie'/'jacket'/'tank' are legacy ids kept so old saves aren't reset;
+    // they have no 3D garment yet and simply render as the body's shirt colour.
+    shirt: pick(a.shirt, ['none', 'tee', 'striped', 'ringer', 'stickfight', 'hoodie', 'jacket', 'tank'], 'tee'),
     shirtColor: cleanColor(a.shirtColor, DEFAULT_AVATAR.shirtColor),
     pants: pick(a.pants, ['long', 'shorts', 'skirt'], 'long'),
     pantsColor: cleanColor(a.pantsColor, DEFAULT_AVATAR.pantsColor),
-    shoes: pick(a.shoes, ['sneakers', 'boots', 'sandals', 'none'], 'sneakers'),
+    shoes: pick(a.shoes, ['none', 'sneakers', 'hightops', 'boots', 'dress', 'sandals'], 'sneakers'),
     shoeColor: cleanColor(a.shoeColor, DEFAULT_AVATAR.shoeColor),
     // clothing for the 3D model (ids must match avatar3d.js CLOTHING catalog)
     hat: pick(a.hat, ['none', 'cap', 'beanie', 'tophat', 'crown', 'cowboy', 'headphones', 'halo', 'horns', 'wizard', 'bandana', 'flower', 'pirate', 'party', 'chef', 'football', 'propeller'], 'none'),
@@ -390,6 +392,16 @@ function sanitizeAvatar(a = {}) {
     suit: pick(a.suit, ['none', 'swim'], 'none'),
     suitColor: cleanColor(a.suitColor, DEFAULT_AVATAR.suitColor),
     face: pick(a.face, ['happy', 'cool', 'surprised', 'sleepy'], 'happy'),
+    // secondary (trim/accent) colours. Undefined is meaningful here: it tells
+    // the renderer to fall back to the accent the item was designed with, so
+    // these are only stored once the wearer actually picks one.
+    hairColor2: a.hairColor2 ? cleanColor(a.hairColor2, '#8a6242') : undefined,
+    hatColor2: a.hatColor2 ? cleanColor(a.hatColor2, '#1f2430') : undefined,
+    backColor2: a.backColor2 ? cleanColor(a.backColor2, '#2f333c') : undefined,
+    faceColor2: a.faceColor2 ? cleanColor(a.faceColor2, '#9fd4ff') : undefined,
+    suitColor2: a.suitColor2 ? cleanColor(a.suitColor2, '#ffffff') : undefined,
+    shirtColor2: a.shirtColor2 ? cleanColor(a.shirtColor2, '#ffffff') : undefined,
+    shoeColor2: a.shoeColor2 ? cleanColor(a.shoeColor2, '#f4f6fa') : undefined,
     // R6 mode: the blocky six-part look (saved separately; Rivals always uses it)
     r6: a.r6 && typeof a.r6 === 'object' ? {
       head: cleanColor(a.r6.head, '#f5cd30'),
@@ -868,7 +880,7 @@ export function hubRouter() {
 
   // ---------------- direct messages ----------------
   const dmKey = (a, b) => [a, b].sort().join('|');
-  const cleanDm = (s) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, 500);
+  const cleanDm = (s) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 500);
   r.post('/dm/send', (req, res) => {
     const rawName = clean(req.body?.name), rawTo = clean(req.body?.to);
     const name = rawName.toLowerCase(), to = rawTo.toLowerCase();
@@ -967,7 +979,7 @@ export function hubRouter() {
     platform.reports.push({
       by, target,
       reason: cleanCreator(req.body?.reason).slice(0, 60),
-      details: String(req.body?.details || '').replace(/[ -]/g, ' ').slice(0, 300),
+      details: String(req.body?.details || '').replace(/[\u0000-\u001f]/g, ' ').slice(0, 300),
       game: cleanGameId(req.body?.game), at: Date.now(),
     });
     if (platform.reports.length > 1000) platform.reports = platform.reports.slice(-1000);
