@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '/vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '/vendor/SkeletonUtils.js';
+import { mergeGeometries } from '/vendor/BufferGeometryUtils.js';
 
 const loader = new GLTFLoader();
 const glbCache = new Map();
@@ -225,13 +226,90 @@ export function makeAvatar(profile = {}) {
     head.top = bb.max.y;
     head.radius = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2;
     head.forward = (bb.max.z - head.center.z) >= 0 ? 1 : -1;
+    // Real half-extents. These heads are rounded CUBES, not spheres — hair cut
+    // as a sphere lets the cube's corners poke straight through the top.
+    head.hw = (bb.max.x - bb.min.x) / 2;
+    head.hh = (bb.max.y - bb.min.y) / 2;
+    head.hd = (bb.max.z - bb.min.z) / 2;
   } else {
     // single-mesh model: head is the top of the overall bounding box
     const bb = new THREE.Box3().setFromObject(inner);
     head.radius = (bb.max.x - bb.min.x) * 0.17;
     head.center = new THREE.Vector3((bb.min.x + bb.max.x) / 2, bb.max.y - head.radius, (bb.min.z + bb.max.z) / 2);
     head.top = bb.max.y; head.forward = 1;   // ROBLOXBoyR15 faces +Z
+    head.hw = head.hd = head.hh = head.radius;
   }
+  // measure the torso too, so a shirt print wraps the actual chest instead of
+  // a guessed cylinder (the two models are different shapes)
+  const torsoMesh = inner.getObjectByName('Torso');
+  const torso = { center: new THREE.Vector3(0, TARGET_HEIGHT * 0.62, 0), halfW: 0.2, halfD: 0.12, height: 0.5 };
+  if (torsoMesh) {
+    const tb = new THREE.Box3().setFromObject(torsoMesh);
+    torso.center = tb.getCenter(new THREE.Vector3());
+    torso.halfW = (tb.max.x - tb.min.x) / 2;
+    torso.halfD = (tb.max.z - tb.min.z) / 2;
+    torso.height = tb.max.y - tb.min.y;
+  } else {
+    // No named Torso mesh (the boy is one welded mesh), and the overall bounding
+    // box spans his outstretched arms — so measure the chest off the skeleton
+    // instead: shoulder joints give the width, neck-to-hips gives the height.
+    const bn = (names) => { for (const n of names) if (bones[n]) return bones[n]; return null; };
+    const wp = (b) => b.getWorldPosition(new THREE.Vector3());
+    const lA = bn(['mixamorigLeftArm', 'L_Shoulder']), rA = bn(['mixamorigRightArm', 'R_Shoulder']);
+    const neckB = bn(['mixamorigNeck', 'Neck']), hipB = bn(['mixamorigHips', 'Waist']);
+    const bb = new THREE.Box3().setFromObject(inner);
+    const cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+    if (lA && rA && neckB && hipB) {
+      const l = wp(lA), r = wp(rA), nk = wp(neckB), hp = wp(hipB);
+      torso.halfW = Math.max(0.14, Math.abs(l.x - r.x) / 2 * 0.94);
+      torso.halfD = torso.halfW * 0.66;
+      torso.height = Math.max(0.3, (nk.y - hp.y) * 1.06);
+      torso.center = new THREE.Vector3(cx, (nk.y + hp.y) / 2, cz);
+    } else {
+      torso.halfW = TARGET_HEIGHT * 0.125;
+      torso.halfD = TARGET_HEIGHT * 0.078;
+      torso.height = TARGET_HEIGHT * 0.32;
+      torso.center = new THREE.Vector3(cx, TARGET_HEIGHT * 0.63, cz);
+    }
+  }
+  torso.forward = head.forward;
+
+  // Measure the foot so shoes fit either rig. The two models are built very
+  // differently — the girl's leg is a column that just ends at the floor, the
+  // boy has a real foot with a toe joint — so a fixed shoe size fits neither.
+  const foot = { ankleY: TARGET_HEIGHT * 0.07, halfW: TARGET_HEIGHT * 0.06, toe: TARGET_HEIGHT * 0.09, heel: TARGET_HEIGHT * 0.035 };
+  {
+    const fb = (names) => { for (const n of names) if (bones[n]) return bones[n]; return null; };
+    const lAnk = fb(['L_Ankle', 'mixamorigLeftFoot']);
+    const rAnk = fb(['R_Ankle', 'mixamorigRightFoot']);
+    const toeB = fb(['mixamorigLeftToeBase', 'L_Toe']);
+    if (lAnk) {
+      const lp = lAnk.getWorldPosition(new THREE.Vector3());
+      foot.ankleY = Math.max(0.04, lp.y);
+      if (rAnk) {
+        const rp = rAnk.getWorldPosition(new THREE.Vector3());
+        foot.halfW = Math.max(0.05, Math.abs(lp.x - rp.x) / 2 * 0.86);
+      }
+      // a real toe joint gives the exact reach; otherwise infer it from width
+      if (toeB) {
+        const tp = toeB.getWorldPosition(new THREE.Vector3());
+        foot.toe = Math.max(foot.halfW * 1.2, Math.abs(tp.z - lp.z) + foot.halfW * 0.35);
+      } else {
+        foot.toe = Math.max(foot.halfW * 1.35, foot.ankleY * 1.15);
+      }
+      foot.heel = foot.halfW * 0.6;
+    }
+    // If the model has a named leg mesh, trust it over the joint spacing: on a
+    // rig whose leg is a plain column the shoe has to be wider than the column
+    // or it simply disappears inside it.
+    const legMesh = inner.getObjectByName('L_Leg') || inner.getObjectByName('R_Leg');
+    if (legMesh) {
+      const lb = new THREE.Box3().setFromObject(legMesh);
+      foot.halfW = Math.max(foot.halfW, (lb.max.x - lb.min.x) / 2) * 1.08;
+      if (!toeB) { foot.toe = foot.halfW * 1.35; foot.heel = foot.halfW * 0.72; }
+    }
+  }
+
   const modelQuat = new THREE.Quaternion(); inner.getWorldQuaternion(modelQuat);
 
   const mixer = new THREE.AnimationMixer(inner);
@@ -285,6 +363,10 @@ export function makeAvatar(profile = {}) {
       const skin = p.skin || '#e8b48a';
       let shirtC = p.shirtColor || '#3a7bd5';
       let pantsC = p.pantsColor || '#34404f';
+      // A garment with a fixed background (a full-bleed print) sets the body's
+      // shirt region too, so what shows past the shell's edges still matches.
+      const worn = CLOTHING.shirts.find((i) => i.id === p.shirt);
+      if (worn && worn.base) shirtC = worn.base;
       // a swimsuit bares the body — the suit itself is a separate overlay mesh
       if (p.suit && p.suit !== 'none') { shirtC = skin; pantsC = skin; }
       const set = (mats, col) => { for (const m of mats) if (m.color && col) m.color.set(col); };
@@ -323,6 +405,29 @@ export function makeAvatar(profile = {}) {
         attachments.push(holder);
       }
       for (const raw of clothingFor(p)) {
+        // Bone-parented items (shoes, gloves) get one copy per bone and ride
+        // the skeleton, so they move with the limb instead of hanging where
+        // the limb was at bind time.
+        if (raw.attach && BONE_SETS[raw.attach]) {
+          for (const names of BONE_SETS[raw.attach]) {
+            const bone = names.map((n) => bones[n]).find(Boolean);
+            if (!bone) continue;
+            const piece = buildClothing(raw, head, torso, foot);
+            if (!piece) continue;
+            bone.updateWorldMatrix(true, false);
+            const bp = new THREE.Vector3(), bq = new THREE.Quaternion(), bs = new THREE.Vector3();
+            bone.matrixWorld.decompose(bp, bq, bs);
+            // cancel the bone's rest rotation and the model's scale, so the
+            // piece is authored in upright world units yet still follows the bone
+            const holder = new THREE.Group();
+            holder.quaternion.copy(bq).invert();
+            holder.scale.set(1 / bs.x, 1 / bs.y, 1 / bs.z);
+            holder.add(piece);
+            bone.add(holder);
+            attachments.push(holder);
+          }
+          continue;
+        }
         // hair only fits models with a real Head mesh (the girl). The boy's
         // single Mixamo mesh has hair baked in and only an estimated head
         // position, which put hair pieces across his face.
@@ -332,11 +437,13 @@ export function makeAvatar(profile = {}) {
         const item = raw.build === 'swim'
           ? { ...raw, build: gender === 'girl' ? 'swimsuit' : 'swimshorts', bone: gender === 'girl' ? 'Torso' : 'Hips' }
           : raw;
-        const mesh = buildClothing(item, head);
+        const mesh = buildClothing(item, head, torso, foot);
         if (!mesh) continue;
         // anchor in WORLD space: head for hats/faces, chest for backs, and fixed
         // fractions of the (normalised) body height for outfits.
-        const anchorWorld = item.bone === 'Chest'
+        const anchorWorld = item.bone === 'Shirt'
+          ? torso.center.clone()
+          : item.bone === 'Chest'
           ? new THREE.Vector3(head.center.x, head.center.y - head.radius * 2.2, head.center.z)
           : item.bone === 'Torso'
             ? new THREE.Vector3(head.center.x, TARGET_HEIGHT * 0.62, head.center.z)
@@ -364,87 +471,153 @@ export function makeAvatar(profile = {}) {
 }
 
 // ----------------- clothing -----------------
-// Each item attaches to a bone with a local offset; dims are world units that
-// get unscaled onto the bone. Bones available: Neck, Chest, Shoulders, Waist,
-// R_/L_ Shoulder/Elbow/Wrist, R_/L_ Thigh/Knee/Ankle.
+// Every item is a small assembly, never one solid blob: a hat has a crown, a
+// brim, a band and a button, each with its own colour and surface. Two of those
+// colours are yours (primary + secondary); the rest are shades derived from
+// them so a single pick always produces something that reads as one garment.
+//
+// Items attach one of two ways:
+//   anchor  — parented to the model root at a fixed body landmark (hats, packs)
+//   bones   — parented to real skeleton bones, so they follow the animation
+//             (shoes, gloves). Bone names are resolved across both rigs.
+
+// ---- colour helpers ----
+const _c = typeof THREE !== 'undefined' ? new THREE.Color() : null;
+function shade(hex, k) {                    // k>0 lighten, k<0 darken
+  const c = new THREE.Color(hex);
+  if (k >= 0) c.lerp(new THREE.Color('#ffffff'), k);
+  else c.lerp(new THREE.Color('#000000'), -k);
+  return '#' + c.getHexString();
+}
+function mixc(a, b, t) {
+  const c = new THREE.Color(a); c.lerp(new THREE.Color(b), t);
+  return '#' + c.getHexString();
+}
+
+// ---- surfaces ----
+// Roblox-flat by default, but metal and glossy plastic catch a highlight so
+// buckles, visors and jewels don't disappear into the cloth around them.
+const lam = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: c, ...opts });
+const basic = (c) => new THREE.MeshBasicMaterial({ color: c });
+const cloth = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: c, ...opts });
+const metal = (c, opts = {}) => new THREE.MeshPhongMaterial({ color: c, specular: '#ffffff', shininess: 90, ...opts });
+const shiny = (c, opts = {}) => new THREE.MeshPhongMaterial({ color: c, specular: '#dddddd', shininess: 45, ...opts });
+const glass = (c, o = 0.55) => new THREE.MeshPhongMaterial({ color: c, specular: '#ffffff', shininess: 120, transparent: true, opacity: o });
+
+// The bone pairs shoes and gloves hang from, in each rig's own naming.
+const BONE_SETS = {
+  ankles: [['R_Ankle', 'mixamorigRightFoot'], ['L_Ankle', 'mixamorigLeftFoot']],
+  wrists: [['R_Wrist', 'mixamorigRightHand'], ['L_Wrist', 'mixamorigLeftHand']],
+};
+
 export const CLOTHING = {
   hats: [
     { id: 'none', label: 'None', emoji: '🚫' },
-    { id: 'cap', label: 'Cap', emoji: '🧢', bone: 'Neck', build: 'cap' },
-    { id: 'beanie', label: 'Beanie', emoji: '🧶', bone: 'Neck', build: 'beanie' },
-    { id: 'tophat', label: 'Top Hat', emoji: '🎩', bone: 'Neck', build: 'tophat' },
-    { id: 'crown', label: 'Crown', emoji: '👑', bone: 'Neck', build: 'crown' },
-    { id: 'cowboy', label: 'Cowboy', emoji: '🤠', bone: 'Neck', build: 'cowboy' },
-    { id: 'headphones', label: 'Headphones', emoji: '🎧', bone: 'Neck', build: 'headphones' },
-    { id: 'halo', label: 'Halo', emoji: '😇', bone: 'Neck', build: 'halo' },
-    { id: 'horns', label: 'Horns', emoji: '😈', bone: 'Neck', build: 'horns' },
-    { id: 'wizard', label: 'Wizard', emoji: '🧙', bone: 'Neck', build: 'wizard' },
-    { id: 'bandana', label: 'Bandana', emoji: '🏴', bone: 'Neck', build: 'bandana' },
+    { id: 'cap', label: 'Cap', emoji: '🧢', bone: 'Neck', build: 'cap', sec: '#1f2430' },
+    { id: 'beanie', label: 'Beanie', emoji: '🧶', bone: 'Neck', build: 'beanie', sec: '#f4f6fa' },
+    { id: 'tophat', label: 'Top Hat', emoji: '🎩', bone: 'Neck', build: 'tophat', sec: '#c0392b' },
+    { id: 'crown', label: 'Crown', emoji: '👑', bone: 'Neck', build: 'crown', sec: '#e2412f' },
+    { id: 'cowboy', label: 'Cowboy', emoji: '🤠', bone: 'Neck', build: 'cowboy', sec: '#5a3d22' },
+    { id: 'headphones', label: 'Headphones', emoji: '🎧', bone: 'Neck', build: 'headphones', sec: '#2b2f38' },
+    { id: 'halo', label: 'Halo', emoji: '😇', bone: 'Neck', build: 'halo', sec: '#fff8c8' },
+    { id: 'horns', label: 'Horns', emoji: '😈', bone: 'Neck', build: 'horns', sec: '#f0e3d0' },
+    { id: 'wizard', label: 'Wizard', emoji: '🧙', bone: 'Neck', build: 'wizard', sec: '#ffd23f' },
+    { id: 'bandana', label: 'Bandana', emoji: '🏴', bone: 'Neck', build: 'bandana', sec: '#f4f6fa' },
     // ---- premium (Store) ----
-    { id: 'pirate', label: 'Pirate Hat', emoji: '🏴‍☠️', bone: 'Neck', build: 'pirate' },
-    { id: 'party', label: 'Party Hat', emoji: '🥳', bone: 'Neck', build: 'party' },
-    { id: 'chef', label: 'Chef Hat', emoji: '👨‍🍳', bone: 'Neck', build: 'chef' },
-    { id: 'football', label: 'Football Helmet', emoji: '🏈', bone: 'Neck', build: 'football' },
-    { id: 'flower', label: 'Flower Crown', emoji: '🌸', bone: 'Neck', build: 'flower' },
-    { id: 'propeller', label: 'Propeller Cap', emoji: '🚁', bone: 'Neck', build: 'propeller' },
+    { id: 'pirate', label: 'Pirate Hat', emoji: '🏴‍☠️', bone: 'Neck', build: 'pirate', sec: '#f2f2f2' },
+    { id: 'party', label: 'Party Hat', emoji: '🥳', bone: 'Neck', build: 'party', sec: '#5be0ff' },
+    { id: 'chef', label: 'Chef Hat', emoji: '👨‍🍳', bone: 'Neck', build: 'chef', sec: '#dfe4ec' },
+    { id: 'football', label: 'Football Helmet', emoji: '🏈', bone: 'Neck', build: 'football', sec: '#ffffff' },
+    { id: 'flower', label: 'Flower Crown', emoji: '🌸', bone: 'Neck', build: 'flower', sec: '#ff7eb6' },
+    { id: 'propeller', label: 'Propeller Cap', emoji: '🚁', bone: 'Neck', build: 'propeller', sec: '#5be0ff' },
   ],
   backs: [
     { id: 'none', label: 'None', emoji: '🚫' },
-    { id: 'backpack', label: 'Backpack', emoji: '🎒', bone: 'Chest', build: 'backpack' },
-    { id: 'wings', label: 'Wings', emoji: '🦋', bone: 'Chest', build: 'wings' },
-    { id: 'cape', label: 'Cape', emoji: '🦸', bone: 'Chest', build: 'cape' },
-    { id: 'jetpack', label: 'Jetpack', emoji: '🚀', bone: 'Chest', build: 'jetpack' },
-    { id: 'sword', label: 'Sword', emoji: '🗡️', bone: 'Chest', build: 'sword' },
+    { id: 'backpack', label: 'Backpack', emoji: '🎒', bone: 'Chest', build: 'backpack', sec: '#2f333c' },
+    { id: 'wings', label: 'Wings', emoji: '🦋', bone: 'Chest', build: 'wings', sec: '#ffffff' },
+    { id: 'cape', label: 'Cape', emoji: '🦸', bone: 'Chest', build: 'cape', sec: '#f2c14e' },
+    { id: 'jetpack', label: 'Jetpack', emoji: '🚀', bone: 'Chest', build: 'jetpack', sec: '#565b66' },
+    { id: 'sword', label: 'Sword', emoji: '🗡️', bone: 'Chest', build: 'sword', sec: '#ffd23f' },
     // ---- premium (Store) ----
-    { id: 'angelwings', label: 'Angel Wings', emoji: '👼', bone: 'Chest', build: 'angelwings' },
-    { id: 'balloon', label: 'Balloon', emoji: '🎈', bone: 'Chest', build: 'balloon' },
-    { id: 'guitar', label: 'Guitar', emoji: '🎸', bone: 'Chest', build: 'guitar' },
+    { id: 'angelwings', label: 'Angel Wings', emoji: '👼', bone: 'Chest', build: 'angelwings', sec: '#ffe9a8' },
+    { id: 'balloon', label: 'Balloon', emoji: '🎈', bone: 'Chest', build: 'balloon', sec: '#ffffff' },
+    { id: 'guitar', label: 'Guitar', emoji: '🎸', bone: 'Chest', build: 'guitar', sec: '#6b4a2a' },
   ],
   faces: [
     { id: 'none', label: 'None', emoji: '🚫' },
-    { id: 'glasses', label: 'Glasses', emoji: '👓', bone: 'Neck', build: 'glasses' },
-    { id: 'shades', label: 'Shades', emoji: '🕶️', bone: 'Neck', build: 'shades' },
-    { id: 'mask', label: 'Mask', emoji: '😷', bone: 'Neck', build: 'mask' },
+    { id: 'glasses', label: 'Glasses', emoji: '👓', bone: 'Neck', build: 'glasses', sec: '#9fd4ff' },
+    { id: 'shades', label: 'Shades', emoji: '🕶️', bone: 'Neck', build: 'shades', sec: '#15171c' },
+    { id: 'mask', label: 'Mask', emoji: '😷', bone: 'Neck', build: 'mask', sec: '#ffffff' },
     // ---- premium (Store) ----
-    { id: 'monocle', label: 'Monocle', emoji: '🧐', bone: 'Neck', build: 'monocle' },
-    { id: 'eyepatch', label: 'Eyepatch', emoji: '🏴‍☠️', bone: 'Neck', build: 'eyepatch' },
-    { id: 'threed', label: '3D Glasses', emoji: '🤓', bone: 'Neck', build: 'threed' },
+    { id: 'monocle', label: 'Monocle', emoji: '🧐', bone: 'Neck', build: 'monocle', sec: '#bfe8ff' },
+    { id: 'eyepatch', label: 'Eyepatch', emoji: '🏴‍☠️', bone: 'Neck', build: 'eyepatch', sec: '#101216' },
+    { id: 'threed', label: '3D Glasses', emoji: '🤓', bone: 'Neck', build: 'threed', sec: '#111111' },
   ],
   // Body outfits. 'swim' resolves per body type: swim shorts for boys, a
   // full one-piece for girls (handled in setClothing); the body underneath is
   // bared to skin (see setColors) so the suit reads cleanly.
   suits: [
     { id: 'none', label: 'None', emoji: '🚫' },
-    { id: 'swim', label: 'Swimsuit', emoji: '🩱', bone: 'Hips', build: 'swim' },
+    { id: 'swim', label: 'Swimsuit', emoji: '🩱', bone: 'Hips', build: 'swim', sec: '#ffffff' },
+  ],
+  // Shirts wrap the chest as a thin shell just outside the body, with the
+  // print drawn onto the front panel. The body's own shirt region keeps its
+  // colour underneath, so nothing pops through at the shoulders.
+  shirts: [
+    { id: 'none', label: 'None', emoji: '🚫' },
+    { id: 'tee', label: 'T-Shirt', emoji: '👕', bone: 'Shirt', build: 'shirt', art: 'plain', sec: '#ffffff' },
+    { id: 'striped', label: 'Striped Tee', emoji: '🎽', bone: 'Shirt', build: 'shirt', art: 'stripes', sec: '#ffffff' },
+    { id: 'ringer', label: 'Ringer Tee', emoji: '🅾️', bone: 'Shirt', build: 'shirt', art: 'hoop', sec: '#ffe14a' },
+    { id: 'stickfight', label: 'Stick Fight', emoji: '🕴️', bone: 'Shirt', build: 'shirt', art: 'stickfight', sec: '#a05cd8', base: '#3d1560' },
+  ],
+  // Footwear rides the ankle bones, so it walks and jumps with the feet
+  // instead of hanging in the air where the feet used to be.
+  shoes: [
+    { id: 'none', label: 'Barefoot', emoji: '🚫' },
+    { id: 'sneakers', label: 'Sneakers', emoji: '👟', attach: 'ankles', build: 'sneakers', sec: '#f4f6fa' },
+    { id: 'boots', label: 'Boots', emoji: '🥾', attach: 'ankles', build: 'boots', sec: '#3a2a1a' },
+    { id: 'hightops', label: 'High Tops', emoji: '👞', attach: 'ankles', build: 'hightops', sec: '#ffffff' },
+    { id: 'dress', label: 'Dress Shoes', emoji: '🖤', attach: 'ankles', build: 'dress', sec: '#2b2f38' },
+    { id: 'sandals', label: 'Sandals', emoji: '🩴', attach: 'ankles', build: 'sandals', sec: '#c98e62' },
   ],
   // Hair rides the same head anchor as hats. Ids match the platform's saved
   // avatar fields (sanitizeAvatar), so old profiles just start showing hair.
   hair: [
     { id: 'none', label: 'None', emoji: '🚫' },
-    { id: 'short', label: 'Short', emoji: '💇', bone: 'Neck', build: 'hair-short' },
-    { id: 'long', label: 'Long', emoji: '👱', bone: 'Neck', build: 'hair-long' },
-    { id: 'spiky', label: 'Spiky', emoji: '🦔', bone: 'Neck', build: 'hair-spiky' },
-    { id: 'bun', label: 'Bun', emoji: '🍩', bone: 'Neck', build: 'hair-bun' },
-    { id: 'curly', label: 'Curly', emoji: '🐑', bone: 'Neck', build: 'hair-curly' },
+    { id: 'short', label: 'Short', emoji: '💇', bone: 'Neck', build: 'hair-short', sec: '#8a6242' },
+    { id: 'long', label: 'Long', emoji: '👱', bone: 'Neck', build: 'hair-long', sec: '#8a6242' },
+    { id: 'spiky', label: 'Spiky', emoji: '🦔', bone: 'Neck', build: 'hair-spiky', sec: '#8a6242' },
+    { id: 'bun', label: 'Bun', emoji: '🍩', bone: 'Neck', build: 'hair-bun', sec: '#8a6242' },
+    { id: 'curly', label: 'Curly', emoji: '🐑', bone: 'Neck', build: 'hair-curly', sec: '#8a6242' },
   ],
 };
 
-function clothingFor(p) {
-  const out = [];
-  const add = (cat, id, color) => {
-    const item = CLOTHING[cat]?.find((i) => i.id === id);
-    if (item && item.build) out.push({ ...item, color });
-  };
-  add('hair', p.hair, p.hairColor || '#5d4037');
-  add('hats', p.hat, p.hatColor || '#d2453a');
-  add('backs', p.back, p.backColor || '#4a7ec0');
-  add('faces', p.face2 || p.accessory, p.faceColor || '#222');
-  add('suits', p.suit, p.suitColor || '#19a3d6');
-  return out;
+// Look an item up without caring which category it lives in.
+export function findClothing(id) {
+  for (const list of Object.values(CLOTHING)) {
+    const hit = list.find((i) => i.id === id);
+    if (hit) return hit;
+  }
+  return null;
 }
 
-const lam = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: c, ...opts });
-const basic = (c) => new THREE.MeshBasicMaterial({ color: c });
+function clothingFor(p) {
+  const out = [];
+  const add = (cat, id, color, color2) => {
+    const item = CLOTHING[cat]?.find((i) => i.id === id);
+    // color2 falls back to the item's own designed accent, so a profile saved
+    // before secondary colours existed still looks finished.
+    if (item && item.build) out.push({ ...item, color, color2: color2 || item.sec });
+  };
+  add('hair', p.hair, p.hairColor || '#5d4037', p.hairColor2);
+  add('hats', p.hat, p.hatColor || '#d2453a', p.hatColor2);
+  add('backs', p.back, p.backColor || '#4a7ec0', p.backColor2);
+  add('faces', p.face2 || p.accessory, p.faceColor || '#222', p.faceColor2);
+  add('suits', p.suit, p.suitColor || '#19a3d6', p.suitColor2);
+  add('shirts', p.shirt, p.shirtColor || '#3a7bd5', p.shirtColor2);
+  add('shoes', p.shoes, p.shoeColor || '#e0453a', p.shoeColor2);
+  return out;
+}
 
 // ---- face decal ----
 // Neither GLB paints a face where its head UVs sample, so the face is a drawn
@@ -477,358 +650,766 @@ function faceTexture(face) {
   return t;
 }
 
+// ---- shirt prints ----
+// Drawn from scratch on a canvas, then wrapped around the chest. Nothing here
+// is an imported image; each design is code so it stays crisp at any size and
+// costs one texture rather than a download.
+const shirtArtCache = new Map();
+function stickFigure(x, col, lw, head, segs) {
+  x.strokeStyle = col; x.lineWidth = lw; x.lineCap = 'round'; x.lineJoin = 'round';
+  if (head) { x.beginPath(); x.arc(head[0], head[1], head[2], 0, Math.PI * 2); x.stroke(); }
+  for (const pts of segs) {
+    x.beginPath(); x.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) x.lineTo(pts[i][0], pts[i][1]);
+    x.stroke();
+  }
+}
+export function shirtArt(design, primary = '#3a7bd5', secondary = '#ffffff') {
+  if (typeof document === 'undefined') return null;
+  const key = design + '|' + primary + '|' + secondary;
+  if (shirtArtCache.has(key)) return shirtArtCache.get(key);
+  const W = 512, H = 700;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+
+  if (design === 'stickfight') {
+    // A brawl of stick figures on a purple field: one big outlined figure
+    // standing behind, five smaller coloured ones scrapping in front.
+    const bg = x.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#7a35b8'); bg.addColorStop(0.5, '#5d2494'); bg.addColorStop(1, '#341251');
+    x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    const glow = x.createRadialGradient(W * 0.5, H * 0.42, 20, W * 0.5, H * 0.42, W * 0.75);
+    glow.addColorStop(0, 'rgba(168,92,224,.55)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = glow; x.fillRect(0, 0, W, H);
+
+    // the big one behind — head, spine, and one long bowed sweep of arms
+    x.strokeStyle = '#000'; x.lineWidth = 26; x.lineCap = 'round';
+    x.beginPath(); x.arc(256, 118, 60, 0, Math.PI * 2); x.stroke();
+    x.beginPath(); x.moveTo(256, 178); x.lineTo(256, 350); x.stroke();
+    x.beginPath(); x.moveTo(60, 176); x.quadraticCurveTo(256, 292, 452, 176); x.stroke();
+
+    const crew = [
+      ['#d8321f', 13, [132, 214, 30], [[[132, 244], [152, 342]], [[137, 266], [88, 322]], [[137, 266], [197, 310]], [[152, 342], [120, 432]], [[152, 342], [178, 430]]]],
+      ['#29a8e0', 14, [96, 254, 34], [[[96, 288], [142, 400]], [[110, 320], [182, 300]], [[110, 320], [58, 380]], [[142, 400], [68, 470]], [[142, 400], [152, 502]]]],
+      ['#4cb944', 12, [316, 234, 30], [[[316, 264], [310, 402]], [[316, 290], [264, 340]], [[316, 290], [362, 330]], [[310, 402], [284, 500]], [[310, 402], [336, 496]]]],
+      ['#f5e04a', 15, [402, 254, 42], [[[402, 296], [396, 430]], [[402, 326], [340, 370]], [[402, 326], [456, 360]], [[396, 430], [360, 540]], [[396, 430], [432, 530]]]],
+      ['#f07020', 17, [216, 300, 44], [[[216, 344], [216, 472]], [[216, 372], [148, 432]], [[216, 372], [288, 416]], [[216, 472], [178, 562]], [[216, 472], [252, 556]]]],
+    ];
+    for (const [col, lw, head, segs] of crew) stickFigure(x, col, lw, head, segs);
+  } else if (design === 'stripes') {
+    x.fillStyle = primary; x.fillRect(0, 0, W, H);
+    x.fillStyle = secondary;
+    for (let i = 0; i < 9; i++) x.fillRect(0, i * (H / 9) + H / 36, W, H / 18);
+  } else if (design === 'hoop') {
+    x.fillStyle = primary; x.fillRect(0, 0, W, H);
+    x.fillStyle = secondary;
+    x.beginPath(); x.arc(W / 2, H / 2, W * 0.3, 0, Math.PI * 2); x.fill();
+    x.fillStyle = primary;
+    x.beginPath(); x.arc(W / 2, H / 2, W * 0.2, 0, Math.PI * 2); x.fill();
+  } else {                       // plain
+    x.fillStyle = primary; x.fillRect(0, 0, W, H);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  shirtArtCache.set(key, t);
+  return t;
+}
+
 // Clothing is built around the attach anchor at origin (head center for hats/
-// faces, chest for backs). +Y is up, +Z*F is the way the face/front points.
-function buildClothing(item, head) {
+// faces, chest for backs, the ankle for shoes). +Y is up, +Z*F is the way the
+// face/front points.
+function buildClothing(item, head, torso, foot) {
   const g = new THREE.Group();
   const c = item.color;
+  // Second colour: the wearer's pick, else the accent the item was designed
+  // with, else a darker shade of the primary. Everything else is derived, so
+  // trims and shadows always belong to the same garment.
+  const c2 = item.color2 || item.sec || shade(c, -0.35);
+  const dk = shade(c, -0.26), dk2 = shade(c, -0.46), lt = shade(c, 0.2);
+  const d2 = shade(c2, -0.28), l2 = shade(c2, 0.22);
+  const GOLD = '#f0c23c', STEEL = '#cfd6e0', DARK = '#22262e';
   const R = (head?.radius || 0.28);      // real head radius (world units)
   const F = (head?.forward || 1);        // face direction in +Z
   const TOP = R;                         // head top, relative to head center
+
+  // tiny builders so each item reads as an assembly instead of a wall of maths
+  const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const cyl = (rt, rb, h, mat, seg = 16, open = false) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg, 1, open), mat);
+  const sph = (r, mat, seg = 14, rings = 10) => new THREE.Mesh(new THREE.SphereGeometry(r, seg, rings), mat);
+  const dome = (r, mat, frac = 0.5, seg = 16) => new THREE.Mesh(new THREE.SphereGeometry(r, seg, 10, 0, Math.PI * 2, 0, Math.PI * frac), mat);
+  const cone = (r, h, mat, seg = 16) => new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat);
+  const ring = (r, t, mat, seg = 20, arc = Math.PI * 2) => new THREE.Mesh(new THREE.TorusGeometry(r, t, 8, seg, arc), mat);
+  const at = (m, x, y, z) => { m.position.set(x, y, z); g.add(m); return m; };
+
   switch (item.build) {
-    // ---- hair (cap = top of head, pieces keep the face clear) ----
-    case 'hair-short': {
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
-      const fringe = new THREE.Mesh(new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.4), lam(c));
-      fringe.position.set(0, R * 0.78, R * 0.6 * F);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(R * 1.85, R * 1.1, R * 0.4), lam(c));
-      back.position.set(0, -R * 0.05, -R * 0.9 * F);
-      g.add(cap, fringe, back); break;
-    }
-    case 'hair-long': {
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
-      const fringe = new THREE.Mesh(new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.4), lam(c));
-      fringe.position.set(0, R * 0.78, R * 0.6 * F);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(R * 1.8, R * 2.5, R * 0.45), lam(c));
-      back.position.set(0, -R * 0.85, -R * 0.88 * F);
-      for (const s of [-1, 1]) {
-        const strand = new THREE.Mesh(new THREE.BoxGeometry(R * 0.5, R * 2.0, R * 0.6), lam(c));
-        strand.position.set(s * R * 1.0, -R * 0.6, -R * 0.25 * F);
-        g.add(strand);
-      }
-      g.add(cap, fringe, back); break;
-    }
-    case 'hair-spiky': {
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
-      const spots = [[0, 1.05, 0], [0.55, 0.9, 0.35], [-0.55, 0.9, 0.35], [0.5, 0.9, -0.45], [-0.5, 0.9, -0.45], [0, 0.95, -0.6]];
-      for (const [sx, sy, sz] of spots) {
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(R * 0.3, R * 1.0, 6), lam(c));
-        spike.position.set(sx * R, sy * R, sz * R * F);
-        spike.rotation.set(sz * -0.5, 0, sx * -0.5);
-        g.add(spike);
-      }
-      g.add(cap); break;
-    }
-    case 'hair-bun': {
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46), lam(c));
-      const fringe = new THREE.Mesh(new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.4), lam(c));
-      fringe.position.set(0, R * 0.78, R * 0.6 * F);
-      const bun = new THREE.Mesh(new THREE.SphereGeometry(R * 0.52, 12, 10), lam(c));
-      bun.position.set(0, R * 0.72, -R * 0.95 * F);
-      g.add(cap, fringe, bun); break;
-    }
-    case 'hair-curly': {
-      const puffs = [[0, 1.0, 0, 0.62], [0.7, 0.75, 0.35, 0.5], [-0.7, 0.75, 0.35, 0.5], [0.65, 0.75, -0.5, 0.52],
-        [-0.65, 0.75, -0.5, 0.52], [0, 0.85, -0.75, 0.55], [0.35, 0.95, 0.55, 0.45], [-0.35, 0.95, 0.55, 0.45],
-        [0.9, 0.35, -0.15, 0.42], [-0.9, 0.35, -0.15, 0.42]];
-      for (const [sx, sy, sz, sr] of puffs) {
-        const p = new THREE.Mesh(new THREE.SphereGeometry(R * sr, 10, 8), lam(c));
-        p.position.set(sx * R, sy * R, sz * R * F);
-        g.add(p);
+    // ---- hair: blocky pieces cut to the head's real box, with a dyed streak ----
+    // HW/HH/HD are the head's half-extents. Sizing off those (instead of one
+    // radius) is what keeps hair sitting ON the head rather than inside it.
+    case 'hair-short': case 'hair-long': case 'hair-spiky': case 'hair-bun': case 'hair-curly': {
+      const HW = head?.hw || R, HH = head?.hh || R, HD = head?.hd || R;
+      const style = item.build.slice(5);
+      const capH = HH * 0.62;
+      // the cap: a slab over the crown, plus a thin skirt down the sides so the
+      // hairline reads instead of ending in a hard edge
+      const cap = at(box(HW * 2.12, capH, HD * 2.12, cloth(c)), 0, HH - capH * 0.42, 0);
+      const skirt = at(box(HW * 2.1, HH * 0.5, HD * 2.1, cloth(style === 'curly' ? c : dk)), 0, HH * 0.28, 0);
+      // fringe across the brow, kept clear of the eyes
+      if (style !== 'curly') at(box(HW * 1.9, HH * 0.34, HD * 0.42, cloth(c)), 0, HH * 0.5, HD * 1.02 * F);
+      // a dyed streak so the second colour shows from the front
+      // The dyed streak sits in the fringe rather than on the side of the cap,
+      // so it reads as coloured hair instead of a block stuck to the head.
+      if (style !== 'curly') at(box(HW * 0.42, HH * 0.36, HD * 0.44, cloth(c2)), HW * 0.6, HH * 0.5, HD * 1.03 * F);
+
+      if (style === 'short') {
+        for (const sd of [-1, 1]) at(box(HW * 0.36, HH * 0.6, HD * 0.7, cloth(dk)), sd * HW * 0.98, HH * 0.1, HD * 0.35 * F);
+        at(box(HW * 1.9, HH * 0.7, HD * 0.4, cloth(dk)), 0, HH * 0.15, -HD * 1.02 * F);
+      } else if (style === 'long') {
+        at(box(HW * 2.0, HH * 2.6, HD * 0.45, cloth(dk)), 0, -HH * 1.0, -HD * 1.06 * F);        // fall down the back
+        for (const sd of [-1, 1]) {
+          at(box(HW * 0.5, HH * 2.2, HD * 1.3, cloth(c)), sd * HW * 0.95, -HH * 0.7, -HD * 0.2 * F);
+          at(box(HW * 0.28, HH * 1.7, HD * 0.4, cloth(dk2)), sd * HW * 0.62, -HH * 1.0, -HD * 0.95 * F);
+        }
+        at(ring(HW * 0.45, HW * 0.1, cloth(c2), 14), 0, -HH * 1.9, -HD * 1.04 * F);             // hair tie
+      } else if (style === 'spiky') {
+        const spots = [[0, 0.2], [0.75, 0.55], [-0.75, 0.55], [0.6, -0.55], [-0.6, -0.55], [0, -0.8]];
+        spots.forEach(([sx, sz], i) => {
+          const sp = at(cone(HW * 0.34, HH * 1.0, cloth(i % 2 ? c : dk), 6), sx * HW, HH * 1.35, sz * HD * F);
+          sp.rotation.set(sz * -0.45, 0, sx * -0.45);
+          const tip = at(cone(HW * 0.16, HH * 0.34, cloth(c2), 6), sx * HW * 1.16, HH * 1.85, sz * HD * 1.16 * F);
+          tip.rotation.copy(sp.rotation);
+        });
+      } else if (style === 'bun') {
+        at(sph(HW * 0.6, cloth(dk), 12, 10), 0, HH * 1.3, -HD * 0.9 * F);                       // the bun
+        const tie = at(ring(HW * 0.58, HW * 0.13, cloth(c2), 16), 0, HH * 0.95, -HD * 0.86 * F);
+        tie.rotation.x = Math.PI * 0.08;
+        for (const sd of [-1, 1]) at(box(HW * 0.26, HH * 1.0, HD * 0.34, cloth(dk)), sd * HW * 0.98, HH * 0.05, HD * 0.5 * F);
+      } else {                                                                                   // curly
+        const puffs = [[0, 1.25, 0, 0.68], [0.85, 1.0, 0.4, 0.56], [-0.85, 1.0, 0.4, 0.56],
+          [0.8, 1.0, -0.6, 0.58], [-0.8, 1.0, -0.6, 0.58], [0, 1.1, -0.95, 0.6],
+          [0.45, 1.2, 0.7, 0.5], [-0.45, 1.2, 0.7, 0.5], [1.0, 0.5, -0.15, 0.48], [-1.0, 0.5, -0.15, 0.48]];
+        puffs.forEach(([sx, sy, sz, sr], i) => {
+          const col = i % 4 === 0 ? c2 : i % 3 === 0 ? dk : c;
+          at(sph(HW * sr, cloth(col), 10, 8), sx * HW, sy * HH, sz * HD * F);
+        });
       }
       break;
     }
+
+    // ---- hats ----
     case 'cap': {
-      const dome = new THREE.Mesh(new THREE.SphereGeometry(R * 1.05, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(c));
-      dome.position.y = TOP - R * 0.1;
-      const brim = new THREE.Mesh(new THREE.BoxGeometry(R * 1.7, 0.04, R * 1.2), lam(c));
-      brim.position.set(0, TOP - R * 0.1, R * 0.95 * F);
-      g.add(dome, brim); break;
+      const crown = at(dome(R * 1.05, cloth(c), 0.5, 14), 0, TOP - R * 0.1, 0);
+      crown.scale.y = 0.92;
+      for (const s of [-1, 1]) {          // panel seams
+        const seam = at(box(0.008, R * 1.02, R * 2.1, cloth(dk2)), s * R * 0.52, TOP - R * 0.1, 0);
+        seam.rotation.z = -s * 0.32;
+      }
+      const brim = at(box(R * 1.75, 0.035, R * 1.25, cloth(c2)), 0, TOP - R * 0.13, R * 0.98 * F);
+      brim.rotation.x = -0.18 * F;
+      const under = at(box(R * 1.68, 0.02, R * 1.18, cloth(d2)), 0, TOP - R * 0.155, R * 0.98 * F);
+      under.rotation.x = -0.18 * F;
+      at(sph(R * 0.1, cloth(c2), 10, 8), 0, TOP + R * 0.42, 0);        // button
+      at(box(R * 0.7, R * 0.16, 0.03, cloth(c2)), 0, TOP - R * 0.28, -R * 1.02 * F);   // rear strap
+      at(box(R * 0.16, R * 0.13, 0.04, metal(STEEL)), 0, TOP - R * 0.28, -R * 1.05 * F);
+      break;
     }
     case 'beanie': {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(R * 1.08, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), lam(c));
-      b.position.y = TOP - R * 0.35;
-      const cuff = new THREE.Mesh(new THREE.TorusGeometry(R * 1.05, 0.06, 8, 16), lam(c));
-      cuff.rotation.x = Math.PI / 2; cuff.position.y = TOP - R * 0.3;
-      g.add(b, cuff); break;
+      // Sits on the crown of the head with the cuff at the brow — pulled any
+      // lower and the knit covers the eyes.
+      at(dome(R * 1.08, cloth(c), 0.62, 14), 0, TOP - R * 0.05, 0);
+      for (let i = 0; i < 3; i++) {       // knit ribs
+        const rib = at(ring(R * (1.06 - i * 0.04), 0.012, cloth(dk), 18), 0, TOP + R * (0.06 + i * 0.16), 0);
+        rib.rotation.x = Math.PI / 2;
+      }
+      at(cyl(R * 1.12, R * 1.12, R * 0.3, cloth(c2), 18), 0, TOP - R * 0.1, 0);
+      const cuffLip = at(ring(R * 1.12, 0.04, cloth(l2), 18), 0, TOP - R * 0.24, 0);
+      cuffLip.rotation.x = Math.PI / 2;
+      at(sph(R * 0.26, cloth(c2), 10, 8), 0, TOP + R * 0.78, 0);       // pom
+      break;
     }
     case 'tophat': {
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.6, R * 1.6, 0.04, 18), lam(c));
-      brim.position.y = TOP;
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.0, R * 1.0, R * 1.8, 18), lam(c));
-      top.position.y = TOP + R * 0.9;
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.02, R * 1.02, 0.08, 18), lam('#c0392b'));
-      band.position.y = TOP + R * 0.2;
-      g.add(brim, top, band); break;
+      const brim = at(cyl(R * 1.6, R * 1.6, 0.05, cloth(c), 20), 0, TOP, 0);
+      const edge = at(ring(R * 1.6, 0.028, cloth(dk), 22), 0, TOP, 0);
+      edge.rotation.x = Math.PI / 2;
+      at(cyl(R * 1.0, R * 1.04, R * 1.8, cloth(c), 20), 0, TOP + R * 0.9, 0);
+      at(cyl(R * 1.01, R * 1.01, 0.012, cloth(lt), 20), 0, TOP + R * 1.79, 0);  // crown top
+      at(cyl(R * 1.05, R * 1.05, R * 0.26, cloth(c2), 20), 0, TOP + R * 0.24, 0);  // band
+      const buckle = at(box(R * 0.3, R * 0.24, 0.03, metal(GOLD)), 0, TOP + R * 0.24, R * 1.06 * F);
+      buckle.add(new THREE.Mesh(new THREE.BoxGeometry(R * 0.16, R * 0.12, 0.05), lam(shade(c2, -0.1))));
+      break;
     }
     case 'crown': {
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.06, R * 1.06, R * 0.5, 12, 1, true), lam('#ffd23f', { side: THREE.DoubleSide }));
-      base.position.y = TOP + R * 0.1;
+      const band = at(cyl(R * 1.06, R * 1.06, R * 0.5, metal(c, { side: THREE.DoubleSide }), 12, true), 0, TOP + R * 0.1, 0);
+      for (const yy of [-0.14, 0.14]) {   // rolled rims top and bottom
+        const rim = at(ring(R * 1.07, 0.022, metal(lt), 14), 0, TOP + R * 0.1 + R * yy * 2, 0);
+        rim.rotation.x = Math.PI / 2;
+      }
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2;
-        const sp = new THREE.Mesh(new THREE.ConeGeometry(R * 0.18, R * 0.5, 4), lam('#ffd23f'));
-        sp.position.set(Math.cos(a) * R * 1.06, TOP + R * 0.5, Math.sin(a) * R * 1.06);
-        g.add(sp);
+        const big = i === 0;
+        at(cone(R * (big ? 0.22 : 0.18), R * (big ? 0.72 : 0.5), metal(c), 4),
+          Math.cos(a) * R * 1.06, TOP + R * (big ? 0.62 : 0.5), Math.sin(a) * R * 1.06);
+        at(sph(R * (big ? 0.13 : 0.09), glass(c2, 0.9), 10, 8),
+          Math.cos(a) * R * 1.1, TOP + R * (big ? 0.92 : 0.72), Math.sin(a) * R * 1.1);
+        at(sph(R * 0.07, glass(c2, 0.85), 8, 6),                    // jewels set in the band
+          Math.cos(a + 0.5) * R * 1.08, TOP + R * 0.1, Math.sin(a + 0.5) * R * 1.08);
       }
-      g.add(base); break;
+      break;
     }
     case 'cowboy': {
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 2.0, R * 2.0, 0.04, 20), lam(c));
-      brim.position.y = TOP - R * 0.1; brim.scale.z = 0.8;
-      const crown = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.95, R * 1.05, R * 1.2, 16), lam(c));
-      crown.position.y = TOP + R * 0.45;
-      g.add(brim, crown); break;
+      const brim = at(cyl(R * 2.0, R * 2.0, 0.045, cloth(c), 22), 0, TOP - R * 0.1, 0);
+      brim.scale.z = 0.8;
+      for (const s of [-1, 1]) {          // the sides curl up
+        const curl = at(box(R * 0.5, R * 0.3, R * 2.2, cloth(c)), s * R * 1.78, TOP - R * 0.02, 0);
+        curl.scale.z = 0.8; curl.rotation.z = -s * 0.5;
+      }
+      const crown = at(cyl(R * 0.95, R * 1.06, R * 1.2, cloth(c), 16), 0, TOP + R * 0.45, 0);
+      const crease = at(box(R * 0.3, R * 0.5, R * 1.5, cloth(dk)), 0, TOP + R * 0.95, 0);
+      crease.scale.z = 0.9;
+      at(cyl(R * 1.08, R * 1.08, R * 0.2, cloth(c2), 18), 0, TOP + R * 0.05, 0);   // band
+      at(cyl(R * 0.11, R * 0.11, 0.02, metal(STEEL), 10), 0, TOP + R * 0.05, R * 1.08 * F).rotation.x = Math.PI / 2;
+      break;
     }
     case 'headphones': {
-      const band = new THREE.Mesh(new THREE.TorusGeometry(R * 1.1, 0.05, 8, 16, Math.PI), lam('#222'));
-      band.position.y = TOP - R * 0.2;
+      const band = at(ring(R * 1.1, 0.05, cloth(c2), 18, Math.PI), 0, TOP - R * 0.2, 0);
+      const pad = at(ring(R * 1.02, 0.045, cloth(d2), 16, Math.PI * 0.8), 0, TOP - R * 0.2, 0);
+      pad.rotation.z = Math.PI * 0.1;
       for (const s of [-1, 1]) {
-        const cup = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.4, R * 0.4, R * 0.4, 12), lam(c));
-        cup.rotation.z = Math.PI / 2; cup.position.set(s * R * 1.1, -R * 0.15, 0);
-        g.add(cup);
+        const arm = at(box(0.03, R * 0.5, 0.03, metal(STEEL)), s * R * 1.08, TOP - R * 0.5, 0);
+        const cup = at(cyl(R * 0.42, R * 0.42, R * 0.34, cloth(c), 14), s * R * 1.12, -R * 0.15, 0);
+        cup.rotation.z = Math.PI / 2;
+        const rim = at(ring(R * 0.42, 0.035, metal(STEEL), 16), s * R * 1.28, -R * 0.15, 0);
+        rim.rotation.y = Math.PI / 2;
+        const cushion = at(cyl(R * 0.38, R * 0.34, R * 0.16, cloth(DARK), 14), s * R * 0.98, -R * 0.15, 0);
+        cushion.rotation.z = Math.PI / 2;
+        at(cyl(R * 0.16, R * 0.16, 0.02, cloth(c2), 10), s * R * 1.3, -R * 0.15, 0).rotation.z = Math.PI / 2;
       }
-      g.add(band); break;
+      break;
     }
     case 'halo': {
-      const h = new THREE.Mesh(new THREE.TorusGeometry(R * 0.95, 0.04, 8, 24), new THREE.MeshBasicMaterial({ color: '#fff2a0' }));
-      h.rotation.x = Math.PI / 2; h.position.y = TOP + R * 1.1; g.add(h); break;
+      at(ring(R * 0.95, 0.045, new THREE.MeshBasicMaterial({ color: c }), 24), 0, TOP + R * 1.1, 0).rotation.x = Math.PI / 2;
+      const glow = at(ring(R * 0.95, 0.1, new THREE.MeshBasicMaterial({ color: c2, transparent: true, opacity: 0.45 }), 24), 0, TOP + R * 1.1, 0);
+      glow.rotation.x = Math.PI / 2;
+      at(ring(R * 0.7, 0.02, new THREE.MeshBasicMaterial({ color: c2, transparent: true, opacity: 0.35 }), 20), 0, TOP + R * 1.12, 0).rotation.x = Math.PI / 2;
+      break;
     }
     case 'horns': {
+      const band = at(ring(R * 1.04, 0.035, cloth(dk2), 18), 0, TOP - R * 0.05, 0);
+      band.rotation.x = Math.PI / 2;
       for (const s of [-1, 1]) {
-        const horn = new THREE.Mesh(new THREE.ConeGeometry(R * 0.28, R * 0.9, 8), lam(c || '#9b1b1b'));
-        horn.position.set(s * R * 0.6, TOP + R * 0.3, 0); horn.rotation.z = -s * 0.4; g.add(horn);
+        const horn = at(cone(R * 0.28, R * 0.9, cloth(c), 8), s * R * 0.6, TOP + R * 0.3, 0);
+        horn.rotation.z = -s * 0.4;
+        for (let i = 0; i < 3; i++) {     // growth ridges
+          const rg = at(ring(R * (0.24 - i * 0.05), 0.018, cloth(dk), 10), s * (R * 0.6 + i * R * 0.1), TOP + R * (0.12 + i * 0.22), 0);
+          rg.rotation.x = Math.PI / 2; rg.rotation.y = -s * 0.4;
+        }
+        const tip = at(cone(R * 0.11, R * 0.3, cloth(c2), 8), s * R * 0.78, TOP + R * 0.76, 0);
+        tip.rotation.z = -s * 0.4;
       }
       break;
     }
     case 'wizard': {
-      const hat = new THREE.Mesh(new THREE.ConeGeometry(R * 1.2, R * 3, 16), lam(c || '#3b2c7a'));
-      hat.position.y = TOP + R * 1.4;
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.7, R * 1.7, 0.03, 18), lam(c || '#3b2c7a'));
-      brim.position.y = TOP; g.add(hat, brim); break;
-    }
-    case 'bandana': {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(R * 1.06, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), lam(c));
-      b.position.y = TOP - R * 0.3; g.add(b); break;
-    }
-    case 'glasses': case 'shades': {
-      const dark = item.build === 'shades';
-      for (const s of [-1, 1]) {
-        const lens = new THREE.Mesh(new THREE.CircleGeometry(R * 0.32, 14), basic(dark ? '#111' : '#9fd4ff'));
-        lens.position.set(s * R * 0.42, R * 0.1, R * 1.0 * F); lens.lookAt(s * R * 0.42, R * 0.1, R * 3 * F);
-        g.add(lens);
+      const hat = at(cone(R * 1.2, R * 3, cloth(c), 18), 0, TOP + R * 1.4, 0);
+      hat.rotation.z = 0.12;                                   // a slight droop
+      at(cyl(R * 1.7, R * 1.7, 0.04, cloth(c), 20), 0, TOP, 0);
+      at(ring(R * 1.7, 0.03, cloth(dk), 22), 0, TOP, 0).rotation.x = Math.PI / 2;
+      at(cyl(R * 1.16, R * 1.16, R * 0.28, cloth(c2), 18), 0, TOP + R * 0.24, 0);   // band
+      at(box(R * 0.26, R * 0.2, 0.03, metal(GOLD)), 0, TOP + R * 0.24, R * 1.18 * F);
+      const stars = [[0.5, 1.2, 0.75], [-0.42, 1.9, 0.55], [0.28, 2.5, 0.35]];
+      for (const [sx, sy, sz] of stars) {                       // little stars up the cone
+        const st = at(cone(R * 0.13, R * 0.05, basic(c2), 5), sx * R, TOP + sy * R, sz * R * F);
+        st.rotation.x = Math.PI / 2 * F;
       }
       break;
     }
-    case 'mask': {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(R * 1.0, 12, 8, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5), lam(c || '#cfe6ff'));
-      m.position.set(0, -R * 0.35, R * 0.1 * F); m.scale.z = 1.1; g.add(m); break;
+    case 'bandana': {
+      at(dome(R * 1.06, cloth(c), 0.42, 14), 0, TOP - R * 0.3, 0);
+      at(ring(R * 1.06, 0.03, cloth(dk), 18), 0, TOP - R * 0.42, 0).rotation.x = Math.PI / 2;
+      const knot = at(sph(R * 0.2, cloth(c), 8, 6), -R * 1.0, TOP - R * 0.45, -R * 0.35 * F);
+      for (const [ang, len] of [[0.5, 0.8], [-0.2, 0.6]]) {     // trailing tails
+        const tail = at(box(R * 0.16, R * len, R * 0.06, cloth(dk)), -R * 1.05, TOP - R * (0.5 + len * 0.5), -R * 0.42 * F);
+        tail.rotation.z = ang;
+      }
+      for (let i = 0; i < 7; i++) {                             // printed dots
+        const a = (i / 7) * Math.PI * 2;
+        at(cyl(R * 0.07, R * 0.07, 0.005, basic(c2), 8), Math.cos(a) * R * 0.72, TOP - R * 0.12, Math.sin(a) * R * 0.72);
+      }
+      break;
     }
+
+    // ---- face pieces: primary is the frame, secondary is the lens ----
+    case 'glasses': case 'shades': {
+      const dark = item.build === 'shades';
+      const lensCol = dark ? (item.color2 || '#15171c') : (item.color2 || '#9fd4ff');
+      const lensMat = dark ? shiny(lensCol) : glass(lensCol, 0.5);
+      for (const s of [-1, 1]) {
+        const rim = at(ring(R * 0.34, R * 0.055, shiny(c), 18), s * R * 0.42, R * 0.1, R * 0.99 * F);
+        rim.rotation.y = F < 0 ? Math.PI : 0;
+        const lens = at(new THREE.Mesh(new THREE.CircleGeometry(R * 0.32, 16), lensMat), s * R * 0.42, R * 0.1, R * 0.985 * F);
+        lens.rotation.y = F < 0 ? Math.PI : 0;
+        // temple arm running back toward the ear
+        const arm = at(box(0.016, 0.016, R * 0.95, shiny(c)), s * R * 0.74, R * 0.12, R * 0.55 * F);
+        arm.rotation.y = -s * 0.28 * F;
+      }
+      at(box(R * 0.2, 0.022, 0.022, shiny(c)), 0, R * 0.16, R * 1.0 * F);        // bridge
+      for (const s of [-1, 1]) at(box(0.014, R * 0.1, 0.014, shiny(c)), s * R * 0.14, R * 0.02, R * 1.0 * F);  // nose pads
+      break;
+    }
+    case 'mask': {
+      const m = at(dome(R * 1.0, cloth(c), 0.5, 14), 0, -R * 0.35, R * 0.1 * F);
+      m.rotation.x = Math.PI; m.scale.z = 1.1;
+      for (let i = 0; i < 3; i++) {                       // pleats
+        const pl = at(box(R * 1.3, R * 0.05, R * 0.04, cloth(dk)), 0, -R * (0.2 + i * 0.22), R * 0.92 * F);
+      }
+      at(box(R * 0.5, 0.02, 0.02, metal(STEEL)), 0, -R * 0.02, R * 0.95 * F);    // nose wire
+      for (const s of [-1, 1]) {                          // ear loops
+        const loop = at(ring(R * 0.36, 0.018, cloth(c2), 14, Math.PI * 1.2), s * R * 0.95, -R * 0.3, R * 0.25 * F);
+        loop.rotation.y = Math.PI / 2; loop.rotation.z = -s * 0.4;
+      }
+      break;
+    }
+    case 'monocle': {
+      at(ring(R * 0.3, 0.032, metal(c), 18), R * 0.42, R * 0.1, R * 0.98 * F).rotation.y = F < 0 ? Math.PI : 0;
+      const lens = at(new THREE.Mesh(new THREE.CircleGeometry(R * 0.28, 16), glass(c2, 0.45)), R * 0.42, R * 0.1, R * 0.965 * F);
+      lens.rotation.y = F < 0 ? Math.PI : 0;
+      for (let i = 0; i < 5; i++) {                       // a chain of little links
+        const lk = at(ring(0.012, 0.005, metal(c), 8), R * (0.42 - i * 0.02), R * (-0.05 - i * 0.13), R * 0.98 * F);
+        lk.rotation.x = i % 2 ? Math.PI / 2 : 0;
+      }
+      break;
+    }
+    case 'eyepatch': {
+      const patch = at(new THREE.Mesh(new THREE.CircleGeometry(R * 0.32, 16), cloth(c)), -R * 0.42, R * 0.12, R * 1.0 * F);
+      patch.rotation.y = F < 0 ? Math.PI : 0;
+      const stitch = at(ring(R * 0.27, 0.012, cloth(c2), 18), -R * 0.42, R * 0.12, R * 1.01 * F);
+      stitch.rotation.y = F < 0 ? Math.PI : 0;
+      const strap = at(ring(R * 1.02, 0.028, cloth(c), 22, Math.PI * 1.25), 0, R * 0.2, 0);
+      strap.rotation.z = 0.3;
+      break;
+    }
+    case 'threed': {
+      at(box(R * 1.55, R * 0.42, 0.035, shiny(c)), 0, R * 0.1, R * 0.98 * F);
+      at(box(R * 1.55, R * 0.07, 0.045, shiny(c2)), 0, R * 0.3, R * 0.98 * F);       // top rail
+      for (const [s, col] of [[-1, '#ff3b3b'], [1, '#3b7bff']]) {
+        const lens = at(new THREE.Mesh(new THREE.CircleGeometry(R * 0.3, 16), glass(col, 0.6)), s * R * 0.4, R * 0.1, R * 1.005 * F);
+        lens.rotation.y = F < 0 ? Math.PI : 0;
+      }
+      for (const s of [-1, 1]) {
+        const arm = at(box(0.018, 0.018, R * 0.9, shiny(c)), s * R * 0.74, R * 0.12, R * 0.55 * F);
+        arm.rotation.y = -s * 0.28 * F;
+      }
+      break;
+    }
+
     // ---- back items: origin is the chest, +Z*F is forward so back = -Z*F ----
     case 'backpack': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.24, 2, 2, 2), lam(c));
-      body.position.set(0, 0.02, -0.3 * F); g.add(body);
-      // top flap
-      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.18, 0.27), lam(c).clone());
-      flap.material.color.multiplyScalar(0.82);
-      flap.position.set(0, 0.22, -0.29 * F); flap.rotation.x = -0.16 * F; g.add(flap);
-      // front pocket + buckles
-      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.12), lam(c).clone());
-      pocket.material.color.multiplyScalar(0.9);
-      pocket.position.set(0, -0.13, -0.42 * F); g.add(pocket);
-      for (const y of [0.12, -0.05]) {
-        const bk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.05), lam('#3a3a3a'));
-        bk.position.set(0, y, -0.44 * F); g.add(bk);
+      at(box(0.42, 0.5, 0.24, cloth(c)), 0, 0.02, -0.3 * F);
+      const flap = at(box(0.44, 0.19, 0.27, cloth(dk)), 0, 0.22, -0.29 * F);
+      flap.rotation.x = -0.16 * F;
+      at(box(0.3, 0.2, 0.12, cloth(lt)), 0, -0.13, -0.42 * F);                    // front pocket
+      at(box(0.32, 0.02, 0.13, cloth(dk2)), 0, -0.02, -0.42 * F);                 // pocket zip
+      for (const y of [0.12, -0.05]) {                                            // buckles
+        at(box(0.055, 0.045, 0.05, metal(STEEL)), 0, y, -0.44 * F);
+        at(box(0.03, 0.09, 0.03, cloth(c2)), 0, y + 0.06, -0.44 * F);
       }
-      // shoulder straps arcing to the front
-      for (const s of [-1, 1]) {
-        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 0.045), lam(c).clone());
-        strap.material.color.multiplyScalar(0.78);
-        strap.position.set(s * 0.16, 0.0, 0.15 * F); strap.rotation.x = 0.22 * F; g.add(strap);
+      for (const s of [-1, 1]) {                                                  // shoulder straps
+        const strap = at(box(0.065, 0.54, 0.05, cloth(c2)), s * 0.16, 0.0, 0.15 * F);
+        strap.rotation.x = 0.22 * F;
+        at(box(0.075, 0.06, 0.055, metal(STEEL)), s * 0.16, -0.16, 0.2 * F);      // strap slider
       }
+      at(ring(0.05, 0.014, cloth(c2), 12), 0, 0.3, -0.3 * F).rotation.x = Math.PI / 2;   // grab handle
       break;
     }
     case 'wings': {
       for (const s of [-1, 1]) {
-        const wing = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.8), lam(c, { side: THREE.DoubleSide, transparent: true, opacity: 0.85 }));
-        wing.position.set(s * 0.3, 0.15, -0.22 * F); wing.rotation.y = s * 0.7 * F; g.add(wing);
+        const wing = at(new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.8), cloth(c, { side: THREE.DoubleSide, transparent: true, opacity: 0.85 })), s * 0.3, 0.15, -0.22 * F);
+        wing.rotation.y = s * 0.7 * F;
+        // a strut down the leading edge plus veins, so it isn't a flat sheet
+        const strut = at(box(0.03, 0.82, 0.03, cloth(c2)), s * 0.3, 0.15, -0.22 * F);
+        strut.rotation.y = s * 0.7 * F; strut.position.x += s * 0.28 * Math.cos(s * 0.7 * F);
+        for (let i = 0; i < 3; i++) {
+          const vein = at(box(0.5, 0.014, 0.014, cloth(c2, { transparent: true, opacity: 0.8 })), s * 0.3, 0.4 - i * 0.24, -0.22 * F);
+          vein.rotation.y = s * 0.7 * F; vein.rotation.z = -s * 0.25;
+        }
       }
       break;
     }
     case 'cape': {
-      const mat = lam(c, { side: THREE.DoubleSide });
-      // flowing cloth: several tall panels fanned into a curved drape (the seams
-      // between panels read as folds), wrapping convex around the back
+      const outer = cloth(c, { side: THREE.DoubleSide });
+      const liner = cloth(c2, { side: THREE.DoubleSide });
       const N = 7, spanW = 0.62;
       for (let i = 0; i < N; i++) {
-        const t = i / (N - 1) - 0.5;                 // -0.5..0.5 across the back
-        const panel = new THREE.Mesh(new THREE.PlaneGeometry(spanW / N + 0.03, 1.02), mat);
+        const t = i / (N - 1) - 0.5;
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(spanW / N + 0.03, 1.02), outer);
         panel.position.set(t * spanW, -0.22, (-0.2 - Math.cos(t * Math.PI) * 0.07) * F);
-        panel.rotation.y = -t * 0.55 * F;            // fan outward
-        panel.rotation.x = 0.1 * F;                  // drape backward
+        panel.rotation.y = -t * 0.55 * F; panel.rotation.x = 0.1 * F;
         g.add(panel);
+        // the lining shows where the cape falls open at the edges
+        if (i === 0 || i === N - 1) {
+          const li = new THREE.Mesh(new THREE.PlaneGeometry(spanW / N, 1.0), liner);
+          li.position.copy(panel.position); li.position.z += 0.012 * F;
+          li.rotation.copy(panel.rotation);
+          g.add(li);
+        }
       }
-      // rolled collar around the shoulders + a clasp at the throat
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.11, 0.16), lam(c));
-      collar.position.set(0, 0.28, -0.05 * F); collar.rotation.x = 0.1 * F; g.add(collar);
-      const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), lam('#ffd23f'));
-      clasp.position.set(0, 0.25, 0.13 * F); g.add(clasp);
+      at(box(0.46, 0.12, 0.17, cloth(dk)), 0, 0.28, -0.05 * F).rotation.x = 0.1 * F;   // collar
+      at(box(0.44, 0.04, 0.16, cloth(c2)), 0, 0.34, -0.05 * F).rotation.x = 0.1 * F;   // collar trim
+      at(sph(0.045, metal(GOLD), 10, 8), 0, 0.25, 0.13 * F);                           // clasp
+      at(box(0.2, 0.03, 0.03, metal(GOLD)), 0, 0.25, 0.11 * F);                        // clasp chain
       break;
     }
     case 'jetpack': {
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.08), lam('#565b66'));
-      plate.position.set(0, 0.03, -0.26 * F); g.add(plate);
+      at(box(0.36, 0.42, 0.08, metal(c2)), 0, 0.03, -0.26 * F);
+      at(box(0.3, 0.05, 0.09, cloth(shade(c2, -0.3))), 0, 0.19, -0.26 * F);            // harness rail
       for (const s of [-1, 1]) {
-        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.46, 14), lam(c));
-        tank.position.set(s * 0.15, 0.05, -0.33 * F); g.add(tank);
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(c).clone());
-        cap.material.color.multiplyScalar(0.9); cap.position.set(s * 0.15, 0.28, -0.33 * F); g.add(cap);
-        const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.085, 0.1, 12), lam('#33363d'));
-        nozzle.position.set(s * 0.15, -0.22, -0.33 * F); g.add(nozzle);
-        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 10), new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.85 }));
-        flame.position.set(s * 0.15, -0.36, -0.33 * F); flame.rotation.x = Math.PI; g.add(flame);
+        at(cyl(0.1, 0.1, 0.46, shiny(c), 14), s * 0.15, 0.05, -0.33 * F);
+        at(cyl(0.102, 0.102, 0.05, cloth('#f0c23c'), 14), s * 0.15, 0.16, -0.33 * F);  // warning band
+        at(dome(0.1, shiny(dk), 0.5, 12), s * 0.15, 0.28, -0.33 * F);
+        at(cyl(0.05, 0.085, 0.1, metal(DARK), 12), s * 0.15, -0.22, -0.33 * F);
+        at(cyl(0.09, 0.09, 0.02, metal(STEEL), 12), s * 0.15, -0.17, -0.33 * F);
+        at(new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 10), new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.85 })), s * 0.15, -0.36, -0.33 * F).rotation.x = Math.PI;
+        at(new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.12, 10), new THREE.MeshBasicMaterial({ color: '#ffe6a0', transparent: true, opacity: 0.9 })), s * 0.15, -0.32, -0.33 * F).rotation.x = Math.PI;
+        const hose = at(cyl(0.018, 0.018, 0.2, cloth(DARK), 8), s * 0.08, 0.16, -0.29 * F);
+        hose.rotation.z = -s * 0.6;
       }
       break;
     }
     case 'sword': {
       const grp = new THREE.Group();
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 0.016), lam('#d7dce3')); blade.position.y = 0.06; grp.add(blade);
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.031, 0.12, 4), lam('#d7dce3')); tip.position.y = 0.38; tip.rotation.y = Math.PI / 4; grp.add(tip);
-      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.5, 0.022), lam('#b3b8c0')); fuller.position.y = 0.06; grp.add(fuller);
-      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.06), lam('#ffd23f')); guard.position.y = -0.22; grp.add(guard);
-      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.17, 10), lam('#5a3d22')); grip.position.y = -0.32; grp.add(grip);
-      const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.037, 10, 8), lam('#ffd23f')); pommel.position.y = -0.42; grp.add(pommel);
-      grp.position.set(-0.24, 0.12, -0.26 * F); grp.rotation.z = 0.5; g.add(grp); break;
-    }
-    // ---- outfits: anchored on the body (Hips for shorts, Torso for one-piece) ----
-    case 'swimshorts': {        // boys: coloured board shorts around hips + thighs
-      const sc = c || '#19a3d6';
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.31, 0.4, 18), lam(sc));
-      trunk.scale.z = 1.12; trunk.position.y = 0.02; g.add(trunk);
-      for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.17, 0.42, 16), lam(sc));
-        leg.position.set(s * 0.135, -0.26, 0.01); g.add(leg);
-        const hem = new THREE.Mesh(new THREE.TorusGeometry(0.172, 0.022, 8, 16), lam('#ffffff'));
-        hem.rotation.x = Math.PI / 2; hem.position.set(s * 0.135, -0.46, 0.01); g.add(hem);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 0.016), metal(STEEL)); blade.position.y = 0.06; grp.add(blade);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.031, 0.12, 4), metal(STEEL)); tip.position.y = 0.38; tip.rotation.y = Math.PI / 4; grp.add(tip);
+      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.5, 0.024), metal('#9aa2ad')); fuller.position.y = 0.06; grp.add(fuller);
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.06), metal(c2)); guard.position.y = -0.22; grp.add(guard);
+      for (const s of [-1, 1]) {                       // quillon tips
+        const q = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), metal(c2)); q.position.set(s * 0.11, -0.22, 0); grp.add(q);
       }
-      const band = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 8, 22), lam('#ffffff'));
-      band.rotation.x = Math.PI / 2; band.scale.z = 1.12; band.position.y = 0.19; g.add(band);
-      const knot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), lam('#ffffff'));
-      knot.position.set(0, 0.15, 0.33 * F); g.add(knot);
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.17, 10), cloth(c)); grip.position.y = -0.32; grp.add(grip);
+      for (let i = 0; i < 4; i++) {                    // grip wrap
+        const w = new THREE.Mesh(new THREE.TorusGeometry(0.027, 0.006, 6, 12), cloth(dk));
+        w.rotation.x = Math.PI / 2; w.position.y = -0.27 - i * 0.04; grp.add(w);
+      }
+      const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.037, 10, 8), metal(c2)); pommel.position.y = -0.42; grp.add(pommel);
+      grp.position.set(-0.24, 0.12, -0.26 * F); grp.rotation.z = 0.5; g.add(grp);
+      // a strap across the back so it isn't floating
+      const belt = at(box(0.06, 0.62, 0.03, cloth(dk)), -0.02, 0.05, -0.24 * F);
+      belt.rotation.z = -0.6;
       break;
     }
-    case 'swimsuit': {          // girls: a full one-piece over torso + hips
-      const sc = c || '#e23b6d';
-      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.27, 0.6, 18), lam(sc));
-      torso.scale.z = 1.2; torso.position.y = 0.02; g.add(torso);
-      const hips = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), lam(sc));
-      hips.scale.set(1, 0.72, 1.16); hips.position.y = -0.36; g.add(hips);
-      for (const s of [-1, 1]) {                 // shoulder straps (curved)
-        const strap = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.026, 8, 12, Math.PI * 0.9), lam(sc));
-        strap.position.set(s * 0.17, 0.3, 0); strap.rotation.y = Math.PI / 2; strap.rotation.z = -0.15; g.add(strap);
-      }
-      const trim = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.02, 8, 22), lam('#ffffff'));
-      trim.rotation.x = Math.PI / 2; trim.scale.z = 1.2; trim.position.y = -0.17; g.add(trim);
-      break;
-    }
-    // ---------- premium hats ----------
-    case 'pirate': {
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.7, R * 1.7, 0.05, 20), lam(c || '#1a1a1e'));
-      brim.position.y = TOP; brim.scale.x = 1.25;
-      const crown = new THREE.Mesh(new THREE.SphereGeometry(R * 1.02, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), lam(c || '#1a1a1e'));
-      crown.position.y = TOP;
-      const skull = new THREE.Mesh(new THREE.SphereGeometry(R * 0.26, 10, 8), basic('#f2f2f2'));
-      skull.position.set(0, TOP + R * 0.35, R * 1.0 * F);
-      g.add(brim, crown, skull); break;
-    }
-    case 'party': {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(R * 0.85, R * 2.2, 18), lam(c || '#ff5aa5'));
-      cone.position.y = TOP + R * 1.0;
-      for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.TorusGeometry(R * (0.5 + i * 0.12), 0.03, 6, 16), basic(i % 2 ? '#5be0ff' : '#ffe14a')); b.rotation.x = Math.PI / 2; b.position.y = TOP + R * (0.3 + i * 0.6); g.add(b); }
-      const pom = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 8, 6), basic('#ffffff')); pom.position.y = TOP + R * 2.1;
-      g.add(cone, pom); break;
-    }
-    case 'chef': {
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.02, R * 1.02, R * 0.55, 16), lam('#ffffff')); band.position.y = TOP + R * 0.25;
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(R * 1.15, 14, 10), lam('#ffffff')); puff.position.y = TOP + R * 0.85; puff.scale.y = 0.8;
-      g.add(band, puff); break;
-    }
-    case 'football': {
-      const dome = new THREE.Mesh(new THREE.SphereGeometry(R * 1.18, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), lam(c || '#e0a326'));
-      dome.position.y = TOP - R * 0.35;
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(R * 0.16, R * 1.3, 0.02), lam('#ffffff')); stripe.position.set(0, TOP - R * 0.1, 0);
-      for (const y of [-0.15, 0.12]) { const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, R * 1.5, 8), lam('#d8dde3')); bar.rotation.z = Math.PI / 2; bar.position.set(0, TOP + R * y, R * 1.05 * F); g.add(bar); }
-      const vbar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, R * 0.5, 8), lam('#d8dde3')); vbar.position.set(0, TOP - R * 0.02, R * 1.05 * F);
-      g.add(dome, stripe, vbar); break;
-    }
-    case 'flower': {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(R * 1.05, 0.03, 8, 20), lam('#4a8a3a')); ring.rotation.x = Math.PI / 2; ring.position.y = TOP + R * 0.05;
-      const cols = ['#ff7eb6', '#ffd23f', '#ff5a5a', '#a06bff', '#ffffff'];
-      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const fl = new THREE.Mesh(new THREE.SphereGeometry(R * 0.18, 8, 6), basic(cols[i % cols.length])); fl.position.set(Math.cos(a) * R * 1.05, TOP + R * 0.1, Math.sin(a) * R * 1.05); fl.scale.y = 0.6; g.add(fl); }
-      g.add(ring); break;
-    }
-    case 'propeller': {
-      const dome = new THREE.Mesh(new THREE.SphereGeometry(R * 1.05, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(c || '#e64a3b')); dome.position.y = TOP - R * 0.1;
-      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, R * 0.4, 6), lam('#333')); stalk.position.y = TOP + R * 0.3;
-      for (const s of [-1, 1]) { const bl = new THREE.Mesh(new THREE.BoxGeometry(R * 0.9, 0.03, R * 0.22), lam(s > 0 ? '#5be0ff' : '#ffe14a')); bl.position.set(s * R * 0.4, TOP + R * 0.5, 0); bl.rotation.y = s * 0.3; g.add(bl); }
-      g.add(dome, stalk); break;
-    }
-    // ---------- premium faces ----------
-    case 'monocle': {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(R * 0.3, 0.03, 8, 16), lam('#ffd23f')); ring.position.set(R * 0.42, R * 0.1, R * 0.98 * F);
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(R * 0.28, 14), basic('#bfe8ff')); lens.position.set(R * 0.42, R * 0.1, R * 0.96 * F); lens.material.transparent = true; lens.material.opacity = 0.5;
-      const chain = new THREE.Mesh(new THREE.BoxGeometry(0.01, R * 0.5, 0.01), lam('#ffd23f')); chain.position.set(R * 0.42, R * -0.15, R * 0.98 * F);
-      g.add(ring, lens, chain); break;
-    }
-    case 'eyepatch': {
-      const patch = new THREE.Mesh(new THREE.CircleGeometry(R * 0.32, 14), lam('#111')); patch.position.set(-R * 0.42, R * 0.12, R * 1.0 * F); patch.lookAt(-R * 0.42, R * 0.12, R * 3 * F);
-      const strap = new THREE.Mesh(new THREE.TorusGeometry(R * 1.02, 0.03, 6, 20, Math.PI * 1.2), lam('#111')); strap.rotation.z = 0.3; strap.position.y = R * 0.2;
-      g.add(patch, strap); break;
-    }
-    case 'threed': {
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(R * 1.5, R * 0.4, 0.03), lam('#111')); frame.position.set(0, R * 0.1, R * 0.98 * F);
-      for (const [s, col] of [[-1, '#ff3b3b'], [1, '#3b7bff']]) { const lens = new THREE.Mesh(new THREE.CircleGeometry(R * 0.3, 14), basic(col)); lens.position.set(s * R * 0.4, R * 0.1, R * 1.0 * F); lens.material.transparent = true; lens.material.opacity = 0.6; g.add(lens); }
-      g.add(frame); break;
-    }
-    // ---------- premium backs ----------
     case 'angelwings': {
       for (const s of [-1, 1]) {
         for (let i = 0; i < 3; i++) {
-          const fw = new THREE.Mesh(new THREE.PlaneGeometry(0.34 - i * 0.06, 0.5 - i * 0.08), lam('#fbfbff', { side: THREE.DoubleSide }));
-          fw.position.set(s * (0.18 + i * 0.14), 0.28 - i * 0.18, -0.22 * F); fw.rotation.y = s * 0.9 * F; fw.rotation.z = -s * 0.2; g.add(fw);
+          const fw = at(new THREE.Mesh(new THREE.PlaneGeometry(0.34 - i * 0.06, 0.5 - i * 0.08), cloth(c, { side: THREE.DoubleSide })), s * (0.18 + i * 0.14), 0.28 - i * 0.18, -0.22 * F);
+          fw.rotation.y = s * 0.9 * F; fw.rotation.z = -s * 0.2;
+          // tipped feathers in the second colour give the layers definition
+          const tp = at(new THREE.Mesh(new THREE.PlaneGeometry(0.3 - i * 0.06, 0.14), cloth(c2, { side: THREE.DoubleSide })), s * (0.2 + i * 0.15), 0.08 - i * 0.19, -0.215 * F);
+          tp.rotation.y = s * 0.9 * F; tp.rotation.z = -s * 0.2;
         }
       }
       break;
     }
     case 'balloon': {
-      const str = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.9, 6), lam('#cccccc')); str.position.set(0.1, 0.5, -0.1 * F);
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), lam(c || '#ff4a6b')); ball.position.set(0.1, 1.05, -0.1 * F); ball.scale.y = 1.15;
-      g.add(str, ball); break;
+      at(cyl(0.006, 0.006, 0.9, cloth(c2), 6), 0.1, 0.5, -0.1 * F);
+      const ball = at(sph(0.28, shiny(c), 16, 12), 0.1, 1.05, -0.1 * F); ball.scale.y = 1.15;
+      at(cone(0.05, 0.09, cloth(dk), 8), 0.1, 0.78, -0.1 * F).rotation.x = Math.PI;   // knot
+      const hi = at(sph(0.07, basic(shade(c, 0.65)), 10, 8), 0.02, 1.2, 0.06 * F);     // highlight
+      hi.scale.set(1.3, 0.9, 0.6);
+      break;
     }
     case 'guitar': {
-      const bodyMat = lam(c || '#c0392b');
-      // figure-8 body from two flattened discs
-      const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.09, 22), bodyMat);
-      lower.rotation.x = Math.PI / 2; lower.position.set(0.1, -0.26, -0.26 * F); g.add(lower);
-      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.09, 22), bodyMat);
-      upper.rotation.x = Math.PI / 2; upper.position.set(0.1, -0.02, -0.26 * F); g.add(upper);
-      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), basic('#141414'));
-      hole.position.set(0.1, -0.13, -0.213 * F); g.add(hole);
-      const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.03), lam('#241a12'));
-      bridge.position.set(0.1, -0.33, -0.21 * F); g.add(bridge);
-      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.05), lam('#6b4a2a'));
-      neck.position.set(-0.05, 0.34, -0.26 * F); neck.rotation.z = 0.34; g.add(neck);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.035), lam('#3a2a1a'));
-      head.position.set(-0.28, 0.64, -0.26 * F); head.rotation.z = 0.34; g.add(head);
-      for (let i = -1; i <= 1; i++) {              // strings
-        const str = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.78, 4), basic('#e0e0e0'));
-        str.position.set(0.08 + i * 0.022, 0.04, -0.205 * F); str.rotation.z = 0.34; g.add(str);
+      const bodyMat = shiny(c);
+      at(cyl(0.22, 0.22, 0.09, bodyMat, 22), 0.1, -0.26, -0.26 * F).rotation.x = Math.PI / 2;
+      at(cyl(0.165, 0.165, 0.09, bodyMat, 22), 0.1, -0.02, -0.26 * F).rotation.x = Math.PI / 2;
+      // pickguard in the second colour, the part that reads first on a real one
+      const pg = at(new THREE.Mesh(new THREE.CircleGeometry(0.11, 18, 0, Math.PI * 1.1), shiny(c2)), 0.17, -0.2, -0.212 * F);
+      pg.rotation.y = F < 0 ? Math.PI : 0; pg.rotation.z = 0.6;
+      at(new THREE.Mesh(new THREE.CircleGeometry(0.06, 18), basic('#141414')), 0.1, -0.13, -0.211 * F).rotation.y = F < 0 ? Math.PI : 0;
+      at(ring(0.065, 0.008, cloth(c2), 20), 0.1, -0.13, -0.211 * F).rotation.y = F < 0 ? Math.PI : 0;   // rosette
+      at(box(0.12, 0.03, 0.03, cloth('#241a12')), 0.1, -0.33, -0.21 * F);
+      const neck = at(box(0.07, 0.62, 0.05, cloth(item.color2 ? shade(c2, -0.2) : '#6b4a2a')), -0.05, 0.34, -0.26 * F);
+      neck.rotation.z = 0.34;
+      for (let i = 0; i < 6; i++) {                    // frets
+        const fr = at(box(0.072, 0.008, 0.052, metal(STEEL)), -0.05 - i * 0.028, 0.16 + i * 0.083, -0.255 * F);
+        fr.rotation.z = 0.34;
+      }
+      const head = at(box(0.1, 0.15, 0.035, cloth('#3a2a1a')), -0.28, 0.64, -0.26 * F);
+      head.rotation.z = 0.34;
+      for (const s of [-1, 1]) at(cyl(0.008, 0.008, 0.05, metal(STEEL), 6), -0.28 + s * 0.045, 0.66, -0.24 * F).rotation.x = Math.PI / 2;
+      for (let i = -1; i <= 1; i++) {
+        const str = at(cyl(0.004, 0.004, 0.78, basic('#e0e0e0'), 4), 0.08 + i * 0.022, 0.04, -0.205 * F);
+        str.rotation.z = 0.34;
+      }
+      break;
+    }
+
+    // ---- outfits: anchored on the body (Hips for shorts, Torso for one-piece) ----
+    case 'swimshorts': {        // boys: coloured board shorts around hips + thighs
+      at(cyl(0.29, 0.31, 0.4, cloth(c), 18), 0, 0.02, 0).scale.z = 1.12;
+      for (const s of [-1, 1]) {
+        at(cyl(0.185, 0.17, 0.42, cloth(c), 16), s * 0.135, -0.26, 0.01);
+        at(box(0.02, 0.42, 0.19, cloth(c2)), s * 0.19, -0.26, 0.01);            // side stripe
+        const hem = at(ring(0.172, 0.022, cloth(c2), 16), s * 0.135, -0.46, 0.01);
+        hem.rotation.x = Math.PI / 2;
+      }
+      const band = at(ring(0.3, 0.032, cloth(c2), 22), 0, 0.19, 0);
+      band.rotation.x = Math.PI / 2; band.scale.z = 1.12;
+      at(sph(0.03, cloth(c2), 8, 6), 0, 0.15, 0.33 * F);                        // drawstring knot
+      for (const s of [-1, 1]) at(cyl(0.008, 0.008, 0.1, cloth(c2), 6), s * 0.035, 0.11, 0.33 * F).rotation.x = 0.3;
+      break;
+    }
+    case 'swimsuit': {          // girls: a full one-piece over torso + hips
+      at(cyl(0.25, 0.27, 0.6, cloth(c), 18), 0, 0.02, 0).scale.z = 1.2;
+      const hips = at(sph(0.28, cloth(c), 16, 12), 0, -0.36, 0);
+      hips.scale.set(1, 0.72, 1.16);
+      for (const s of [-1, 1]) {
+        const strap = at(ring(0.17, 0.026, cloth(c), 12, Math.PI * 0.9), s * 0.17, 0.3, 0);
+        strap.rotation.y = Math.PI / 2; strap.rotation.z = -0.15;
+        const trimS = at(ring(0.17, 0.01, cloth(c2), 12, Math.PI * 0.9), s * 0.17, 0.3, 0);
+        trimS.rotation.y = Math.PI / 2; trimS.rotation.z = -0.15;
+      }
+      const trim = at(ring(0.26, 0.022, cloth(c2), 22), 0, -0.17, 0);
+      trim.rotation.x = Math.PI / 2; trim.scale.z = 1.2;
+      const neckline = at(ring(0.25, 0.018, cloth(c2), 22), 0, 0.3, 0);
+      neckline.rotation.x = Math.PI / 2; neckline.scale.z = 1.2;
+      break;
+    }
+
+    // ---- shirts: a thin shell around the measured chest, print on the front ----
+    case 'shirt': {
+      if (!torso) break;
+      // Follow the measured chest: full torso height, tapering slightly to the
+      // waist, and squashed in Z so it hugs an oval body rather than a barrel.
+      const rTop = torso.halfW * 1.13, rBot = torso.halfW * 1.0;
+      const squash = (torso.halfD * 1.06) / rTop;
+      const h = torso.height * 0.94;
+      const yOff = -torso.height * 0.02;
+      const arc = Math.PI * 0.62;
+      // The stick-fight print is a full-bleed purple design, so the rest of the
+      // shirt takes its background rather than the wearer's colour.
+      // A graphic tee is a plain shirt plus a print panel on the chest; a
+      // pattern (stripes, ringer) belongs on the whole garment instead.
+      const graphic = item.art === 'stickfight';
+      const shellMat = graphic
+        ? cloth('#3d1560', { side: THREE.DoubleSide })
+        : new THREE.MeshLambertMaterial({ map: shirtArt(item.art || 'plain', c, c2), side: THREE.DoubleSide });
+      const shell = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, 30, 1, true), shellMat);
+      shell.scale.z = squash; shell.position.y = yOff;
+      g.add(shell);
+      if (graphic) {
+        const panel = new THREE.Mesh(
+          new THREE.CylinderGeometry(rTop * 1.015, rBot * 1.02, h * 0.9, 30, 1, true, -arc / 2, arc),
+          new THREE.MeshLambertMaterial({ map: shirtArt(item.art, c, c2), side: THREE.DoubleSide }),
+        );
+        panel.scale.z = squash; panel.position.y = yOff;
+        if (F < 0) panel.rotation.y = Math.PI;
+        g.add(panel);
+      }
+      const collar = at(ring(rTop * 0.62, 0.022, cloth(c2), 26), 0, yOff + h * 0.5, 0);
+      collar.rotation.x = Math.PI / 2; collar.scale.z = squash;
+      const hem = at(ring(rBot * 1.01, 0.018, cloth(c2), 26), 0, yOff - h * 0.5, 0);
+      hem.rotation.x = Math.PI / 2; hem.scale.z = squash;
+      break;
+    }
+
+    // ---- footwear: origin is the ankle joint, +Z*F is toes-forward ----
+    // Every dimension comes from the measured foot, so the same build fits a
+    // rig with real toes and one whose leg simply ends at the floor.
+    case 'sneakers': case 'hightops': case 'boots': case 'dress': case 'sandals': {
+      if (!foot) break;
+      const AY = foot.ankleY, HW = foot.halfW, TOE = foot.toe, HEEL = foot.heel;
+      const LEN = TOE + HEEL;                 // heel-to-toe
+      const ZC = (TOE - HEEL) / 2;            // shoe centre, ahead of the ankle
+      const W = HW * 2;
+      // helpers in foot space: y is measured up from the ground, z from the ankle
+      const fb = (w, h, d, mat, yGround, z = ZC) => at(box(w, h, d, mat), 0, -AY + yGround, z * F);
+      const kind = item.build;
+
+      if (kind === 'sandals') {
+        fb(W * 1.02, AY * 0.2, LEN, cloth(c), AY * 0.1);                       // sole
+        fb(W * 0.94, AY * 0.09, LEN * 0.96, cloth(c2), AY * 0.24);             // footbed
+        const s1 = fb(W * 1.0, AY * 0.11, LEN * 0.17, cloth(c2), AY * 0.42, ZC + LEN * 0.3);
+        s1.rotation.x = 0.22 * F;
+        const s2 = fb(W * 0.96, AY * 0.11, LEN * 0.15, cloth(c2), AY * 0.5, ZC);
+        s2.rotation.x = -0.18 * F;
+        fb(W * 0.5, AY * 0.1, AY * 0.1, cloth(c2), AY * 0.4, -HEEL * 0.9);     // heel strap
+        break;
+      }
+
+      const boot = kind === 'boots', dress = kind === 'dress', high = kind === 'hightops';
+      const soleCol = dress ? shade(c2, -0.35) : boot ? d2 : c2;
+      const soleH = dress ? AY * 0.14 : boot ? AY * 0.26 : AY * 0.24;
+      fb(W * 1.03, soleH, LEN, cloth(soleCol), soleH / 2);                     // sole
+      if (!dress) {                                                            // tread blocks
+        const n = boot ? 5 : 4;
+        for (let i = 0; i < n; i++) fb(W * 1.0, AY * 0.07, LEN / (n + 1.4), cloth(shade(soleCol, -0.3)), AY * 0.02, -HEEL + LEN * ((i + 0.7) / n));
+      }
+      if (!boot && !dress) fb(W * 1.06, AY * 0.08, LEN * 1.005, cloth(l2), soleH + AY * 0.04);   // midsole stripe
+      if (boot || dress) fb(W * 0.94, AY * 0.22, LEN * 0.3, cloth(soleCol), -AY * 0.06 + soleH / 2, -HEEL + LEN * 0.16);  // heel block
+
+      const upperMat = dress ? shiny(c) : cloth(c);
+      const upperH = boot ? AY * 0.72 : dress ? AY * 0.58 : AY * 0.68;
+      fb(W * 0.97, upperH, LEN * 0.92, upperMat, soleH + upperH / 2);          // upper
+      // A gently domed toe box. It stays close to the upper's colour — a big
+      // lighten here reads as a grey egg stuck on the front of the shoe.
+      const toeCol = dress ? shade(c, 0.12) : boot ? dk : shade(c, 0.07);
+      const toeCap = at(sph(HW * 0.88, dress ? shiny(toeCol) : cloth(toeCol), 12, 8), 0, -AY + soleH + upperH * 0.42, (ZC + LEN * 0.3) * F);
+      toeCap.scale.set(1, dress ? 0.38 : 0.46, 1.05);
+
+      if (dress) {
+        fb(W * 0.58, AY * 0.3, LEN * 0.34, shiny(c2), soleH + upperH * 0.85, ZC - LEN * 0.1);   // vamp
+        for (let i = 0; i < 2; i++) fb(W * 0.5, AY * 0.05, AY * 0.05, cloth(shade(c2, 0.35)), soleH + upperH * 1.05, ZC - LEN * 0.16 + i * LEN * 0.14);
+        fb(W * 0.95, AY * 0.3, LEN * 0.12, shiny(c), soleH + upperH * 0.7, -HEEL * 0.88);       // heel counter
+        break;
+      }
+
+      // laces, tongue and heel tab — the parts that read as a trainer
+      fb(W * 0.58, AY * 0.32, LEN * 0.14, cloth(dk), soleH + upperH * 0.95, ZC - LEN * 0.14);   // tongue
+      const rows = boot ? 4 : 3;
+      for (let i = 0; i < rows; i++) {
+        const yy = soleH + upperH * (0.8 + i * 0.28);
+        fb(W * 0.72, AY * 0.055, AY * 0.055, cloth(c2), yy, ZC - LEN * 0.12 + i * LEN * 0.13);
+        if (boot) for (const sd of [-1, 1]) {
+          const eye = at(cyl(HW * 0.11, HW * 0.11, AY * 0.06, metal(STEEL), 6), sd * HW * 0.75, -AY + yy, (ZC - LEN * 0.12 + i * LEN * 0.13) * F);
+          eye.rotation.x = Math.PI / 2;
+        }
+      }
+      for (const sd of [-1, 1]) {                                              // side flash
+        const fl = at(box(AY * 0.06, AY * 0.28, LEN * 0.5, cloth(c2)), sd * HW * 0.98, -AY + soleH + upperH * 0.5, ZC * F);
+        fl.rotation.x = 0.2 * F;
+      }
+      fb(W * 0.62, AY * 0.3, AY * 0.1, cloth(c2), soleH + upperH * 0.95, -HEEL * 0.9);          // heel tab
+
+      if (boot || high) {                                                      // ankle shaft / collar
+        const shaftH = boot ? AY * 1.15 : AY * 0.6;
+        const shaftR = HW * (boot ? 1.0 : 0.96);
+        at(cyl(shaftR, shaftR * 1.06, shaftH, cloth(c), 14), 0, -AY + soleH + upperH + shaftH / 2, ZC * F * 0.25);
+        at(cyl(shaftR * 1.09, shaftR * 1.09, AY * (boot ? 0.28 : 0.18), cloth(c2), 14), 0, -AY + soleH + upperH + shaftH, ZC * F * 0.25);
+        if (high) {
+          const patch = at(new THREE.Mesh(new THREE.CircleGeometry(HW * 0.4, 5), cloth(c2)), shaftR, -AY + soleH + upperH + shaftH * 0.5, ZC * F * 0.25);
+          patch.rotation.y = Math.PI / 2;
+        }
+      }
+      break;
+    }
+
+    // ---------- premium hats ----------
+    case 'pirate': {
+      const brim = at(cyl(R * 1.7, R * 1.7, 0.05, cloth(c), 20), 0, TOP, 0);
+      brim.scale.x = 1.25;
+      at(ring(R * 1.7, 0.03, cloth(c2), 22), 0, TOP + 0.01, 0).rotation.x = Math.PI / 2;   // piped edge
+      at(dome(R * 1.02, cloth(c), 0.5, 14), 0, TOP, 0);
+      at(cyl(R * 1.05, R * 1.05, R * 0.2, cloth(dk), 16), 0, TOP + R * 0.14, 0);           // band
+      at(sph(R * 0.26, basic(c2), 12, 10), 0, TOP + R * 0.4, R * 0.98 * F);                // skull
+      for (const s of [-1, 1]) {                                                           // crossbones
+        const bone = at(box(R * 0.62, R * 0.08, 0.02, basic(c2)), 0, TOP + R * 0.16, R * 1.0 * F);
+        bone.rotation.z = s * 0.6;
+      }
+      for (const s of [-1, 1]) at(sph(R * 0.07, basic(shade(c, -0.6)), 8, 6), s * R * 0.09, TOP + R * 0.44, R * 1.2 * F);  // eye sockets
+      break;
+    }
+    case 'party': {
+      at(cone(R * 0.85, R * 2.2, cloth(c), 18), 0, TOP + R * 1.0, 0);
+      for (let i = 0; i < 4; i++) {                        // banded stripes up the cone
+        const b = at(ring(R * (0.72 - i * 0.16), 0.035, cloth(i % 2 ? c2 : l2), 18), 0, TOP + R * (0.25 + i * 0.5), 0);
+        b.rotation.x = Math.PI / 2;
+      }
+      at(sph(R * 0.22, cloth(c2), 10, 8), 0, TOP + R * 2.12, 0);                     // pom
+      const strap = at(ring(R * 1.0, 0.014, cloth(c2), 20, Math.PI), 0, -R * 0.2, 0);
+      strap.rotation.z = Math.PI;                                                    // chin elastic
+      break;
+    }
+    case 'chef': {
+      at(cyl(R * 1.02, R * 1.02, R * 0.55, cloth(c), 16), 0, TOP + R * 0.25, 0);      // band
+      at(ring(R * 1.03, 0.022, cloth(c2), 18), 0, TOP + R * 0.5, 0).rotation.x = Math.PI / 2;
+      const puff = at(sph(R * 1.15, cloth(c), 16, 12), 0, TOP + R * 0.9, 0);
+      puff.scale.y = 0.8;
+      for (let i = 0; i < 6; i++) {                        // gathers around the puff
+        const a = (i / 6) * Math.PI * 2;
+        const gp = at(cyl(R * 0.2, R * 0.24, R * 0.75, cloth(c2), 8), Math.cos(a) * R * 0.86, TOP + R * 0.88, Math.sin(a) * R * 0.86);
+        gp.scale.set(1, 1, 0.65);
+      }
+      break;
+    }
+    case 'football': {
+      at(dome(R * 1.18, shiny(c), 0.62, 16), 0, TOP - R * 0.35, 0);
+      at(box(R * 0.18, R * 1.35, 0.025, shiny(c2)), 0, TOP - R * 0.1, 0);             // centre stripe
+      for (const s of [-1, 1]) at(box(R * 0.07, R * 1.3, 0.02, shiny(c2)), s * R * 0.3, TOP - R * 0.12, 0);
+      for (const s of [-1, 1]) at(cyl(R * 0.22, R * 0.22, 0.03, cloth(DARK), 12), s * R * 1.15, TOP - R * 0.5, 0).rotation.z = Math.PI / 2;
+      for (const y of [-0.15, 0.12]) at(cyl(0.022, 0.022, R * 1.5, metal(STEEL), 8), 0, TOP + R * y, R * 1.05 * F).rotation.z = Math.PI / 2;
+      at(cyl(0.022, 0.022, R * 0.5, metal(STEEL), 8), 0, TOP - R * 0.02, R * 1.05 * F);
+      at(box(R * 0.55, R * 0.1, 0.03, cloth(c2)), 0, TOP - R * 0.72, R * 0.7 * F);    // chin strap
+      break;
+    }
+    case 'flower': {
+      at(ring(R * 1.05, 0.032, cloth('#4a8a3a'), 20), 0, TOP + R * 0.05, 0).rotation.x = Math.PI / 2;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const col = i % 2 ? c : c2;                        // two flower colours alternating
+        for (let p = 0; p < 5; p++) {                      // real petals around a centre
+          const pa = (p / 5) * Math.PI * 2;
+          const petal = at(sph(R * 0.09, cloth(col), 8, 6),
+            Math.cos(a) * R * 1.05 + Math.cos(pa) * R * 0.1, TOP + R * 0.12, Math.sin(a) * R * 1.05 + Math.sin(pa) * R * 0.1);
+          petal.scale.y = 0.5;
+        }
+        at(sph(R * 0.06, cloth('#ffd23f'), 8, 6), Math.cos(a) * R * 1.05, TOP + R * 0.15, Math.sin(a) * R * 1.05).scale.y = 0.6;
+        const leaf = at(sph(R * 0.11, cloth('#3f7a32'), 8, 6), Math.cos(a + 0.4) * R * 1.06, TOP + R * 0.05, Math.sin(a + 0.4) * R * 1.06);
+        leaf.scale.set(1, 0.32, 0.55);
+      }
+      break;
+    }
+    case 'propeller': {
+      for (let i = 0; i < 4; i++) {                        // alternating beanie panels
+        const panel = at(dome(R * 1.05, cloth(i % 2 ? c : c2), 0.5, 6), 0, TOP - R * 0.1, 0);
+        panel.rotation.y = (i / 4) * Math.PI * 2;
+        panel.geometry = new THREE.SphereGeometry(R * 1.05, 6, 8, (i / 4) * Math.PI * 2, Math.PI / 2, 0, Math.PI / 2);
+        panel.rotation.y = 0;
+      }
+      at(ring(R * 1.05, 0.035, cloth(dk), 18), 0, TOP - R * 0.1, 0).rotation.x = Math.PI / 2;
+      at(cyl(0.022, 0.022, R * 0.4, metal(DARK), 6), 0, TOP + R * 0.3, 0);
+      at(cyl(R * 0.1, R * 0.1, R * 0.08, metal(STEEL), 10), 0, TOP + R * 0.5, 0);      // hub
+      for (const s of [-1, 1]) {
+        const bl = at(box(R * 0.9, 0.028, R * 0.22, cloth(s > 0 ? c2 : l2)), s * R * 0.45, TOP + R * 0.5, 0);
+        bl.rotation.y = s * 0.3;
       }
       break;
     }
     default: return null;
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return g;
+  return mergeByMaterial(g);
+}
+
+// Detail is cheap to author and expensive to draw: a laced boot is two dozen
+// little boxes. Since a garment never animates internally, bake every part that
+// shares a surface into one mesh — same picture, a handful of draw calls.
+function mergeByMaterial(g) {
+  try {
+    g.updateMatrixWorld(true);
+    const buckets = new Map();
+    const meshes = [];
+    g.traverse((o) => { if (o.isMesh && o.geometry && !Array.isArray(o.material)) meshes.push(o); });
+    if (meshes.length < 3) return g;
+    for (const m of meshes) {
+      const mt = m.material;
+      // anything that changes how the surface is drawn has to stay separate
+      const key = [mt.type, mt.color?.getHexString(), mt.map?.uuid || '', mt.transparent ? 1 : 0,
+        mt.opacity, mt.side, mt.shininess ?? '', mt.specular?.getHexString() ?? ''].join('|');
+      const geo = m.geometry.clone();
+      geo.applyMatrix4(m.matrixWorld);
+      if (!geo.attributes.uv) return g;         // can't merge a mismatched set
+      const b = buckets.get(key);
+      if (b) b.geos.push(geo); else buckets.set(key, { mat: mt, geos: [geo] });
+    }
+    const out = new THREE.Group();
+    for (const { mat, geos } of buckets.values()) {
+      const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+      if (!merged) return g;
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.castShadow = true;
+      out.add(mesh);
+    }
+    return out;
+  } catch (e) {
+    return g;                                    // never let an optimisation break the look
+  }
 }
 
 // expose the flat clothing list for editors

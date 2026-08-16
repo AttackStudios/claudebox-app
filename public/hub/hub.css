@@ -407,6 +407,41 @@ main {
 .skin-swatch:hover { transform: scale(1.1); }
 .skin-swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 
+/* ---- avatar editor: category tabs, item grid, dual colour blocks ---- */
+.av-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.av-tab {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--glass-brd); color: var(--faint);
+  font-weight: 700; font-size: 12px; cursor: pointer;
+  transition: transform .18s var(--spring), border-color .18s ease, color .18s ease;
+}
+.av-tab span { font-size: 15px; }
+.av-tab:hover { border-color: var(--glass-brd-hi); transform: translateY(-1px); }
+.av-tab.on { border-color: transparent; background: linear-gradient(150deg, var(--accent), var(--accent-2)); color: var(--accent-ink); box-shadow: 0 4px 12px var(--accent-glow); }
+.av-panel { display: flex; flex-direction: column; gap: 14px; }
+.item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.item-grid .opt-btn { width: 100%; text-align: left; }
+.col-block { margin-top: 12px; }
+.col-label { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 700; margin-bottom: 7px; }
+.sw-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sw {
+  width: 24px; height: 24px; border-radius: 7px; cursor: pointer; padding: 0;
+  border: 2px solid transparent; box-shadow: 0 0 0 1px var(--glass-brd);
+  transition: transform .16s var(--spring);
+}
+.sw:hover { transform: scale(1.14); }
+.sw.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+.av-actions { display: flex; gap: 8px; }
+.av-ghost {
+  flex: 1; padding: 10px 12px; border-radius: var(--r-md); cursor: pointer;
+  background: var(--glass); border: 1px solid var(--glass-brd); color: var(--ink);
+  font-weight: 800; font-size: 12.5px; transition: transform .18s var(--spring), border-color .18s ease;
+}
+.av-ghost:hover { border-color: var(--glass-brd-hi); transform: translateY(-1px); }
+.av-ghost:active { transform: scale(.96); }
+#avatar-save.dirty { animation: saveNudge 1.6s ease-in-out infinite; }
+@keyframes saveNudge { 0%,100% { transform: none; } 50% { transform: translateY(-2px); } }
+
 #avatar-save {
   position: sticky; bottom: calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(150deg, var(--accent), var(--accent-2)); color: var(--accent-ink); border: none; cursor: pointer;
