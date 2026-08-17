@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '/vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '/vendor/SkeletonUtils.js';
 import { mergeGeometries } from '/vendor/BufferGeometryUtils.js';
+import { makeAnimator } from '/shared/anim/humanoid.js';
 
 const loader = new GLTFLoader();
 const glbCache = new Map();
@@ -16,8 +17,7 @@ function loadGLB(url) {
   return glbCache.get(url);
 }
 
-const EXTRA_CLIPS = ['run', 'jump', 'sit', 'dance', 'death', 'swim', 'tread',
-  'rifleidle', 'riflerun', 'riflefire', 'pistolidle', 'pistolrun', 'knifeidle', 'knifestab'];   // 'idle' ships inside the base model
+// (per-motion clip GLBs are no longer used — see shared/anim/humanoid.js)
 const genders = new Map();   // gender -> { template, clips, minY, scale }
 export const TARGET_HEIGHT = 1.9;       // normalize every model to this height (feet at y=0)
 export const HITBOX = { radius: 0.4, height: TARGET_HEIGHT, eye: TARGET_HEIGHT * 0.92 };
@@ -35,15 +35,6 @@ const meshRegion = (name) => {
 
 export async function preloadAvatars(list = ['boy', 'girl']) {
   await Promise.all(list.map(loadGender));
-}
-
-// Strip the root (hip) translation track so clips animate IN PLACE. The game
-// drives the avatar's actual position; without this the body drifts off its
-// collider (very visible on the new jump, which leaps the hips up + forward).
-const ROOT_POS_RE = /(Hips|Waist|Armature|Root)\.position$/i;
-function inPlace(clip) {
-  clip.tracks = clip.tracks.filter((t) => !ROOT_POS_RE.test(t.name));
-  return clip;
 }
 
 // The girl model's texture atlas is mostly TRANSPARENT texels whose RGB is
@@ -72,22 +63,13 @@ function opaqueTex(tex) {
 async function loadGender(gender) {
   if (genders.has(gender)) return genders.get(gender);
   const base = await loadGLB(`/models/${gender}.glb`);
-  const clips = {};
-  // idle must be a REAL idle clip — the girl model ships dance/run/… but no
-  // idle, and falling back to animations[0] made her dance forever. No idle
-  // clip → procedural rest pose (same as the boy).
-  const idle = base.animations.find((a) => /idle/i.test(a.name));
-  if (idle) { const c = inPlace(idle.clone()); c.name = 'idle'; clips.idle = c; }
+  const clips = {};   // kept for shape; nothing populates it any more
   base.scene.traverse((o) => {
     if (o.isMesh && o.material?.map) o.material.map = opaqueTex(o.material.map);
   });
-  await Promise.all(EXTRA_CLIPS.map(async (name) => {
-    // not every gender ships every clip (e.g. swim/tread) — missing files are fine
-    try {
-      const g = await loadGLB(`/models/${gender}_${name}.glb`);
-      if (g.animations[0]) { const c = inPlace(g.animations[0].clone()); c.name = name; clips[name] = c; }
-    } catch { /* clip not provided for this gender */ }
-  }));
+  // Motion is procedural now (shared/anim/humanoid.js), so none of the
+  // per-motion clip GLBs are fetched any more — that is 20 downloads removed,
+  // and every body gets every motion instead of only the ones it shipped.
   // single-mesh (Mixamo boy): split the body geometry into skin/shirt/pants
   // material groups by skeleton region, once, so clones can recolour regions.
   let split = false;
@@ -143,23 +125,6 @@ function splitBodyByRegion(mesh) {
 }
 
 // game anim name -> model clip + how to play it
-const ANIM_MAP = {
-  idle: 'idle', walk: 'run', run: 'run', jump: 'jump', fall: 'jump',
-  swim: 'swim', tread: 'tread',
-  rifleidle: 'rifleidle', riflerun: 'riflerun', riflefire: 'riflefire',
-  pistolidle: 'pistolidle', pistolrun: 'pistolrun',
-  knifeidle: 'knifeidle', knifestab: 'knifestab',
-  sit: 'sit', lie: 'sit', drive: 'sit', sitchair: 'sit', dance: 'dance',
-  death: 'death', dead: 'death', fly: 'idle', spray: 'idle', roast: 'idle', eat: 'idle',
-};
-// if a model lacks a clip, fall back to the closest one it does have
-const ANIM_FALLBACK = {
-  swim: 'run', tread: 'idle',
-  rifleidle: 'idle', riflerun: 'run', riflefire: 'idle',
-  pistolidle: 'idle', pistolrun: 'run',
-  knifeidle: 'idle', knifestab: 'idle',
-};
-const ONESHOT = new Set(['jump', 'death', 'knifestab', 'riflefire']);
 
 function genderOf(profile) {
   const b = (profile.body || '').toString().toLowerCase();
@@ -312,51 +277,30 @@ export function makeAvatar(profile = {}) {
 
   const modelQuat = new THREE.Quaternion(); inner.getWorldQuaternion(modelQuat);
 
-  const mixer = new THREE.AnimationMixer(inner);
-  const actions = {};
-  for (const [n, clip] of Object.entries(rec.clips)) actions[n] = mixer.clipAction(clip);
-  let current = null, currentName = '', currentClip = '';
+  const anim = makeAnimator(THREE, bones, gender);
+  const baseY = -rec.minY * rec.scale;
+  let currentName = 'idle', rootPitch = 0;
   const attachments = [];
 
   const ctrl = {
-    group, inner, mixer, gender, bones,
+    group, inner, gender, bones, anim,
     hitbox: { radius: HITBOX.radius, height: HITBOX.height },
 
     idlePhase: 0,
     moveSpeed: 0,   // world units/sec; drives how fast walk/run cycles
     setAnim(name) {
-      let clip = ANIM_MAP[name] || 'idle';
-      if (!actions[clip] && ANIM_FALLBACK[clip]) clip = ANIM_FALLBACK[clip];   // model lacks this clip
-      // guard on the resolved CLIP, not the name: 'jump' and 'fall' both map to
-      // the jump clip, so switching names mid-air must NOT replay it.
-      if (clip === currentClip) { currentName = name; return; }
-      currentName = name; currentClip = clip;
-      const act = actions[clip];
-      if (!act) {                       // no clip (e.g. boy has no idle) → rest pose
-        if (current) current.fadeOut(0.2);
-        current = null;
-        return;
-      }
-      act.reset(); act.enabled = true; act.setEffectiveWeight(1);
-      act.timeScale = 1;
-      act.loop = ONESHOT.has(clip) ? THREE.LoopOnce : THREE.LoopRepeat;
-      act.clampWhenFinished = ONESHOT.has(clip);
-      act.fadeIn(0.1).play();
-      if (current && current !== act) current.fadeOut(0.1);
-      current = act;
+      currentName = name;
+      anim.setAnim(name);
     },
 
     update(dt) {
-      // walk/run cycle speeds up with movement (and again when sprinting)
-      if (current && currentClip === 'run') {
-        current.timeScale = Math.max(1.1, Math.min(2.5, 0.95 + this.moveSpeed * 0.13));
-      }
-      mixer.update(dt);
-      // gentle procedural breathing when resting with no idle clip
-      if (!current) {
-        this.idlePhase += dt;
-        inner.position.y = (-rec.minY * rec.scale) + Math.sin(this.idlePhase * 1.6) * 0.012;
-      }
+      anim.setSpeed(this.moveSpeed);
+      const c = anim.update(dt);
+      // The root carries what bones cannot: the vertical bob of a stride, and
+      // the pitch that lays the body flat for swimming or death.
+      inner.position.y = baseY + (c.bob || 0);
+      rootPitch += ((c.rootPitch || 0) - rootPitch) * Math.min(1, dt * 8);
+      inner.rotation.x = rootPitch;
     },
 
     setColors(p = {}) {
@@ -461,7 +405,7 @@ export function makeAvatar(profile = {}) {
       }
     },
 
-    dispose() { mixer.stopAllAction(); },
+    dispose() { },
   };
 
   ctrl.setColors(profile);
