@@ -194,7 +194,7 @@ function selectTab(name, withSound = true) {
   movePill();
   if (withSound) sfx.select();
   if (name === 'avatar') avatarEditor.start(); else avatarEditor.stop();
-  if (name === 'store') { renderStore(); storeStage.start(); } else storeStage.stop();
+  if (name === 'store') renderStore();
 }
 for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => selectTab(tab.dataset.tab));
 $('me-chip').addEventListener('click', () => { if (stateHub.me?.name) openProfile(stateHub.me.name); });
@@ -1528,125 +1528,286 @@ async function equipItem(item) {
   if (data?.ok) { sfx.tap(); toast(`Equipped ${item.label}`, '✨'); refreshSocial(); }
 }
 
-// ==================== STORE (Avatar Shop) ====================
-let storeCat = 'Featured';
-const SLOT_LABEL = { hat: 'Hat', back: 'Back', face2: 'Face', suit: 'Outfit' };
+// ==================== MARKETPLACE ====================
+// Laid out like Roblox's: a search header, a row of filter pills that each open
+// a small popover of radio options with an Apply, a scrollable strip of tag
+// chips, then a grid of rendered item cards — and an item page behind them.
+//
+// The catalogue is ClaudeBox's own: paid cosmetics come from AVATAR_SHOP, and
+// everything else in the clothing catalogue is listed as Free, so the grid
+// shows the whole wardrobe rather than only the things with a price.
 
-// a lightweight live 3D preview of your avatar (own renderer, runs only when the
-// Store tab is open) — mirrors the avatar editor but read-only
-const storeStage = (() => {
-  let renderer = null, scene, cam, ctrl = null, running = false, ready = false;
-  const clock = new THREE.Clock();
-  function rebuild() {
-    if (!scene || !ready) return;
-    if (ctrl) { scene.remove(ctrl.group); ctrl.dispose?.(); }
-    ctrl = makeAvatar(stateHub.me.avatar); ctrl.setAnim('idle'); scene.add(ctrl.group);
-  }
-  async function init() {
-    const canvas = $('store-canvas'); if (!canvas) return;
-    try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (e) { return; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    scene = new THREE.Scene();
-    cam = new THREE.PerspectiveCamera(32, 1, 0.1, 30); cam.position.set(0, 1.1, 4.6); cam.lookAt(0, 0.95, 0);
-    scene.add(new THREE.AmbientLight('#aab4c4', 1.5));
-    const key = new THREE.DirectionalLight('#fff4dc', 2.0); key.position.set(2, 4, 3); scene.add(key);
-    const rim = new THREE.DirectionalLight(settings.accent, 0.9); rim.position.set(-3, 2, -2); scene.add(rim);
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 0.1, 40), new THREE.MeshLambertMaterial({ color: '#26282f' }));
-    disc.position.y = -0.05; scene.add(disc);
-    await preloadAvatars(['boy', 'girl']); ready = true; rebuild();
-  }
-  function frame(now) {
-    if (!running) return; requestAnimationFrame(frame);
-    const c = renderer.domElement, w = c.clientWidth, h = c.clientHeight;
-    if (c.width !== Math.floor(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
-    const dt = clock.getDelta();
-    if (ctrl) { ctrl.update(dt); ctrl.group.rotation.y = settings.reduceMotion ? 0 : Math.sin(now / 1000 * 0.4) * 0.6; }
-    renderer.render(scene, cam);
-  }
-  return {
-    async start() { if (!renderer) await init(); running = true; requestAnimationFrame(frame); },
-    stop() { running = false; },
-    refresh() { rebuild(); },
-  };
-})();
+const MK_KINDS = ['All', 'Body', 'Clothing', 'Accessories', 'Faces', 'Backgrounds', 'Animations'];
+// slot -> which marketplace category it belongs under, and how to photograph it
+const MK_SLOT = {
+  hat:   { kind: 'Accessories', cat: 'hats',   frame: 'head',  label: 'Hat' },
+  back:  { kind: 'Accessories', cat: 'backs',  frame: 'back',  label: 'Back' },
+  face2: { kind: 'Faces',       cat: 'faces',  frame: 'face',  label: 'Face' },
+  suit:  { kind: 'Clothing',    cat: 'suits',  frame: 'torso', label: 'Swimwear' },
+  shirt: { kind: 'Clothing',    cat: 'shirts', frame: 'torso', label: 'Shirt' },
+  shoes: { kind: 'Clothing',    cat: 'shoes',  frame: 'feet',  label: 'Shoes' },
+  hair:  { kind: 'Body',        cat: 'hair',   frame: 'head',  label: 'Hair' },
+};
+const MK_COLOR = { hat: 'hatColor', back: 'backColor', face2: 'faceColor', suit: 'suitColor', shirt: 'shirtColor', shoes: 'shoeColor', hair: 'hairColor' };
 
-function storeCounts() {
-  const w = wallet();
-  const owned = new Set(w.ownedAvatar || []);
-  return { owned };
+const mkState = {
+  q: '', kind: 'All', creator: '', min: null, max: null,
+  sort: 'Relevance', sales: 'All', unavailable: 'Hide', tag: '',
+  cart: [], detail: null,
+};
+
+// Build the full listing once: every catalogue item, priced if the shop sells it.
+function mkCatalogue() {
+  const priced = new Map();
+  for (const it of AVATAR_SHOP) priced.set(it.slot + ':' + it.value, it);
+  const out = [];
+  for (const [slot, meta] of Object.entries(MK_SLOT)) {
+    for (const item of (CLOTHING[meta.cat] || [])) {
+      if (item.id === 'none') continue;
+      const shopItem = priced.get(slot + ':' + item.id);
+      out.push({
+        id: shopItem?.id || `free-${slot}-${item.id}`,
+        slot, value: item.id, label: shopItem?.label || item.label,
+        kind: meta.kind, frame: meta.frame, slotLabel: meta.label,
+        price: shopItem?.price ?? 0,
+        featured: !!shopItem?.featured,
+        shopId: shopItem?.id || null,
+        creator: shopItem ? 'ClaudeBox Studios' : 'ClaudeBox',
+        pri: item.pri, sec: item.sec, emoji: item.emoji,
+      });
+    }
+  }
+  return out;
 }
-function renderCats() {
-  const host = $('store-cats'); if (!host) return;
+let MK_ALL = null;
+const mkAll = () => (MK_ALL ||= mkCatalogue());
+
+const mkOwned = () => new Set(wallet().ownedAvatar || []);
+const mkIsOwned = (it) => !it.shopId || mkOwned().has(it.shopId);
+const mkEquipped = (it) => (stateHub.me?.avatar?.[it.slot] || 'none') === it.value;
+
+function mkTags() {
+  // tags are derived from what is actually listed, so they always lead somewhere
+  const t = new Set();
+  for (const it of mkAll()) { t.add(it.slotLabel.toLowerCase()); if (it.price === 0) t.add('free'); }
+  return ['free', ...[...t].filter((x) => x !== 'free')].slice(0, 14);
+}
+
+function mkFiltered() {
+  const q = mkState.q.trim().toLowerCase();
+  let list = mkAll().filter((it) => {
+    if (mkState.kind !== 'All' && it.kind !== mkState.kind) return false;
+    if (q && !it.label.toLowerCase().includes(q) && !it.slotLabel.toLowerCase().includes(q)) return false;
+    if (mkState.creator && !it.creator.toLowerCase().includes(mkState.creator.toLowerCase())) return false;
+    if (mkState.min != null && it.price < mkState.min) return false;
+    if (mkState.max != null && it.price > mkState.max) return false;
+    if (mkState.sales === 'Limited' && !it.featured) return false;
+    if (mkState.unavailable === 'Hide' && it.price > 0 && !mkIsOwned(it) && it.price > (wallet().cubes ?? 0) * 100) return false;
+    if (mkState.tag) {
+      const tag = mkState.tag;
+      if (tag === 'free' ? it.price !== 0 : it.slotLabel.toLowerCase() !== tag) return false;
+    }
+    return true;
+  });
+  const s = mkState.sort;
+  if (s === 'Price (Low to High)') list.sort((a, b) => a.price - b.price);
+  else if (s === 'Price (High to Low)') list.sort((a, b) => b.price - a.price);
+  else if (s === 'Bestselling' || s === 'Most Favorited') list.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+  else if (s === 'Recently Published') list = [...list].reverse();
+  return list;
+}
+
+// ---- filter pills ----
+const MK_FILTERS = [
+  { id: 'kind', title: 'Category', label: () => mkState.kind, opts: MK_KINDS, set: (v) => (mkState.kind = v) },
+  { id: 'creator', title: 'Creator', label: () => (mkState.creator ? mkState.creator : 'All Creators'),
+    text: { placeholder: 'Creator Name', get: () => mkState.creator, set: (v) => (mkState.creator = v) },
+    opts: ['All Creators'], set: () => (mkState.creator = '') },
+  { id: 'price', title: 'Price', label: () => (mkState.min == null && mkState.max == null ? 'Any Price' : `${mkState.min ?? 0}–${mkState.max ?? '∞'}`),
+    range: true, opts: ['Any Price'], set: () => { mkState.min = mkState.max = null; } },
+  { id: 'sort', title: 'Sort By', label: () => `Sort by ${mkState.sort}`,
+    opts: ['Relevance', 'Most Favorited', 'Bestselling', 'Recently Published', 'Price (High to Low)', 'Price (Low to High)'],
+    set: (v) => (mkState.sort = v) },
+  { id: 'sales', title: 'Sales Type', label: () => 'Sales Type', opts: ['All', 'Limited', 'Timed Options'], set: (v) => (mkState.sales = v) },
+  { id: 'unavailable', title: 'Unavailable Items', label: () => 'Unavailable Items', opts: ['Hide', 'Show'], set: (v) => (mkState.unavailable = v) },
+];
+
+function renderFilters() {
+  const host = $('mk-filters'); if (!host) return;
   host.innerHTML = '';
-  const emojiByCat = { Featured: '✨', Hats: '🎩', Faces: '🕶️', Back: '🎒' };
-  for (const cat of AVATAR_CATS) {
+  for (const f of MK_FILTERS) {
+    const wrap = document.createElement('div'); wrap.className = 'mk-filt';
+    const cur = f.id === 'kind' ? mkState.kind : f.id === 'sort' ? mkState.sort : f.id === 'sales' ? mkState.sales : f.id === 'unavailable' ? mkState.unavailable : '';
+    let pending = cur;
+    let pendingText = f.text ? f.text.get() : '';
+    let pMin = mkState.min, pMax = mkState.max;
+    wrap.innerHTML = `<button>${f.label()} <span class="car">▾</span></button>
+      <div class="mk-pop hidden">
+        <div class="mk-pop-head"><b>${f.title}</b><button class="x">✕</button></div>
+        <div class="body"></div>
+        <button class="mk-apply">Apply</button>
+      </div>`;
+    const pop = wrap.querySelector('.mk-pop'), body = wrap.querySelector('.body');
+    const paint = () => {
+      body.innerHTML = '';
+      for (const o of f.opts) {
+        const row = document.createElement('div');
+        row.className = 'mk-opt' + (pending === o || (f.text && !pendingText && o === 'All Creators') || (f.range && pMin == null && pMax == null && o === 'Any Price') ? ' on' : '');
+        row.innerHTML = `<span>${o}</span><i class="mk-radio"></i>`;
+        row.addEventListener('click', () => { pending = o; if (f.text) pendingText = ''; if (f.range) { pMin = pMax = null; } paint(); });
+        body.appendChild(row);
+      }
+      if (f.text) {
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.placeholder = f.text.placeholder; inp.value = pendingText;
+        inp.addEventListener('input', () => { pendingText = inp.value; pending = ''; });
+        body.appendChild(inp);
+      }
+      if (f.range) {
+        const row = document.createElement('div'); row.className = 'mk-range';
+        const a = document.createElement('input'); a.type = 'number'; a.placeholder = 'Min'; a.value = pMin ?? '';
+        const b = document.createElement('input'); b.type = 'number'; b.placeholder = 'Max'; b.value = pMax ?? '';
+        a.addEventListener('input', () => { pMin = a.value === '' ? null : +a.value; pending = ''; });
+        b.addEventListener('input', () => { pMax = b.value === '' ? null : +b.value; pending = ''; });
+        row.appendChild(a); row.appendChild(b); body.appendChild(row);
+      }
+    };
+    paint();
+    wrap.querySelector('button').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasOpen = wrap.classList.contains('open');
+      closePops();
+      if (!wasOpen) { wrap.classList.add('open'); pop.classList.remove('hidden'); }
+    });
+    wrap.querySelector('.x').addEventListener('click', () => closePops());
+    wrap.querySelector('.mk-apply').addEventListener('click', () => {
+      if (f.text && pendingText) mkState.creator = pendingText;
+      else if (f.range && (pMin != null || pMax != null)) { mkState.min = pMin; mkState.max = pMax; }
+      else if (pending) f.set(pending);
+      closePops(); renderMarket();
+    });
+    host.appendChild(wrap);
+  }
+}
+function closePops() {
+  document.querySelectorAll('.mk-filt').forEach((w) => { w.classList.remove('open'); w.querySelector('.mk-pop')?.classList.add('hidden'); });
+}
+
+function renderTags() {
+  const host = $('mk-tags'); if (!host) return;
+  host.innerHTML = '';
+  for (const t of mkTags()) {
     const b = document.createElement('button');
-    b.className = 'store-cat' + (cat === storeCat ? ' active' : '');
-    b.innerHTML = `<span>${emojiByCat[cat] || '🛍️'}</span> ${cat}`;
-    b.addEventListener('click', () => { storeCat = cat; sfx.tap(); renderStore(); });
+    b.className = 'mk-tag' + (mkState.tag === t ? ' on' : '');
+    b.textContent = t;
+    b.addEventListener('click', () => { mkState.tag = mkState.tag === t ? '' : t; sfx.tap(); renderMarket(); });
     host.appendChild(b);
   }
 }
-function renderStore() {
-  const grid = $('store-grid'); if (!grid) return;
-  renderCats();
-  $('store-bal').textContent = wallet().cubes || 0;
-  $('store-cur').textContent = CURRENCY.name;
-  const q = ($('store-search')?.value || '').trim().toLowerCase();
-  const { owned } = storeCounts();
-  const av = stateHub.me.avatar || {};
-  let items = AVATAR_SHOP.filter((it) => storeCat === 'Featured' ? it.featured : it.cat === storeCat);
-  if (q) items = AVATAR_SHOP.filter((it) => it.label.toLowerCase().includes(q));
-  grid.innerHTML = '';
-  if (!items.length) { grid.innerHTML = '<div class="store-empty">No items found.</div>'; return; }
-  for (const it of items) {
-    const isOwned = owned.has(it.id);
-    const isEquipped = av[it.slot] === it.value;
-    const card = document.createElement('div');
-    card.className = 'store-card' + (isEquipped ? ' equipped' : '');
-    let btn;
-    if (isEquipped) btn = `<button class="store-btn on">✓ Equipped</button>`;
-    else if (isOwned) btn = `<button class="store-btn equip">Equip</button>`;
-    else btn = `<button class="store-btn buy"><img class="cur-ico" src="/icons/claudebux.svg" alt=""> ${it.price}</button>`;
-    card.innerHTML =
-      `<div class="store-thumb">${it.emoji}</div>` +
-      `<div class="store-name">${it.label}</div>` +
-      `<div class="store-cat-tag">${SLOT_LABEL[it.slot] || ''}</div>` +
-      btn;
-    card.querySelector('button').addEventListener('click', () => {
-      if (isEquipped) unequipAvatar(it);
-      else if (isOwned) equipAvatarItem(it);
-      else buyAvatarItem(it);
-    });
-    grid.appendChild(card);
-  }
+
+function mkPreviewProfile(it) {
+  const a = stateHub.me?.avatar || {};
+  return {
+    body: a.body || 'boy', skin: a.skin,
+    [it.slot]: it.value,
+    ...(MK_COLOR[it.slot] ? { [MK_COLOR[it.slot]]: it.pri || a[MK_COLOR[it.slot]] } : {}),
+  };
 }
+
+function mkItemCard(it, small) {
+  const b = document.createElement('button');
+  b.className = 'mk-item';
+  const owned = mkIsOwned(it);
+  const cost = it.price === 0 ? 'Free'
+    : `<img class="cur-ico" src="/icons/claudebux.svg" alt="">${it.price}`;
+  b.innerHTML = `<div class="shot"></div><h4>${it.label}</h4>
+    <div class="cost ${owned && it.price ? 'owned' : ''}">${owned && it.price ? 'Owned' : cost}</div>`;
+  lazyThumb(b.querySelector('.shot'), `mk:${it.slot}:${it.value}`, mkPreviewProfile(it), it.frame);
+  b.addEventListener('click', () => mkOpenDetail(it));
+  return b;
+}
+
+function renderMarket() {
+  if (!$('mk-grid')) return;
+  renderFilters(); renderTags();
+  $('mk-detail').classList.add('hidden');
+  $('mk-grid').classList.remove('hidden');
+  const list = mkFiltered();
+  const grid = $('mk-grid'); grid.innerHTML = '';
+  for (const it of list) grid.appendChild(mkItemCard(it));
+  $('mk-empty').classList.toggle('hidden', list.length > 0);
+  $('mk-cart-n').textContent = String(mkState.cart.length);
+}
+
+// ---- item page ----
+async function mkOpenDetail(it) {
+  mkState.detail = it;
+  $('mk-grid').classList.add('hidden');
+  $('mk-empty').classList.add('hidden');
+  const d = $('mk-detail'); d.classList.remove('hidden');
+  $('mk-d-name').textContent = it.label;
+  $('mk-d-by').textContent = it.creator;
+  $('mk-d-price').innerHTML = it.price === 0 ? 'Free'
+    : `<img class="cur-ico" src="/icons/claudebux.svg" alt="">${it.price}`;
+  const owned = mkIsOwned(it);
+  const buy = $('mk-d-buy');
+  buy.textContent = owned ? (mkEquipped(it) ? 'Wearing' : 'Wear it') : 'Buy';
+  buy.disabled = owned && mkEquipped(it);
+  buy.onclick = () => (owned ? mkWear(it) : mkBuy(it));
+  $('mk-d-cart').onclick = () => {
+    if (!mkState.cart.includes(it.id)) mkState.cart.push(it.id);
+    $('mk-cart-n').textContent = String(mkState.cart.length);
+    sfx.tap(); toast(`${it.label} added to cart`, '🛒');
+  };
+  $('mk-d-meta').innerHTML = `
+    <dt>Type</dt><dd>${it.kind}</dd>
+    <dt>Placement</dt><dd>${it.slotLabel}</dd>
+    <dt>Creator</dt><dd>${it.creator}</dd>
+    <dt>Status</dt><dd>${owned ? 'In your inventory' : it.price === 0 ? 'Free to wear' : 'Available'}</dd>`;
+  const stage = $('mk-detail-thumb'); stage.innerHTML = '';
+  lazyThumb(stage, `mkbig:${it.slot}:${it.value}`, mkPreviewProfile(it), it.frame);
+  $('mk-tryon').onclick = () => mkWear(it, true);
+  // more from the same slot
+  const rec = $('mk-rec'); rec.innerHTML = '';
+  for (const o of mkAll().filter((x) => x.slot === it.slot && x.value !== it.value).slice(0, 7)) rec.appendChild(mkItemCard(o));
+  d.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+async function mkWear(it, tryOnly) {
+  const data = await storePost('/avatarshop/equip', { name: stateHub.me.name, slot: it.slot, value: it.value });
+  if (data?.ok) { sfx.tap(); toast(`${tryOnly ? 'Trying on' : 'Wearing'} ${it.label}`, '✨'); mkOpenDetail(it); }
+  else if (data?.error) toast(data.error, '⚠️');
+}
+async function mkBuy(it) {
+  if (!it.shopId) return mkWear(it);
+  const data = await storePost('/avatarshop/buy', { name: stateHub.me.name, item: it.shopId });
+  if (data?.ok) { sfx.success(); toast(`Bought ${it.label}!`, '🎉'); mkOpenDetail(it); }
+  else if (data?.error) { sfx.deny?.(); toast(data.error, '⚠️'); }
+}
+
 async function storePost(path, body) {
   try {
     const data = await api(path, body);
-    if (data?.wallet) stateHub.me.wallet = data.wallet;
-    if (data?.avatar) { stateHub.me.avatar = data.avatar; thumbInto($('me-thumb'), stateHub.me.avatar); storeStage.refresh(); }
-    syncRewards(); renderStore();
+    if (data?.wallet) { stateHub.me.wallet = data.wallet; paintWallet?.(); }
+    if (data?.avatar) { stateHub.me.avatar = data.avatar; thumbInto($('me-thumb'), stateHub.me.avatar); avatarEditor.refresh?.(); }
     return data;
-  } catch (e) { toast(e.message, '⚠️'); return null; }
+  } catch (e) { return { error: e.message }; }
 }
-async function buyAvatarItem(it) {
-  if ((wallet().cubes || 0) < it.price) { toast(`Not enough ${CURRENCY.name} — earn & convert Stars first`, '🔷'); sfx.error?.(); return; }
-  const data = await storePost('/avatarshop/buy', { name: stateHub.me.name, item: it.id });
-  if (data?.ok) { sfx.success(); toast(`Unlocked "${it.label}"!`, it.emoji); }
-}
-async function equipAvatarItem(it) {
-  const data = await storePost('/avatarshop/equip', { name: stateHub.me.name, slot: it.slot, value: it.value });
-  if (data?.ok) { sfx.tap(); toast(`Equipped ${it.label}`, '✨'); }
-}
-async function unequipAvatar(it) {
-  const data = await storePost('/avatarshop/equip', { name: stateHub.me.name, slot: it.slot, value: 'none' });
-  if (data?.ok) { sfx.tap(); toast(`Removed ${it.label}`, '👋'); }
-}
+
 function initStoreTab() {
-  const s = $('store-search'); if (s) s.addEventListener('input', () => renderStore());
-  const gb = $('store-getbits'); if (gb) gb.addEventListener('click', () => { sfx.tap(); selectTab('rewards'); });
+  const q = $('mk-q');
+  if (q) q.addEventListener('input', () => { mkState.q = q.value; renderMarket(); });
+  const kind = $('mk-kind');
+  if (kind) {
+    kind.innerHTML = MK_KINDS.map((k) => `<option>${k}</option>`).join('');
+    kind.addEventListener('change', () => { mkState.kind = kind.value; renderMarket(); });
+  }
+  $('mk-buy')?.addEventListener('click', () => { sfx.tap(); selectTab('rewards'); });
+  $('mk-back')?.addEventListener('click', () => { mkState.detail = null; renderMarket(); });
+  $('mk-tagnext')?.addEventListener('click', () => $('mk-tags').scrollBy({ left: 260, behavior: 'smooth' }));
+  document.addEventListener('click', (e) => { if (!e.target.closest('.mk-filt')) closePops(); });
 }
+const renderStore = renderMarket;
 
 function initRewardsTab() {
   // localize labels to the configured currency names

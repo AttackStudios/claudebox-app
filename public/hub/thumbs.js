@@ -37,8 +37,8 @@ function stage() {
 
 // where to point the camera for each kind of item
 const FRAMING = {
-  head:  { y: 1.66, dist: 1.25, pitch: 0.04 },
-  face:  { y: 1.66, dist: 1.05, pitch: 0.02 },
+  head:  { y: 1.70, dist: 1.62, pitch: 0.05 },
+  face:  { y: 1.68, dist: 1.30, pitch: 0.03 },
   torso: { y: 1.18, dist: 2.15, pitch: 0.06 },
   back:  { y: 1.2,  dist: 2.3,  pitch: 0.1, turn: Math.PI * 0.82 },
   feet:  { y: 0.26, dist: 1.25, pitch: 0.25 },
