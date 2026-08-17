@@ -535,7 +535,7 @@ function makeStevenAvatar(profile = {}) {
   };
 
   paint(profile);
-  built = buildSteven(tex);
+  built = buildSteven(tex, { slim: !!profile.slimArms });
   group.add(built.root);
 
   const anim = makeAnimator(THREE, built.joints, 'steven', profile.animPack || 'none');
@@ -556,6 +556,9 @@ function makeStevenAvatar(profile = {}) {
     },
     setColors(p = {}) { paint({ ...profile, ...p }); },
     setClothing() { /* Steven wears its skin; nothing is attached */ },
+    // arm width is geometry, not paint, so switching it means a rebuild — the
+    // caller in the editor already rebuilds the avatar, this is for anyone else
+    get slim() { return built.slim; },
     setPack(name) { anim.setPack(name); },
     dispose() { tex?.dispose?.(); },
   };

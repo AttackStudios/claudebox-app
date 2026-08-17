@@ -415,6 +415,9 @@ function sanitizeAvatar(a = {}) {
     face: pick(a.face, ['happy', 'cool', 'surprised', 'sleepy'], 'happy'),
     // which animation pack drives the character
     animPack: pick(a.animPack, ['none', 'girljump', 'steven'], 'none'),
+    // the Alex build: 3-pixel arms instead of 4. Strict rather than truthy, so a
+    // stray string cannot switch a client's body geometry.
+    slimArms: a.slimArms === true,
     // an uploaded Minecraft skin, kept as a data URL. Bounded hard: a 64x64 PNG
     // is about 2 kB base64, so anything much larger is not a skin.
     stevenSkin: typeof a.stevenSkin === 'string'

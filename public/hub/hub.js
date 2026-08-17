@@ -1294,6 +1294,21 @@ const avatarEditor = (() => {
     });
     row.appendChild(inp);
     wrap.appendChild(row);
+
+    // Slim arms — the Alex build. Skins are drawn for one or the other, and a
+    // slim skin on a classic body stretches its arm textures, so this is a
+    // property of the wearer rather than something we can read off the file.
+    const tog = document.createElement('button');
+    tog.className = 'rbx-toggle' + (a.slimArms ? ' on' : '');
+    tog.type = 'button';
+    tog.setAttribute('role', 'switch');
+    tog.setAttribute('aria-checked', a.slimArms ? 'true' : 'false');
+    tog.innerHTML = `<i></i><span>Slim arms<small>3-pixel arms, for Alex-style skins</small></span>`;
+    tog.addEventListener('click', () => {
+      a.slimArms = !a.slimArms;
+      markDirty(); rebuild(); showPage(pageId); sfx.tap();
+    });
+    wrap.appendChild(tog);
     if (a.stevenSkin) {
       const prev = document.createElement('div');
       prev.className = 'rbx-skinprev';

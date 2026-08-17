@@ -58,8 +58,18 @@ function applyBoxUV(geo, { w, h, d }, [ox, oy]) {
   uv.needsUpdate = true;
 }
 
-function boxFor(part, overlay) {
-  const { size } = PARTS[part];
+// Slim arms (the Alex variant) are 3 pixels wide instead of 4. Minecraft's slim
+// UV layout is not a special case — it is the same layout formula with w=3, so
+// narrowing the box is genuinely all that is needed here.
+const SLIM_ARM_W = 3;
+const sizeOf = (part, slim) => {
+  const s0 = PARTS[part].size;
+  if (!slim || (part !== 'armL' && part !== 'armR')) return s0;
+  return { w: SLIM_ARM_W, h: s0.h, d: s0.d };
+};
+
+function boxFor(part, overlay, slim) {
+  const size = sizeOf(part, slim);
   // the overlay ("hat") layer is the same box a touch larger, so it reads as a
   // second skin rather than z-fighting with the first
   const g = overlay ? 1.08 : 1;
@@ -72,7 +82,8 @@ function boxFor(part, overlay) {
  * Build the blocky body. Returns pivots named the way the animator expects, so
  * the same pose library drives this as drives the other rigs.
  */
-export function buildSteven(texture) {
+export function buildSteven(texture, opts = {}) {
+  const slim = !!opts.slim;
   const mat = new THREE.MeshLambertMaterial({ map: texture });
   const over = new THREE.MeshLambertMaterial({ map: texture, transparent: true, alphaTest: 0.35, depthWrite: false });
 
@@ -85,9 +96,9 @@ export function buildSteven(texture) {
   const mk = (name, part, pivotY, offsetY, x = 0) => {
     const pivot = new THREE.Group();
     pivot.position.set(x, pivotY, 0);
-    const mesh = new THREE.Mesh(boxFor(part, false), mat);
+    const mesh = new THREE.Mesh(boxFor(part, false, slim), mat);
     mesh.position.y = offsetY;
-    const skin = new THREE.Mesh(boxFor(part, true), over);
+    const skin = new THREE.Mesh(boxFor(part, true, slim), over);
     skin.position.y = offsetY;
     pivot.add(mesh, skin);
     root.add(pivot);
@@ -98,13 +109,15 @@ export function buildSteven(texture) {
   // torso hangs from the waist; head, arms and legs pivot where they attach
   mk('body', 'body', legTop, px(6));
   mk('head', 'head', bodyTop, px(4));
-  mk('armR', 'armR', bodyTop - px(2), -px(4), -px(6));
-  mk('armL', 'armL', bodyTop - px(2), -px(4), px(6));
+  // the arm hangs flush against the torso, so its centre moves in with its width
+  const armX = px(4 + (slim ? SLIM_ARM_W : 4) / 2);
+  mk('armR', 'armR', bodyTop - px(2), -px(4), -armX);
+  mk('armL', 'armL', bodyTop - px(2), -px(4), armX);
   mk('legR', 'legR', legTop, -px(6), -px(2));
   mk('legL', 'legL', legTop, -px(6), px(2));
 
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-  return { root, joints, height: STEVEN_HEIGHT };
+  return { root, joints, height: STEVEN_HEIGHT, slim };
 }
 
 // ---------------------------------------------------------------- skin paint

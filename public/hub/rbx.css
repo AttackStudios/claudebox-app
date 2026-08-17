@@ -305,3 +305,22 @@
 .rbx-skinblock { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; margin-top: 18px; width: 100%; }
 .rbx-swatches .rbx-skinblock { border-top: 1px solid var(--rbx-line); padding-top: 18px; }
 .rbx-skinprev.bad span { color: #c2410c; }
+
+/* ---------- a switch, for on/off properties of the wearer ---------- */
+.rbx-toggle {
+  display: flex; align-items: center; gap: 13px; background: none; border: 0;
+  padding: 10px 0 0; cursor: pointer; font: inherit; color: var(--rbx-ink); text-align: left;
+}
+.rbx-toggle i {
+  flex: none; width: 46px; height: 27px; border-radius: 999px; background: var(--rbx-chip-hi);
+  position: relative; transition: background .18s ease;
+}
+.rbx-toggle i::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 21px; height: 21px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+}
+.rbx-toggle.on i { background: var(--rbx-blue); }
+.rbx-toggle.on i::after { transform: translateX(19px); }
+.rbx-toggle span { display: flex; flex-direction: column; gap: 2px; font-size: 15px; font-weight: 600; }
+.rbx-toggle small { font-weight: 400; font-size: 12.5px; color: var(--rbx-dim); }
