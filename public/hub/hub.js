@@ -1060,7 +1060,7 @@ const PAGES = {
                values: [['boy', 'Boy'], ['girl', 'Girl'], ['r6', 'R6 Classic'], ['steven', 'Steven']] },
   anims:     { title: 'Animation Packs', crumb: ['Avatars', 'Animations'], kind: 'choice', key: 'animPack', frame: 'full',
                values: [['none', 'Default'], ['girljump', 'Girl Jump Anim'], ['steven', 'Steven Animation Pack']] },
-  skin:      { title: 'Minecraft Skin', crumb: ['Body', 'Minecraft Skin'], kind: 'skin' },
+  mcskin:    { title: 'Minecraft Skin', crumb: ['Body', 'Minecraft Skin'], kind: 'skin' },
   skin:      { title: 'Skin Tone', crumb: ['Body', 'Skin Tone'], kind: 'swatch', key: 'skin', list: SKIN_TONES },
   hair:      { title: 'Hair', crumb: ['Body', 'Hair'], kind: 'item', cat: 'hair', key: 'hair',
                color: 'hairColor', color2: 'hairColor2', frame: 'head' },
@@ -1094,7 +1094,7 @@ const TABS = [
       ['Body', [['bodytype', 'Body Type'], ['skin', 'Skin Tone']]],
       ['Hair', [['hair', 'Hair']]],
       ['Classic', [['r6', 'R6 Parts']]],
-      ['Minecraft', [['skin', 'Minecraft Skin']]],
+      ['Minecraft', [['mcskin', 'Minecraft Skin']]],
     ] },
   { id: 'makeup', label: 'Makeup', groups: [
       ['Looks', [['face', 'Face']]],
@@ -1258,6 +1258,69 @@ const avatarEditor = (() => {
     return b;
   }
 
+  // The Minecraft skin picker, used both on its own page and directly under the
+  // skin-tone swatches — which is where someone choosing a skin colour would
+  // reasonably expect to find it.
+  function skinUploadUI(a, pageId, full) {
+    const owns = (unlocked('body') || new Set()).has('steven');
+    const wrap = document.createElement('div');
+    wrap.className = 'rbx-skinblock';
+    const row = document.createElement('div'); row.className = 'rbx-skinrow';
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/png,image/jpeg';
+    const pick = document.createElement('button');
+    pick.className = 'rbx-dark-btn';
+    pick.textContent = a.stevenSkin ? 'Change Minecraft skin' : 'Select a Minecraft skin file';
+    pick.addEventListener('click', () => inp.click());
+    row.appendChild(pick);
+    if (a.stevenSkin) {
+      const clear = document.createElement('button');
+      clear.className = 'rbx-ghost-btn';
+      clear.textContent = 'Use my clothing instead';
+      clear.addEventListener('click', () => { delete a.stevenSkin; markDirty(); rebuild(); showPage(pageId); });
+      row.appendChild(clear);
+    }
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      if (f.size > 16000) { toast('That file is too big for a skin — a 64×64 PNG is about 2 kB', '⚠️'); return; }
+      const fr = new FileReader();
+      fr.onload = () => {
+        a.stevenSkin = String(fr.result);
+        if (a.body !== 'steven' && owns) a.body = 'steven';   // a skin is useless on any other body
+        markDirty(); rebuild(); showPage(pageId);
+        toast(owns ? 'Skin applied' : 'Skin saved — buy Steven to wear it', '🧱');
+      };
+      fr.readAsDataURL(f);
+    });
+    row.appendChild(inp);
+    wrap.appendChild(row);
+    if (a.stevenSkin) {
+      const prev = document.createElement('div');
+      prev.className = 'rbx-skinprev';
+      // A skin that will not decode should say so rather than leaving a broken
+      // image icon sitting in the editor.
+      const img = document.createElement('img');
+      img.alt = 'your skin';
+      const cap = document.createElement('span');
+      cap.textContent = `Current skin${a.body === 'steven' ? '' : ' — worn on Steven only'}`;
+      img.addEventListener('error', () => {
+        prev.classList.add('bad');
+        cap.textContent = "That skin file could not be read — pick another";
+        img.remove();
+      });
+      img.src = a.stevenSkin;
+      prev.appendChild(img); prev.appendChild(cap);
+      wrap.appendChild(prev);
+    }
+    if (!owns && full) {
+      const buy = document.createElement('button');
+      buy.className = 'rbx-ghost-btn'; buy.textContent = 'Get Steven in the Marketplace';
+      buy.addEventListener('click', () => selectTab('store'));
+      wrap.appendChild(buy);
+    }
+    return wrap;
+  }
+
   function showPage(id) {
     page = id;
     const def = PAGES[id] || PAGES.recent;
@@ -1280,6 +1343,9 @@ const avatarEditor = (() => {
       ci.type = 'color'; ci.value = a[def.key] || '#888888';
       ci.addEventListener('input', () => { a[def.key] = ci.value; markDirty(); rebuild(); });
       grid.appendChild(ci);
+      // Skin tone is where you would look for "what colour am I", so the
+      // Minecraft skin file picker sits directly underneath it.
+      if (def.key === 'skin') grid.appendChild(skinUploadUI(a, id, false));
       paintTabs(); return;
     }
 
@@ -1319,47 +1385,11 @@ const avatarEditor = (() => {
     // ---- uploading a Minecraft skin ----
     if (def.kind === 'skin') {
       grid.className = 'rbx-skinpage';
-      const owns = (unlocked('body') || new Set()).has('steven');
-      const isSteven = a.body === 'steven';
       grid.innerHTML = `
         <p class="rbx-note">Drop in a Minecraft skin PNG (64&times;64) and it is mapped onto Steven —
         head, body, arms and legs, plus the overlay layer. Skins only apply to the
         <b>Steven</b> body; on any other body they are kept but not shown.</p>`;
-      const row = document.createElement('div'); row.className = 'rbx-skinrow';
-      const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/png,image/jpeg'; inp.id = 'av-skinfile';
-      const pick = document.createElement('button');
-      pick.className = 'rbx-dark-btn'; pick.textContent = 'Upload skin';
-      pick.addEventListener('click', () => inp.click());
-      const clear = document.createElement('button');
-      clear.className = 'rbx-ghost-btn'; clear.textContent = 'Use my clothing instead';
-      clear.addEventListener('click', () => { delete a.stevenSkin; markDirty(); rebuild(); showPage(id); });
-      inp.addEventListener('change', () => {
-        const f = inp.files && inp.files[0]; if (!f) return;
-        if (f.size > 16000) { toast('That file is too big for a skin — a 64×64 PNG is about 2 kB', '⚠️'); return; }
-        const fr = new FileReader();
-        fr.onload = () => {
-          a.stevenSkin = String(fr.result);
-          if (!isSteven && owns) a.body = 'steven';    // a skin is useless on any other body
-          markDirty(); rebuild(); showPage(id);
-          toast(owns ? 'Skin applied' : 'Skin saved — buy Steven to wear it', '🧱');
-        };
-        fr.readAsDataURL(f);
-      });
-      row.appendChild(pick); row.appendChild(clear); row.appendChild(inp);
-      grid.appendChild(row);
-      if (a.stevenSkin) {
-        const prev = document.createElement('div');
-        prev.className = 'rbx-skinprev';
-        prev.innerHTML = `<img src="${a.stevenSkin}" alt="your skin"><span>Current skin</span>`;
-        grid.appendChild(prev);
-      }
-      if (!owns) {
-        const buy = document.createElement('button');
-        buy.className = 'rbx-dark-btn'; buy.textContent = 'Get Steven in the Marketplace';
-        buy.addEventListener('click', () => selectTab('store'));
-        grid.appendChild(buy);
-      }
+      grid.appendChild(skinUploadUI(a, id, true));
       paintTabs(); return;
     }
 

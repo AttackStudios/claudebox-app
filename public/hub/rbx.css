@@ -299,3 +299,9 @@
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%239aa4b2' stroke-width='2' fill='none'/></svg>");
 }
 [data-theme="dark"] .rbx-skinprev img { background: var(--rbx-shot); }
+
+/* the skin file picker, shown under the skin-tone swatches as well as on its
+   own page — so it needs to break the swatch row and stack */
+.rbx-skinblock { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; margin-top: 18px; width: 100%; }
+.rbx-swatches .rbx-skinblock { border-top: 1px solid var(--rbx-line); padding-top: 18px; }
+.rbx-skinprev.bad span { color: #c2410c; }
