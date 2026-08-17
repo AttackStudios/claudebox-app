@@ -1248,12 +1248,12 @@ const avatarEditor = (() => {
     return set;
   }
 
-  function card({ label, on, locked, onClick, thumbKey, thumbProfile, frameKind, emoji }) {
+  function card({ label, on, locked, onClick, thumbKey, thumbProfile, frameKind, emoji, pose }) {
     const b = document.createElement('button');
     b.className = 'rbx-card' + (on ? ' on' : '');
     b.innerHTML = `<div class="rbx-thumb">${emoji ? `<span class="emoji">${emoji}</span>` : ''}${on ? '<span class="rbx-tick">✓</span>' : ''}</div>
       <div class="rbx-name">${label}</div>${locked ? '<div class="rbx-price locked">Locked</div>' : ''}`;
-    if (thumbProfile) lazyThumb(b.querySelector('.rbx-thumb'), thumbKey, thumbProfile, frameKind);
+    if (thumbProfile) lazyThumb(b.querySelector('.rbx-thumb'), thumbKey, thumbProfile, frameKind, pose);
     b.addEventListener('click', onClick);
     return b;
   }
@@ -1306,6 +1306,7 @@ const avatarEditor = (() => {
           thumbKey: `${def.key}:${value}:${a.body}`,
           thumbProfile: { ...a, [def.key]: value },
           frameKind: def.frame,
+          pose: def.key === 'animPack' ? ({ girljump: 'jump', steven: 'walk' }[value] || 'idle') : 'idle',
           onClick: () => {
             if (locked) { sfx.tap(); toast('Buy this in the Marketplace to use it', '🔒'); selectTab('store'); return; }
             a[def.key] = value; markDirty(); rebuild(); showPage(id); sfx.tap();
@@ -1637,6 +1638,24 @@ function mkCatalogue() {
       });
     }
   }
+  // Anything the shop sells that is NOT a clothing slot — whole bodies and
+  // animation packs — has no CLOTHING entry to walk, so it is listed straight
+  // from the shop. Without this they simply never appeared.
+  const KIND_OF = { Body: 'Body', Animations: 'Animations' };
+  const FRAME_OF = { body: 'full', animPack: 'full' };
+  const POSE_OF = { girljump: 'jump', steven: 'walk' };
+  for (const it of AVATAR_SHOP) {
+    if (MK_SLOT[it.slot]) continue;                 // already listed above
+    out.push({
+      id: it.id, slot: it.slot, value: it.value, label: it.label,
+      kind: KIND_OF[it.cat] || 'Body',
+      frame: FRAME_OF[it.slot] || 'full',
+      pose: it.slot === 'animPack' ? (POSE_OF[it.value] || 'walk') : 'idle',
+      slotLabel: it.slot === 'animPack' ? 'Animation' : 'Body',
+      price: it.price, featured: !!it.featured, shopId: it.id,
+      creator: 'ClaudeBox Studios', emoji: it.emoji,
+    });
+  }
   return out;
 }
 let MK_ALL = null;
@@ -1767,11 +1786,16 @@ function renderTags() {
 
 function mkPreviewProfile(it) {
   const a = stateHub.me?.avatar || {};
-  return {
+  const base = {
     body: a.body || 'boy', skin: a.skin,
+    shirtColor: a.shirtColor, pantsColor: a.pantsColor,
     [it.slot]: it.value,
     ...(MK_COLOR[it.slot] ? { [MK_COLOR[it.slot]]: it.pri || a[MK_COLOR[it.slot]] } : {}),
   };
+  // an animation pack is only legible on a body that can show it, so preview it
+  // on whatever the player is actually wearing
+  if (it.slot === 'animPack') base.body = a.body || 'boy';
+  return base;
 }
 
 function mkItemCard(it, small) {
@@ -1782,7 +1806,7 @@ function mkItemCard(it, small) {
     : `<img class="cur-ico" src="/icons/claudebux.svg" alt="">${it.price}`;
   b.innerHTML = `<div class="shot"></div><h4>${it.label}</h4>
     <div class="cost ${owned && it.price ? 'owned' : ''}">${owned && it.price ? 'Owned' : cost}</div>`;
-  lazyThumb(b.querySelector('.shot'), `mk:${it.slot}:${it.value}`, mkPreviewProfile(it), it.frame);
+  lazyThumb(b.querySelector('.shot'), `mk:${it.slot}:${it.value}:${stateHub.me?.avatar?.body || ''}`, mkPreviewProfile(it), it.frame, it.pose);
   b.addEventListener('click', () => mkOpenDetail(it));
   return b;
 }
@@ -1825,7 +1849,7 @@ async function mkOpenDetail(it) {
     <dt>Creator</dt><dd>${it.creator}</dd>
     <dt>Status</dt><dd>${owned ? 'In your inventory' : it.price === 0 ? 'Free to wear' : 'Available'}</dd>`;
   const stage = $('mk-detail-thumb'); stage.innerHTML = '';
-  lazyThumb(stage, `mkbig:${it.slot}:${it.value}`, mkPreviewProfile(it), it.frame);
+  lazyThumb(stage, `mkbig:${it.slot}:${it.value}`, mkPreviewProfile(it), it.frame, it.pose);
   $('mk-tryon').onclick = () => mkWear(it, true);
   // more from the same slot
   const rec = $('mk-rec'); rec.innerHTML = '';
@@ -1848,7 +1872,11 @@ async function mkBuy(it) {
 async function storePost(path, body) {
   try {
     const data = await api(path, body);
-    if (data?.wallet) { stateHub.me.wallet = data.wallet; paintWallet?.(); }
+    // updateWalletChip is the real repainter. The previous call used
+    // `paintWallet?.()`, which does not exist — and optional chaining only
+    // guards a null value, not an undeclared identifier, so every buy and
+    // try-on threw ReferenceError before it could report its result.
+    if (data?.wallet) { stateHub.me.wallet = data.wallet; updateWalletChip(true); }
     if (data?.avatar) { stateHub.me.avatar = data.avatar; thumbInto($('me-thumb'), stateHub.me.avatar); avatarEditor.refresh?.(); }
     return data;
   } catch (e) { return { error: e.message }; }

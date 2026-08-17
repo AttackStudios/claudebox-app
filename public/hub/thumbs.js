@@ -51,7 +51,7 @@ const FRAMING = {
  *   profile the avatar profile to build (usually a bare body + the one item)
  *   frame   which FRAMING entry to use
  */
-export async function itemThumb(key, profile, frame = 'full') {
+export async function itemThumb(key, profile, frame = 'full', pose = 'idle') {
   if (cache.has(key)) return cache.get(key);
   if (pending.has(key)) return pending.get(key);
   const job = (async () => {
@@ -60,8 +60,12 @@ export async function itemThumb(key, profile, frame = 'full') {
     if (s.ctrl) { s.scene.remove(s.ctrl.group); s.ctrl.dispose?.(); }
     let ctrl;
     try { ctrl = makeAvatar(profile); } catch { return ''; }
-    ctrl.setAnim('idle');
-    ctrl.update(0.016);
+    ctrl.setAnim(pose);
+    ctrl.moveSpeed = 8;
+    // run the pose forward to a readable point in its cycle rather than
+    // catching it at rest, which is where every animation looks the same
+    const settle = pose === 'walk' || pose === 'run' ? 13 : 20;
+    for (let i = 0; i < settle; i++) ctrl.update(1 / 60);
     s.scene.add(ctrl.group);
     s.ctrl = ctrl;
 
@@ -81,11 +85,11 @@ export async function itemThumb(key, profile, frame = 'full') {
 }
 
 /** Fill a card's thumbnail once it scrolls into view. */
-export function lazyThumb(el, key, profile, frame) {
+export function lazyThumb(el, key, profile, frame, pose) {
   const io = new IntersectionObserver(async (entries, obs) => {
     if (!entries.some((e) => e.isIntersecting)) return;
     obs.disconnect();
-    const url = await itemThumb(key, profile, frame);
+    const url = await itemThumb(key, profile, frame, pose);
     if (!url) return;
     const img = document.createElement('img');
     img.src = url; img.alt = '';
