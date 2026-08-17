@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClaudeBox — Character Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; overflow:hidden; background:#0b1020; color:#dbe6f6;
+         font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  canvas#view { display:block; }
+  #hud { position:fixed; left:18px; top:16px; pointer-events:none; text-shadow:0 2px 6px #000; }
+  #speed { font-size:48px; font-weight:300; letter-spacing:-1px; color:#8ef0a8; line-height:1; }
+  #speed small { font-size:14px; opacity:.55; letter-spacing:2px; }
+  .row { opacity:.78; margin-top:3px; }
+  .row b { color:#fff; font-weight:500; }
+  #panel { position:fixed; right:0; top:0; bottom:0; width:330px; overflow-y:auto; padding:14px 16px 40px; z-index:20;
+           background:rgba(8,13,26,.94); border-left:1px solid rgba(140,240,170,.18); backdrop-filter:blur(8px); }
+  #panel h2 { font-size:11px; letter-spacing:2.4px; text-transform:uppercase; color:#8ef0a8;
+              margin:20px 0 8px; font-weight:600; }
+  #panel h2:first-child { margin-top:0; }
+  .presets { display:flex; flex-wrap:wrap; gap:6px; }
+  .presets button { flex:1 1 46%; padding:7px 4px; font:600 11px/1 ui-monospace,monospace; letter-spacing:.6px;
+                    text-transform:uppercase; color:#cfe3ff; background:rgba(40,90,70,.4);
+                    border:1px solid rgba(140,240,170,.28); border-radius:4px; cursor:pointer; }
+  .presets button:hover { background:rgba(60,140,100,.55); }
+  .presets button.on { background:#8ef0a8; color:#06210f; border-color:#8ef0a8; }
+  .sl { margin:9px 0; }
+  .sl label { display:flex; justify-content:space-between; align-items:center; font-size:11px; opacity:.85; margin-bottom:3px; }
+  .sl label input.num { width:70px; background:rgba(0,0,0,.4); border:1px solid rgba(140,240,170,.3);
+                        color:#8ef0a8; border-radius:3px; padding:1px 4px; font:inherit; text-align:right; }
+  .sl input[type=range] { width:100%; accent-color:#8ef0a8; }
+  .sl .why { font-size:10px; opacity:.42; margin-top:1px; line-height:1.35; }
+  .derived { background:rgba(0,0,0,.3); border:1px solid rgba(140,240,170,.16); border-radius:5px; padding:9px 10px; }
+  .derived div { display:flex; justify-content:space-between; margin:2px 0; font-size:11.5px; }
+  .derived b { color:#8ef0a8; font-weight:600; }
+  .derived .cmp { opacity:.45; font-size:10px; }
+  .btn { width:100%; margin-top:8px; padding:8px; font:600 11px/1 ui-monospace,monospace; letter-spacing:.7px;
+         text-transform:uppercase; color:#06210f; background:#8ef0a8; border:0; border-radius:4px; cursor:pointer; }
+  .btn.ghost { background:rgba(40,90,70,.45); color:#cfe3ff; border:1px solid rgba(140,240,170,.3); }
+  .note { font-size:10.5px; opacity:.5; line-height:1.5; margin-top:6px; }
+  #hint { position:fixed; left:calc(50% - 165px); bottom:18px; transform:translateX(-50%); z-index:8;
+          padding:7px 14px; border-radius:20px; font-size:11px; letter-spacing:.5px;
+          background:rgba(8,14,28,.8); border:1px solid rgba(140,240,170,.22); color:#9fc4ea; pointer-events:none; }
+  #saved { position:fixed; left:18px; bottom:18px; padding:6px 12px; border-radius:16px; font-size:11px;
+           background:rgba(140,240,170,.15); border:1px solid rgba(140,240,170,.4); color:#8ef0a8; opacity:0;
+           transition:opacity .25s; }
+  #saved.on { opacity:1; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hud">
+  <div id="speed">0.0<small> U/S</small></div>
+  <div class="row">peak <b id="peak">0.00</b> &nbsp; last jump: height <b id="mh">0.00</b> &nbsp; dist <b id="md">0.00</b></div>
+  <div class="row" id="state">grounded</div>
+  <div class="row" style="opacity:.5">widest gap cleared <b id="gap">—</b> &nbsp; tallest step <b id="step">—</b></div>
+</div>
+<div id="saved">saved — games will pick it up on reload</div>
+<div id="hint">WASD move &middot; Shift run &middot; Space jump &middot; drag to look &middot; R reset</div>
+
+<div id="panel">
+  <h2>Preset</h2>
+  <div class="presets" id="presets"></div>
+
+  <h2>Derived</h2>
+  <div class="derived" id="derived"></div>
+
+  <h2>Gravity &amp; jump</h2><div id="k-jump"></div>
+  <h2>Speed</h2><div id="k-speed"></div>
+  <h2>Feel</h2><div id="k-feel"></div>
+
+  <h2>Body</h2>
+  <div class="presets" id="bodies"></div>
+  <h2>Pose</h2>
+  <div class="presets" id="poses"></div>
+
+  <h2>Export</h2>
+  <button class="btn" id="apply">Save &amp; apply to games</button>
+  <button class="btn ghost" id="copy">Copy as JSON</button>
+  <button class="btn ghost" id="clear">Clear override</button>
+  <div class="note">Save writes <code>claudebox.movetune</code> to this browser. Any
+    game that reads the override picks it up on next load — it only affects you,
+    and Clear puts everything back to the game's own numbers.</div>
+</div>
+
+<script type="module" src="/lab/lab.js"></script>
+</body>
+</html>

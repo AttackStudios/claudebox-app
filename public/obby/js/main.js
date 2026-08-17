@@ -296,7 +296,26 @@ function numberTex(n) {
 // buildCourse() is deferred to boot(), after any custom Studio level is loaded
 
 // ---------- player controller ----------
-const R = 0.35, G = 30, JUMP = 13.4, MOVE = 7.8, RUN = 11.5, FLY = 20;
+// Base movement. The Character Lab at /lab can save an override into this
+// browser's localStorage; if one is present it wins, so tuning found in the lab
+// can be felt in the real game without touching source. It is per-browser and
+// per-player, so it never changes the game for anyone else.
+const MOVE_DEFAULTS = { G: 30, JUMP: 13.4, MOVE: 7.8, RUN: 11.5 };
+const MOVE_TUNE = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem('claudebox.movetune') || 'null');
+    if (!raw) return { ...MOVE_DEFAULTS };
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : d);
+    return {
+      G: num(raw.G, MOVE_DEFAULTS.G), JUMP: num(raw.JUMP, MOVE_DEFAULTS.JUMP),
+      MOVE: num(raw.MOVE, MOVE_DEFAULTS.MOVE), RUN: num(raw.RUN, MOVE_DEFAULTS.RUN),
+      STEP: num(raw.STEP, 0.6),
+    };
+  } catch { return { ...MOVE_DEFAULTS }; }
+})();
+const R = 0.35, FLY = 20;
+const G = MOVE_TUNE.G, JUMP = MOVE_TUNE.JUMP, MOVE = MOVE_TUNE.MOVE, RUN = MOVE_TUNE.RUN;
+const STEP_UP = MOVE_TUNE.STEP ?? 0.6;
 const player = {
   pos: { x: START.x, y: START.y, z: START.z }, vel: { x: 0, y: 0, z: 0 },
   ry: 0, grounded: false, anim: 'idle', flying: false, sprint: false,
@@ -323,21 +342,21 @@ function supportUnder(x, z, fromY, time) {
   for (const p of COURSE.platforms) {
     if (x > p.x - p.w/2 - R && x < p.x + p.w/2 + R && z > p.z - p.d/2 - R && z < p.z + p.d/2 + R) {
       const top = p.y + p.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = p; moverHit = null; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = p; moverHit = null; }
     }
   }
   // the top of a wall is walkable like anything else
   for (const w of COURSE.walls || []) {
     if (x > w.x - w.w/2 - R && x < w.x + w.w/2 + R && z > w.z - w.d/2 - R && z < w.z + w.d/2 + R) {
       const top = w.y + w.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
     }
   }
   // conveyors hold you up and shove you along
   for (const c of COURSE.conveyors || []) {
     if (x > c.x - c.w/2 - R && x < c.x + c.w/2 + R && z > c.z - c.d/2 - R && z < c.z + c.d/2 + R) {
       const top = c.y + c.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = c; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = null; conveyorHit = c; }
     }
   }
   // a blinker only holds you while it is phased in
@@ -345,14 +364,14 @@ function supportUnder(x, z, fromY, time) {
     if (!blinkOn(b, time)) continue;
     if (x > b.x - b.w/2 - R && x < b.x + b.w/2 + R && z > b.z - b.d/2 - R && z < b.z + b.d/2 + R) {
       const top = b.y + b.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
     }
   }
   for (const mm of moverMeshes) {
     const m = mm.spec, wp = moverPos(m, time);
     if (x > wp.x - m.w/2 - R && x < wp.x + m.w/2 + R && z > wp.z - m.d/2 - R && z < wp.z + m.d/2 + R) {
       const top = wp.y + m.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = { m, wp }; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = { m, wp }; }
     }
   }
   return { top: best, plat, moverHit, conveyorHit };
