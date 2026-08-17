@@ -249,3 +249,20 @@
   .mk-detail-info h2 { font-size: 28px; }
   .mk-head h1 { font-size: 26px; width: 100%; }
 }
+
+/* ---------- Minecraft skin upload ---------- */
+.rbx-skinpage { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
+.rbx-note { margin: 0; max-width: 620px; font-size: 15px; line-height: 1.55; color: #4b5563; }
+.rbx-skinrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.rbx-skinrow input[type=file] { display: none; }
+.rbx-ghost-btn {
+  background: #eceef2; color: var(--rbx-ink); border: 0; border-radius: 8px;
+  padding: 12px 20px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.rbx-ghost-btn:hover { background: #e2e5ea; }
+.rbx-skinprev { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #6b7280; }
+/* skins are 64x64 — scale them up with hard edges, never smoothed */
+.rbx-skinprev img {
+  width: 128px; height: 128px; image-rendering: pixelated;
+  border: 1px solid var(--rbx-line); border-radius: 8px; background: #f5f6f8;
+}

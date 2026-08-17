@@ -1057,7 +1057,10 @@ const SKIN_TONES = ['#f5d3b3', '#e8b48a', '#c98e62', '#9a6844', '#6e4a30', '#543
 // `frame` decides how its thumbnails are photographed.
 const PAGES = {
   bodytype:  { title: 'Body', crumb: ['Body', 'Body Type'], kind: 'choice', key: 'body', frame: 'full',
-               values: [['boy', 'Boy'], ['girl', 'Girl'], ['r6', 'R6 Classic']] },
+               values: [['boy', 'Boy'], ['girl', 'Girl'], ['r6', 'R6 Classic'], ['steven', 'Steven']] },
+  anims:     { title: 'Animation Packs', crumb: ['Avatars', 'Animations'], kind: 'choice', key: 'animPack', frame: 'full',
+               values: [['none', 'Default'], ['girljump', 'Girl Jump Anim'], ['steven', 'Steven Animation Pack']] },
+  skin:      { title: 'Minecraft Skin', crumb: ['Body', 'Minecraft Skin'], kind: 'skin' },
   skin:      { title: 'Skin Tone', crumb: ['Body', 'Skin Tone'], kind: 'swatch', key: 'skin', list: SKIN_TONES },
   hair:      { title: 'Hair', crumb: ['Body', 'Hair'], kind: 'item', cat: 'hair', key: 'hair',
                color: 'hairColor', color2: 'hairColor2', frame: 'head' },
@@ -1083,11 +1086,15 @@ const PAGES = {
 // The tab strip, and what drops out of each tab.
 const TABS = [
   { id: 'recent', label: 'Recent', page: 'recent' },
-  { id: 'avatars', label: 'Avatars', groups: [['Presets', [['bodytype', 'Body Type']]]] },
+  { id: 'avatars', label: 'Avatars', groups: [
+      ['Bodies', [['bodytype', 'Body Type']]],
+      ['Animations', [['anims', 'Animation Packs']]],
+    ] },
   { id: 'body', label: 'Body', groups: [
       ['Body', [['bodytype', 'Body Type'], ['skin', 'Skin Tone']]],
       ['Hair', [['hair', 'Hair']]],
       ['Classic', [['r6', 'R6 Parts']]],
+      ['Minecraft', [['skin', 'Minecraft Skin']]],
     ] },
   { id: 'makeup', label: 'Makeup', groups: [
       ['Looks', [['face', 'Face']]],
@@ -1108,7 +1115,8 @@ const TABS = [
 const CAT_OF = { hair: 'hair', hat: 'hats', back: 'backs', face2: 'faces', suit: 'suits', shoes: 'shoes', shirt: 'shirts' };
 // mirrors FREE_AVATAR on the server — a paid slot the player has not bought
 // still shows, but wearing it is what the Marketplace is for
-const FREE_AV = { hat: ['none', 'cap', 'beanie'], back: ['none', 'backpack'], face2: ['none', 'glasses'], suit: ['none', 'swim'] };
+const FREE_AV = { hat: ['none', 'cap', 'beanie'], back: ['none', 'backpack'], face2: ['none', 'glasses'], suit: ['none', 'swim'],
+  body: ['boy', 'girl', 'r6'], animPack: ['none'] };
 
 const avatarEditor = (() => {
   let renderer = null, scene, cam, ctrl = null, running = false, ready = false;
@@ -1290,14 +1298,66 @@ const avatarEditor = (() => {
     }
 
     if (def.kind === 'choice') {
+      const allowC = unlocked(def.key);
       for (const [value, label] of def.values) {
+        const locked = allowC ? !allowC.has(value) : false;
         grid.appendChild(card({
-          label, on: (a[def.key] || def.values[0][0]) === value,
-          thumbKey: `${def.key}:${value}`,
+          label, on: (a[def.key] || def.values[0][0]) === value, locked,
+          thumbKey: `${def.key}:${value}:${a.body}`,
           thumbProfile: { ...a, [def.key]: value },
           frameKind: def.frame,
-          onClick: () => { a[def.key] = value; markDirty(); rebuild(); showPage(id); sfx.tap(); },
+          onClick: () => {
+            if (locked) { sfx.tap(); toast('Buy this in the Marketplace to use it', '🔒'); selectTab('store'); return; }
+            a[def.key] = value; markDirty(); rebuild(); showPage(id); sfx.tap();
+          },
         }));
+      }
+      paintTabs(); return;
+    }
+
+    // ---- uploading a Minecraft skin ----
+    if (def.kind === 'skin') {
+      grid.className = 'rbx-skinpage';
+      const owns = (unlocked('body') || new Set()).has('steven');
+      const isSteven = a.body === 'steven';
+      grid.innerHTML = `
+        <p class="rbx-note">Drop in a Minecraft skin PNG (64&times;64) and it is mapped onto Steven —
+        head, body, arms and legs, plus the overlay layer. Skins only apply to the
+        <b>Steven</b> body; on any other body they are kept but not shown.</p>`;
+      const row = document.createElement('div'); row.className = 'rbx-skinrow';
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/png,image/jpeg'; inp.id = 'av-skinfile';
+      const pick = document.createElement('button');
+      pick.className = 'rbx-dark-btn'; pick.textContent = 'Upload skin';
+      pick.addEventListener('click', () => inp.click());
+      const clear = document.createElement('button');
+      clear.className = 'rbx-ghost-btn'; clear.textContent = 'Use my clothing instead';
+      clear.addEventListener('click', () => { delete a.stevenSkin; markDirty(); rebuild(); showPage(id); });
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0]; if (!f) return;
+        if (f.size > 16000) { toast('That file is too big for a skin — a 64×64 PNG is about 2 kB', '⚠️'); return; }
+        const fr = new FileReader();
+        fr.onload = () => {
+          a.stevenSkin = String(fr.result);
+          if (!isSteven && owns) a.body = 'steven';    // a skin is useless on any other body
+          markDirty(); rebuild(); showPage(id);
+          toast(owns ? 'Skin applied' : 'Skin saved — buy Steven to wear it', '🧱');
+        };
+        fr.readAsDataURL(f);
+      });
+      row.appendChild(pick); row.appendChild(clear); row.appendChild(inp);
+      grid.appendChild(row);
+      if (a.stevenSkin) {
+        const prev = document.createElement('div');
+        prev.className = 'rbx-skinprev';
+        prev.innerHTML = `<img src="${a.stevenSkin}" alt="your skin"><span>Current skin</span>`;
+        grid.appendChild(prev);
+      }
+      if (!owns) {
+        const buy = document.createElement('button');
+        buy.className = 'rbx-dark-btn'; buy.textContent = 'Get Steven in the Marketplace';
+        buy.addEventListener('click', () => selectTab('store'));
+        grid.appendChild(buy);
       }
       paintTabs(); return;
     }

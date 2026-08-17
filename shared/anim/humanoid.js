@@ -54,6 +54,19 @@ export const RIGS = {
   // about local Z. The signs are all negative because R6 FACES -Z, unlike the
   // other two rigs — rotating +z displaces a limb toward +Z, which on this model
   // is backwards.
+  // The blocky body. Six pivots, built by shared/avatar/steven.js, already
+  // upright and axis-aligned — so no sign gymnastics and no rest correction.
+  steven: {
+    joints: { hips: 'body', spine: 'body', chest: 'body', neck: 'head', head: 'head',
+              armL: 'armL', armR: 'armR', legL: 'legL', legR: 'legR' },
+    swing: { arm: 'x', fore: 'x', leg: 'x', shin: 'x', foot: 'x', spine: 'x', head: 'x' },
+    sign: { armL: 1, armR: 1, foreL: 0, foreR: 0, legL: 1, legR: 1,
+            shinL: 0, shinR: 0, footL: 0, footR: 0, spine: 1, head: 1 },
+    // Minecraft arms never lift out to the side, so lift is disabled rather
+    // than scaled — a blocky body reads wrong the moment its arms splay.
+    lift: { arm: 'z', armL: 0, armR: 0 },
+    rigid: true,
+  },
   r6: {
     joints: {
       hips: 'Torso_00', spine: 'Torso_00', chest: 'Torso_00',
@@ -173,6 +186,67 @@ export const POSES = {
   },
 };
 
+// ---- animation packs ----
+// A pack replaces individual poses. Anything it does not define falls through
+// to the default set, so a pack can be one jump or a whole style, and every
+// pack works on every body because they all speak the same canonical channels.
+export const PACKS = {
+  none: {},
+
+  // "Girl Jump": knees snap forward and tuck toward the chest so the legs read
+  // as a sideways V, while both arms are thrown straight overhead. The arms
+  // coming back down on landing is not scripted — leaving the jump pose does it.
+  girljump: {
+    jump(c) {
+      c.armLS = 2.55; c.armRS = 2.55;          // straight up
+      c.armLL = 0.14; c.armRL = 0.14;
+      c.legLS = 1.25; c.legRS = 1.05;          // thighs forward, slightly split
+      c.shinL = 1.55; c.shinR = 1.35;          // heels tucked back to the body
+      c.spine = -0.16;
+    },
+    fall(c, t) {
+      const w = Math.sin(t * 7) * 0.1;
+      c.armLS = 2.2 + w; c.armRS = 2.2 - w;
+      c.armLL = 0.3; c.armRL = 0.3;
+      c.legLS = 0.95; c.legRS = 0.8;
+      c.shinL = 1.2; c.shinR = 1.05;
+    },
+  },
+
+  // "Steven": Minecraft. Rigid limbs swinging in straight lines, a dead-still
+  // idle, and no lean — the whole charm is that nothing bends.
+  steven: {
+    idle(c) {
+      c.armLS = 0; c.armRS = 0; c.armLL = 0.02; c.armRL = 0.02;
+      c.legLS = 0; c.legRS = 0;
+    },
+    walk(c, t) {
+      const s = Math.sin(t * TAU);
+      c.legLS = s * 0.72; c.legRS = -s * 0.72;
+      c.armLS = -s * 0.72; c.armRS = s * 0.72;
+      c.armLL = 0.05; c.armRL = 0.05;
+      c.shinL = 0; c.shinR = 0;                // no knees in Minecraft
+    },
+    run(c, t) {
+      const s = Math.sin(t * TAU);
+      c.legLS = s * 0.95; c.legRS = -s * 0.95;
+      c.armLS = -s * 0.95; c.armRS = s * 0.95;
+      c.armLL = 0.07; c.armRL = 0.07;
+      c.spine = 0.08;
+    },
+    jump(c) { c.legLS = 0.5; c.legRS = -0.3; c.armLS = -0.35; c.armRS = -0.35; c.armLL = 0.1; c.armRL = 0.1; },
+    fall(c) { c.legLS = 0.35; c.legRS = -0.25; c.armLS = -0.5; c.armRS = -0.5; c.armLL = 0.16; c.armRL = 0.16; },
+    // the flat-armed sprint-swim Minecraft does
+    swim(c, t) {
+      const s = Math.sin(t * TAU * 1.1);
+      c.rootPitch = 1.4;
+      c.armLS = s * 1.6 + 0.9; c.armRS = -s * 1.6 + 0.9;
+      c.legLS = s * 0.35; c.legRS = -s * 0.35;
+    },
+    sit(c) { c.legLS = 1.5; c.legRS = 1.5; c.armLS = -0.2; c.armRS = -0.2; },
+  },
+};
+
 // Poses that hold rather than cycle, so their phase must not advance.
 export const STATIC = new Set(['jump', 'sit', 'death']);
 
@@ -192,8 +266,9 @@ export const resolvePose = (name) => (POSES[name] ? name : (POSES[ALIAS[name]] ?
  *   rigName - 'boy' | 'girl'
  *   THREE   - the three.js namespace (passed in so this module stays portable)
  */
-export function makeAnimator(THREE, bones, rigName) {
+export function makeAnimator(THREE, bones, rigName, packName = 'none') {
   const rig = RIGS[rigName] || RIGS.boy;
+  let pack = PACKS[packName] || PACKS.none;
   const joint = {}, rest = {};
   for (const [canon, boneName] of Object.entries(rig.joints)) {
     const b = bones[boneName];
@@ -242,6 +317,7 @@ export function makeAnimator(THREE, bones, rigName) {
     setAnim(name) { const p = resolvePose(name); if (p !== pose) { pose = p; if (STATIC.has(p)) phase = 0; } },
     get pose() { return pose; },
     setSpeed(v) { speed = v; },
+    setPack(name) { pack = PACKS[name] || PACKS.none; },
     update(dt) {
       // Cycle rate follows how fast the body is actually travelling, so a walk
       // does not scrub at a fixed rate regardless of speed.
@@ -250,7 +326,8 @@ export function makeAnimator(THREE, bones, rigName) {
                  : 1;
       if (!STATIC.has(pose)) phase += dt * rate;
       for (const k in c) c[k] = 0;
-      (POSES[pose] || POSES.idle)(c, phase);
+      // a pack's pose wins; anything it leaves out falls through to the default
+      ((pack[pose]) || POSES[pose] || POSES.idle)(c, phase);
 
       if (rig.rigid) {
         // One-piece limbs: there is no knee to bend, so give the thigh a share

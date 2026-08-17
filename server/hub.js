@@ -391,7 +391,7 @@ function sanitizeAvatar(a = {}) {
   const pick = (v, list, fb) => (list.includes(v) ? v : fb);
   return {
     // body type for the 3D model ('a'/'b' kept for legacy saves → render as boy)
-    body: pick(a.body, ['a', 'b', 'boy', 'girl', 'r6'], 'boy'),
+    body: pick(a.body, ['a', 'b', 'boy', 'girl', 'r6', 'steven'], 'boy'),
     skin: cleanColor(a.skin, DEFAULT_AVATAR.skin),
     hair: pick(a.hair, ['none', 'short', 'long', 'spiky', 'bun', 'curly'], 'short'),
     hairColor: cleanColor(a.hairColor, DEFAULT_AVATAR.hairColor),
@@ -413,6 +413,13 @@ function sanitizeAvatar(a = {}) {
     suit: pick(a.suit, ['none', 'swim'], 'none'),
     suitColor: cleanColor(a.suitColor, DEFAULT_AVATAR.suitColor),
     face: pick(a.face, ['happy', 'cool', 'surprised', 'sleepy'], 'happy'),
+    // which animation pack drives the character
+    animPack: pick(a.animPack, ['none', 'girljump', 'steven'], 'none'),
+    // an uploaded Minecraft skin, kept as a data URL. Bounded hard: a 64x64 PNG
+    // is about 2 kB base64, so anything much larger is not a skin.
+    stevenSkin: typeof a.stevenSkin === 'string'
+      && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(a.stevenSkin)
+      && a.stevenSkin.length <= 24000 ? a.stevenSkin : undefined,
     // secondary (trim/accent) colours. Undefined is meaningful here: it tells
     // the renderer to fall back to the accent the item was designed with, so
     // these are only stored once the wearer actually picks one.
@@ -548,6 +555,8 @@ function ensureWallet(u) {
 }
 // clothing ids that are FREE (usable without buying) — the starter basics
 const FREE_AVATAR = {
+  body: new Set(['a', 'b', 'boy', 'girl', 'r6']),   // Steven is a paid package
+  animPack: new Set(['none']),
   hat: new Set(['none', 'cap', 'beanie']),
   back: new Set(['none', 'backpack']),
   face2: new Set(['none', 'glasses']),
@@ -803,8 +812,8 @@ export function hubRouter() {
     const av = sanitizeAvatar(req.body?.avatar);
     // premium cosmetics require ownership — a slot set to an unowned paid item
     // silently reverts to 'none' so people can't equip what they didn't buy
-    for (const slot of ['hat', 'back', 'face2', 'suit']) {
-      if (!ownedAvatarValues(u, slot).has(av[slot])) av[slot] = 'none';
+    for (const slot of ['hat', 'back', 'face2', 'suit', 'body', 'animPack']) {
+      if (!ownedAvatarValues(u, slot).has(av[slot])) av[slot] = slot === 'body' ? 'boy' : 'none';
     }
     u.avatar = av;
     save();

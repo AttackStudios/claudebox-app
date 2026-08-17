@@ -111,6 +111,13 @@ export const AVATAR_SHOP = [
   A('av-hat-headphones','Hats','hat', 'headphones','🎧', 'Gold Headphones',        20, true),
   A('av-hat-party',    'Hats', 'hat', 'party',    '🥳', 'Party Hat',              15),
   A('av-hat-bandana',  'Hats', 'hat', 'bandana',  '🏴', 'Bandana',                15),
+  // ---- Body packages ----
+  // A whole body rather than an accessory: it replaces the model and repaints
+  // whatever you are wearing onto a 64x64 skin.
+  A('av-body-steven',    'Body', 'body', 'steven', '🧱', 'Steven', 250, true),
+  // ---- Animation packs ----
+  A('av-anim-steven',    'Animations', 'animPack', 'steven',   '🎬', 'Steven Animation Pack', 50, true),
+  A('av-anim-girljump',  'Animations', 'animPack', 'girljump', '🤸', 'Girl Jump Anim',        50),
   // ---- Faces ----
   A('av-face-monocle', 'Faces', 'face2', 'monocle', '🧐', 'Fancy Monocle',        30),
   A('av-face-mask',    'Faces', 'face2', 'mask',    '😷', 'Ninja Mask',           25),
@@ -127,4 +134,4 @@ export const AVATAR_SHOP = [
   A('av-back-balloon', 'Back', 'back', 'balloon',    '🎈', 'Balloon',             15),
 ];
 export const AVATAR_SHOP_BY_ID = Object.fromEntries(AVATAR_SHOP.map((s) => [s.id, s]));
-export const AVATAR_CATS = ['Featured', 'Hats', 'Faces', 'Back'];
+export const AVATAR_CATS = ['Featured', 'Body', 'Animations', 'Hats', 'Faces', 'Back'];

@@ -9,6 +9,7 @@ import { GLTFLoader } from '/vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '/vendor/SkeletonUtils.js';
 import { mergeGeometries } from '/vendor/BufferGeometryUtils.js';
 import { makeAnimator } from '/shared/anim/humanoid.js';
+import { buildSteven, skinFromProfile, textureFromImage, STEVEN_HEIGHT } from '/shared/avatar/steven.js';
 
 const loader = new GLTFLoader();
 const glbCache = new Map();
@@ -135,6 +136,7 @@ const R6_PARTS = {
 
 function genderOf(profile) {
   const b = (profile.body || '').toString().toLowerCase();
+  if (b === 'steven') return 'steven';
   if (b === 'r6' || b === 'blocky') return 'r6';
   // only an explicit girl choice picks the girl model; legacy 'a'/'b' = boy
   return (b === 'girl' || b === 'woman') ? 'girl' : 'boy';
@@ -143,6 +145,7 @@ function genderOf(profile) {
 // AvatarController — the per-character handle games use
 export function makeAvatar(profile = {}) {
   const gender = genderOf(profile);
+  if (gender === 'steven') return makeStevenAvatar(profile);
   const rec = genders.get(gender) || genders.get('boy') || genders.values().next().value;
   if (!rec) throw new Error('avatar3d: call preloadAvatars() before makeAvatar()');
 
@@ -356,7 +359,7 @@ export function makeAvatar(profile = {}) {
 
   const modelQuat = new THREE.Quaternion(); inner.getWorldQuaternion(modelQuat);
 
-  const anim = makeAnimator(THREE, bones, gender);
+  const anim = makeAnimator(THREE, bones, gender, profile.animPack || 'none');
   const baseY = -rec.minY * rec.scale;
   let currentName = 'idle', rootPitch = 0;
   const attachments = [];
@@ -499,6 +502,7 @@ export function makeAvatar(profile = {}) {
       }
     },
 
+    setPack(name) { anim.setPack(name); },
     dispose() { },
   };
 
@@ -506,6 +510,79 @@ export function makeAvatar(profile = {}) {
   ctrl.setClothing(profile);
   ctrl.setAnim('idle');
   return ctrl;
+}
+
+// ----------------- Steven -----------------
+// A whole body in one item. It has no skeleton to dress, because its clothing
+// is painted into the skin rather than attached to it — so this path skips the
+// attachment pipeline entirely and repaints the sheet when colours change.
+function makeStevenAvatar(profile = {}) {
+  const group = new THREE.Group();
+  let tex = null, built = null, over = null;
+
+  const setMap = (t) => {
+    if (!t) return;
+    tex = t;
+    if (built) built.root.traverse((o) => { if (o.isMesh) { o.material.map = t; o.material.needsUpdate = true; } });
+  };
+  const paint = (p) => {
+    // Always paint the generated skin first. An uploaded PNG has to decode
+    // before it can be sampled, and a texture used before its image lands
+    // samples black — so the wardrobe-painted sheet is what shows until the
+    // upload is actually ready, and then it swaps in.
+    setMap(skinFromProfile(p));
+    if (p.stevenSkin) uploadedSkin(p.stevenSkin, setMap);
+  };
+
+  paint(profile);
+  built = buildSteven(tex);
+  group.add(built.root);
+
+  const anim = makeAnimator(THREE, built.joints, 'steven', profile.animPack || 'none');
+  const baseY = 0;
+  let rootPitch = 0;
+
+  const ctrl = {
+    group, inner: built.root, gender: 'steven', bones: built.joints, anim,
+    hitbox: { radius: HITBOX.radius, height: STEVEN_HEIGHT },
+    idlePhase: 0, moveSpeed: 0,
+    setAnim(name) { anim.setAnim(name); },
+    update(dt) {
+      anim.setSpeed(this.moveSpeed);
+      const c = anim.update(dt);
+      built.root.position.y = baseY + (c.bob || 0);
+      rootPitch += ((c.rootPitch || 0) - rootPitch) * Math.min(1, dt * 8);
+      built.root.rotation.x = rootPitch;
+    },
+    setColors(p = {}) { paint({ ...profile, ...p }); },
+    setClothing() { /* Steven wears its skin; nothing is attached */ },
+    setPack(name) { anim.setPack(name); },
+    dispose() { tex?.dispose?.(); },
+  };
+  ctrl.setAnim('idle');
+  return ctrl;
+}
+
+// Uploaded skins arrive as data URLs. The image may still be decoding, so the
+// texture is handed back immediately and refreshed when it lands.
+const skinCache = new Map();
+function uploadedSkin(dataUrl, onReady) {
+  const hit = skinCache.get(dataUrl);
+  if (hit) { if (hit.image?.complete) onReady(hit); else hit.image.addEventListener('load', () => onReady(hit), { once: true }); return; }
+  if (typeof document === 'undefined') return;
+  const img = new Image();
+  const t = textureFromImage(img);
+  img.onload = () => { t.needsUpdate = true; onReady(t); };
+  img.src = dataUrl;
+  skinCache.set(dataUrl, t);
+}
+
+/** Decode a skin ahead of time, so a one-shot render (a thumbnail) is not black. */
+export function preloadStevenSkin(dataUrl) {
+  return new Promise((res) => {
+    if (!dataUrl || typeof document === 'undefined') return res();
+    uploadedSkin(dataUrl, () => res());
+  });
 }
 
 // ----------------- clothing -----------------
