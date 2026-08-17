@@ -19,7 +19,7 @@ export const GEAR = [
   {
     id: 'carpet', name: 'Magic Carpet', emoji: '🧞', price: 60,
     blurb: 'Deploy a carpet you can stand on and fly across gaps.',
-    slot: 'deploy', flySpeed: 12, life: 14, cooldown: 22,
+    slot: 'deploy', flySpeed: 21, life: 14, cooldown: 22,   // scaled with the Roblox tempo
   },
   {
     id: 'jump', name: 'Double Jump', emoji: '🦘', price: 30,

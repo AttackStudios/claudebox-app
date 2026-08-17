@@ -1,7 +1,7 @@
 // Service worker: network-first with cache fallback. The game always loads
 // fresh files while the server is up, but the app shell (and even the
 // soundtrack) still opens from cache if the server is briefly down.
-const CACHE = 'claudebox-v224';
+const CACHE = 'claudebox-v225';
 
 self.addEventListener('install', () => self.skipWaiting());
 

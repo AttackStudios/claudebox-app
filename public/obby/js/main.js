@@ -296,7 +296,14 @@ function numberTex(n) {
 // buildCourse() is deferred to boot(), after any custom Studio level is loaded
 
 // ---------- player controller ----------
-const R = 0.35, G = 30, JUMP = 13.4, MOVE = 7.8, RUN = 11.5, FLY = 20;
+// Roblox-tempo movement (see shared/movement/roblox.js). These come from a
+// uniform time rescale of the original numbers by k = 1.7527: velocities x k,
+// gravity x k^2. Jump height (2.9927) and jump distance are bit-identical to
+// before, so all 100 generated stages stay exactly as solvable — only the arc
+// got twice as snappy, which is the whole difference between floaty and Roblox.
+// Do not "tidy" these into round numbers; the geometry depends on them.
+const R = 0.35, G = 92.16, JUMP = 23.49, MOVE = 13.67, RUN = 20.16, FLY = 35.05;
+const STEP_UP = 0.76;      // 0.4 character heights, matching Roblox's HipHeight
 const player = {
   pos: { x: START.x, y: START.y, z: START.z }, vel: { x: 0, y: 0, z: 0 },
   ry: 0, grounded: false, anim: 'idle', flying: false, sprint: false,
@@ -323,21 +330,21 @@ function supportUnder(x, z, fromY, time) {
   for (const p of COURSE.platforms) {
     if (x > p.x - p.w/2 - R && x < p.x + p.w/2 + R && z > p.z - p.d/2 - R && z < p.z + p.d/2 + R) {
       const top = p.y + p.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = p; moverHit = null; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = p; moverHit = null; }
     }
   }
   // the top of a wall is walkable like anything else
   for (const w of COURSE.walls || []) {
     if (x > w.x - w.w/2 - R && x < w.x + w.w/2 + R && z > w.z - w.d/2 - R && z < w.z + w.d/2 + R) {
       const top = w.y + w.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
     }
   }
   // conveyors hold you up and shove you along
   for (const c of COURSE.conveyors || []) {
     if (x > c.x - c.w/2 - R && x < c.x + c.w/2 + R && z > c.z - c.d/2 - R && z < c.z + c.d/2 + R) {
       const top = c.y + c.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = c; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = null; conveyorHit = c; }
     }
   }
   // a blinker only holds you while it is phased in
@@ -345,14 +352,14 @@ function supportUnder(x, z, fromY, time) {
     if (!blinkOn(b, time)) continue;
     if (x > b.x - b.w/2 - R && x < b.x + b.w/2 + R && z > b.z - b.d/2 - R && z < b.z + b.d/2 + R) {
       const top = b.y + b.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = null; conveyorHit = null; }
     }
   }
   for (const mm of moverMeshes) {
     const m = mm.spec, wp = moverPos(m, time);
     if (x > wp.x - m.w/2 - R && x < wp.x + m.w/2 + R && z > wp.z - m.d/2 - R && z < wp.z + m.d/2 + R) {
       const top = wp.y + m.h/2;
-      if (top <= fromY + 0.6 && top > best) { best = top; plat = null; moverHit = { m, wp }; }
+      if (top <= fromY + STEP_UP && top > best) { best = top; plat = null; moverHit = { m, wp }; }
     }
   }
   return { top: best, plat, moverHit, conveyorHit };
@@ -376,7 +383,13 @@ function shoulderInWall() {
   const into = -(Math.sin(player.ry) * wallHop.nx + Math.cos(player.ry) * wallHop.nz);
   return into > 0.12 && into < 0.9;
 }
+// How fast a HUMAN can flick a mouse or a thumbstick, which has nothing to do
+// with the game's gravity — so this does not scale with the tempo either.
 const FLICK_RATE = 5.5;      // rad/s of turn that counts as a flick
+// These two are human-reaction forgiveness windows, not physics windows, so
+// they deliberately do NOT scale with the tempo — same reasoning as coyote time
+// and the jump buffer. Shortening them with k made the wall hop unusable at
+// speed, because a flick now carries you off the face 1.75x faster.
 const WALL_GRACE = 0.28;     // how long wall contact stays usable
 const FLICK_GRACE = 0.36;    // how long a flick stays usable
 
@@ -576,7 +589,7 @@ function updatePlayer(dt, input, time) {
       // bar lies along ±barAng; if near the bar line, fling outward
       if (Math.abs(Math.sin(da)) < 0.22) {
         const out = 1 / (d || 1);
-        player.vel.x = dx * out * 22; player.vel.z = dz * out * 22; player.vel.y = 9;
+        player.vel.x = dx * out * 38.6; player.vel.z = dz * out * 38.6; player.vel.y = 15.8;
         player.grounded = false;
       }
     }

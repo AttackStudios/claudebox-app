@@ -227,7 +227,10 @@ function collideXZ(px, pz, rad = R) {
 }
 
 // ---------------- local player ----------------
-const G = 26, JUMP = 11.5, WALK = 7, RUN = 12.5;
+// Roblox-tempo movement: a uniform time rescale by k = 1.7358 (velocities x k,
+// gravity x k^2 — see shared/movement/roblox.js). Jump height and jump distance
+// are unchanged, so the town's geometry is untouched; only the arc got snappier.
+const G = 78.3, JUMP = 19.96, WALK = 12.15, RUN = 21.70;
 const player = { pos: { x: SPAWN.x, y: 0, z: SPAWN.z }, vel: { x: 0, y: 0, z: 0 }, ry: Math.PI, grounded: true, anim: 'idle' };
 let myAvatar = { ctrl: null, group: null };
 
@@ -422,7 +425,7 @@ function exitCar() {
 function updateCar(dt) {
   const car = game.car; const inp = readInput();
   const throttle = inp.z;               // W forward, S back
-  const accel = 26, maxF = 30, maxR = 10;
+  const accel = 78.3, maxF = 52.07, maxR = 17.36;   // scaled with the tempo (accel x k^2, speeds x k)
   car.speed += throttle * accel * dt;
   car.speed *= (1 - 2.2 * dt);          // drag
   car.speed = Math.max(-maxR, Math.min(maxF, car.speed));

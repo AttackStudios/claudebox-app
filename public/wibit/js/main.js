@@ -270,11 +270,14 @@ function buildPark() {
 // buildPark() is deferred to boot(), after any custom Studio level is loaded
 
 // ---------- player controller ----------
-const R = 0.4, G = 26, JUMP = 13.4, MOVE = 8, RUN = 13;
+// Roblox-tempo movement: a uniform time rescale by k = 2.0227 (velocities x k,
+// gravity x k^2 — see shared/movement/roblox.js). Every launch trajectory keeps
+// its exact height and distance; the park just plays at twice the tempo.
+const R = 0.4, G = 106.4, JUMP = 27.10, MOVE = 16.18, RUN = 26.30;
 // cranked way up: huge bounces, big catapult launches, fast slides, lots of air
-const TRAMP_BOUNCE = 19, BLAST_H = 26, BLAST_V = 31, SLIDE_SPEED = 26;
+const TRAMP_BOUNCE = 38.43, BLAST_H = 52.59, BLAST_V = 62.70, SLIDE_SPEED = 52.59;   // launch velocities, x k
 const AIR_CONTROL = 0.04;   // gentle mid-air steering that preserves launch momentum
-const SWIM_SPEED = 4.6, SWIM_Y = -0.3, WATER_ENTER = 0.55, CLIMB_REACH = 2.7, CLIMB_RATE = 7;
+const SWIM_SPEED = 9.30, SWIM_Y = -0.3, WATER_ENTER = 0.55, CLIMB_REACH = 2.7, CLIMB_RATE = 14.16;   // speeds x k; reaches are distances, unchanged
 
 const player = {
   pos: { x: SPAWN.x, y: SPAWN.y, z: SPAWN.z }, vel: { x: 0, y: 0, z: 0 },
