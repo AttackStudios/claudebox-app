@@ -146,7 +146,7 @@ function conveyorRun(stage, y, count = 3) {
     // alternate: some help you along, some shove you back
     const dir = i % 2 ? -1 : 1;
     conveyors.push({ x: cx + len / 2, y, z: 0, w: len, h: 1, d: 5.5,
-      color: dir > 0 ? '#3fd6a0' : '#e88c3f', dx: dir * 7 * 1.7527, dz: 0 });
+      color: dir > 0 ? '#3fd6a0' : '#e88c3f', dx: dir * 7, dz: 0 });
     cx += len + 3.5;
     pad(cx, y, 0, 4, 5.5, 'normal', stage);
   }
@@ -365,16 +365,7 @@ export function applyCourse(c) {
 // ---------------------------------------------------------------- motion
 // All time-driven, so every client agrees without syncing state.
 
-// The player controller was rescaled to Roblox's tempo (velocities x k,
-// gravity x k^2 — see shared/movement/roblox.js). Every moving obstacle has to
-// run at the same k or the world would feel like it slowed down while the
-// player sped up, and every timing puzzle would get easier. Applying it inside
-// these helpers means the client and the server scale identically without any
-// call site having to know.
-export const TIME_SCALE = 1.7527;
-
 export function moverPos(m, t) {
-  t *= TIME_SCALE;
   const off = Math.sin(t * m.speed + m.phase) * m.range;
   return {
     x: m.x + (m.axis === 'x' ? off : 0),
@@ -382,26 +373,22 @@ export function moverPos(m, t) {
     z: m.z + (m.axis === 'z' ? off : 0),
   };
 }
-export function spinAngle(s, t) { return t * TIME_SCALE * s.speed; }
+export function spinAngle(s, t) { return t * s.speed; }
 
 // a blinker is solid for `on` of every `period`
 export function blinkOn(b, t) {
-  t *= TIME_SCALE;
   return (((t / b.period) + b.phase) % 1) < b.on;
 }
 // how far through its solid window it is (drives the fade-out warning)
 export function blinkPhase(b, t) {
-  t *= TIME_SCALE;
   return (((t / b.period) + b.phase) % 1) / b.on;
 }
 // swinging ball position
 export function pendulumPos(p, t) {
-  t *= TIME_SCALE;
   const a = Math.sin(t * p.speed + p.phase) * p.swing;
   return { x: p.x, y: p.y - Math.cos(a) * p.len, z: p.z + Math.sin(a) * p.len };
 }
 export function laserOn(l, t) {
-  t *= TIME_SCALE;
   return (((t / l.period) + l.phase) % 1) < l.on;
 }
 
