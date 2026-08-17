@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { drawAvatarHead } from './avatarModel.js';
 import { preloadAvatars, makeAvatar, CLOTHING } from '/shared/avatar3d.js';
+import { lazyThumb } from './thumbs.js';
 import { sfx } from './sounds.js';
 import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID, AVATAR_CATS } from '/shared/rewards.js';
 import { initVoice } from '/js/voice.js';
@@ -1035,15 +1036,15 @@ $('add-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('ad
   });
 }
 
-// ---------------- avatar editor ----------------
-// One category at a time instead of one endless scroll, and every garment gets
-// both of its colours. Rebuilding the 3D model is expensive (it clones a rigged
-// GLB), so dragging a colour slider retints the existing model and only a real
-// item change triggers a rebuild.
+// ---------------- avatar editor (Roblox-style) ----------------
+// Laid out like the real Avatar Editor: the character on the left over a warm
+// stage, a row of category tabs on the right whose submenus drop out beneath
+// them, and a grid of rendered item cards under a breadcrumb.
+//
+// The catalogue underneath is still ClaudeBox's own, so the tab tree maps our
+// slots onto Roblox's shape rather than inventing categories we cannot fill.
 const cloth = (cat) => CLOTHING[cat].map((i) => [i.id, `${i.emoji} ${i.label}`]);
 
-// palette offered next to every colour picker — enough range to dress anything
-// without hunting in the OS colour dialog
 const PALETTE = [
   '#ffffff', '#d7dce3', '#8b93a1', '#3a3f4a', '#15171c',
   '#e0453a', '#ff7a45', '#f0c23c', '#ffe14a', '#7bc043',
@@ -1052,372 +1053,337 @@ const PALETTE = [
 ];
 const SKIN_TONES = ['#f5d3b3', '#e8b48a', '#c98e62', '#9a6844', '#6e4a30', '#54382a'];
 
-// Each tab is a group of rows; a row is either a set of item buttons (with up
-// to two colours attached) or a bare colour.
-const AV_TABS = [
-  { id: 'body', label: 'Body', icon: '🧍', rows: [
-    { key: 'body', label: 'Body type', values: [['boy', '🧍 Boy'], ['girl', '🧍‍♀️ Girl'], ['r6', '🟨 R6']] },
-    { key: 'skin', label: 'Skin tone', swatchesOnly: SKIN_TONES },
-    { key: 'face', label: 'Expression', values: [['happy', '🙂 Happy'], ['cool', '😎 Cool'], ['surprised', '😮 Surprised'], ['sleepy', '😴 Sleepy']] },
-  ] },
-  { id: 'hair', label: 'Hair', icon: '💇', rows: [
-    { key: 'hair', label: 'Style', values: cloth('hair'), color: 'hairColor', color2: 'hairColor2', c1: 'Hair', c2: 'Streak' },
-  ] },
-  { id: 'face', label: 'Face', icon: '👓', rows: [
-    { key: 'face2', label: 'Accessory', values: cloth('faces'), color: 'faceColor', color2: 'faceColor2', c1: 'Frame', c2: 'Lens' },
-  ] },
-  { id: 'shirt', label: 'Shirt', icon: '👕', rows: [
-    { key: 'shirt', label: 'Shirt', values: cloth('shirts'), color: 'shirtColor', color2: 'shirtColor2', c1: 'Shirt', c2: 'Trim' },
-    { key: 'pantsColor', label: 'Pants colour', colorOnly: true },
-  ] },
-  { id: 'hat', label: 'Hats', icon: '🎩', rows: [
-    { key: 'hat', label: 'Hat', values: cloth('hats'), color: 'hatColor', color2: 'hatColor2', c1: 'Main', c2: 'Accent' },
-  ] },
-  { id: 'back', label: 'Back', icon: '🎒', rows: [
-    { key: 'back', label: 'Back item', values: cloth('backs'), color: 'backColor', color2: 'backColor2', c1: 'Main', c2: 'Accent' },
-  ] },
-  { id: 'shoes', label: 'Feet', icon: '👟', rows: [
-    { key: 'shoes', label: 'Footwear', values: cloth('shoes'), color: 'shoeColor', color2: 'shoeColor2', c1: 'Upper', c2: 'Sole' },
-  ] },
-  { id: 'swim', label: 'Swim', icon: '🩱', rows: [
-    { key: 'suit', label: 'Swimsuit', values: cloth('suits'), color: 'suitColor', color2: 'suitColor2', c1: 'Suit', c2: 'Trim' },
-  ] },
-  { id: 'r6', label: 'R6', icon: '🟨', r6: true },
+// A page is one grid: either a clothing slot, a colour swatch set, or a choice.
+// `frame` decides how its thumbnails are photographed.
+const PAGES = {
+  bodytype:  { title: 'Body', crumb: ['Body', 'Body Type'], kind: 'choice', key: 'body', frame: 'full',
+               values: [['boy', 'Boy'], ['girl', 'Girl'], ['r6', 'R6 Classic']] },
+  skin:      { title: 'Skin Tone', crumb: ['Body', 'Skin Tone'], kind: 'swatch', key: 'skin', list: SKIN_TONES },
+  hair:      { title: 'Hair', crumb: ['Body', 'Hair'], kind: 'item', cat: 'hair', key: 'hair',
+               color: 'hairColor', color2: 'hairColor2', frame: 'head' },
+  face:      { title: 'Expression', crumb: ['Makeup', 'Face'], kind: 'choice', key: 'face', frame: 'face',
+               values: [['happy', 'Happy'], ['cool', 'Cool'], ['surprised', 'Surprised'], ['sleepy', 'Sleepy']] },
+  faceacc:   { title: 'Eyes', crumb: ['Makeup', 'Eyes'], kind: 'item', cat: 'faces', key: 'face2',
+               color: 'faceColor', color2: 'faceColor2', frame: 'face' },
+  shirts:    { title: 'T-Shirts', crumb: ['Clothing', 'Tops', 'T-Shirts'], kind: 'item', cat: 'shirts', key: 'shirt',
+               color: 'shirtColor', color2: 'shirtColor2', frame: 'torso' },
+  pants:     { title: 'Pants', crumb: ['Clothing', 'Bottoms', 'Pants'], kind: 'swatch', key: 'pantsColor', list: PALETTE },
+  shoes:     { title: 'Shoes', crumb: ['Clothing', 'Shoes'], kind: 'item', cat: 'shoes', key: 'shoes',
+               color: 'shoeColor', color2: 'shoeColor2', frame: 'feet' },
+  hats:      { title: 'Hats', crumb: ['Accessories', 'Hats'], kind: 'item', cat: 'hats', key: 'hat',
+               color: 'hatColor', color2: 'hatColor2', frame: 'head' },
+  back:      { title: 'Back', crumb: ['Accessories', 'Back'], kind: 'item', cat: 'backs', key: 'back',
+               color: 'backColor', color2: 'backColor2', frame: 'back' },
+  swim:      { title: 'Swimwear', crumb: ['Clothing', 'Swimwear'], kind: 'item', cat: 'suits', key: 'suit',
+               color: 'suitColor', color2: 'suitColor2', frame: 'torso' },
+  recent:    { title: 'Recently Added', crumb: ['Recent', 'Recently Added'], kind: 'recent', frame: 'full' },
+  r6:        { title: 'R6 Colours', crumb: ['Body', 'R6 Parts'], kind: 'r6' },
+};
+
+// The tab strip, and what drops out of each tab.
+const TABS = [
+  { id: 'recent', label: 'Recent', page: 'recent' },
+  { id: 'avatars', label: 'Avatars', groups: [['Presets', [['bodytype', 'Body Type']]]] },
+  { id: 'body', label: 'Body', groups: [
+      ['Body', [['bodytype', 'Body Type'], ['skin', 'Skin Tone']]],
+      ['Hair', [['hair', 'Hair']]],
+      ['Classic', [['r6', 'R6 Parts']]],
+    ] },
+  { id: 'makeup', label: 'Makeup', groups: [
+      ['Looks', [['face', 'Face']]],
+      ['Eyes', [['faceacc', 'Eyewear']]],
+    ] },
+  { id: 'clothing', label: 'Clothing', groups: [
+      ['Tops', [['shirts', 'T-Shirts']]],
+      ['Bottoms', [['pants', 'Pants']]],
+      ['Shoes', [['shoes', 'Shoes']]],
+      ['Swim', [['swim', 'Swimwear']]],
+    ] },
+  { id: 'accessories', label: 'Accessories', groups: [
+      ['Head', [['hats', 'Hats']]],
+      ['Back', [['back', 'Back']]],
+    ] },
 ];
+
+const CAT_OF = { hair: 'hair', hat: 'hats', back: 'backs', face2: 'faces', suit: 'suits', shoes: 'shoes', shirt: 'shirts' };
+// mirrors FREE_AVATAR on the server — a paid slot the player has not bought
+// still shows, but wearing it is what the Marketplace is for
+const FREE_AV = { hat: ['none', 'cap', 'beanie'], back: ['none', 'backpack'], face2: ['none', 'glasses'], suit: ['none', 'swim'] };
 
 const avatarEditor = (() => {
   let renderer = null, scene, cam, ctrl = null, running = false, ready = false;
-  let tab = 'body', dirty = false;
+  let page = 'recent', openTab = null, dirty = false, spin = true;
   const clock = new THREE.Clock();
-  // orbit state for the preview — drag to spin, wheel/pinch to zoom
-  const view = { yaw: 0, dist: 4.4, height: 1.15, drag: null, pointers: new Map(), pinch: 0, auto: true };
+  const view = { yaw: 0, dist: 3.6, drag: null };
 
-  function markDirty() {
-    dirty = true;
-    const b = $('avatar-save');
-    if (b) { b.classList.add('dirty'); b.textContent = '💾 Save avatar •'; }
-  }
-  function markClean() {
-    dirty = false;
-    const b = $('avatar-save');
-    if (b) { b.classList.remove('dirty'); b.textContent = '💾 Save avatar'; }
-  }
+  const av = () => stateHub.me.avatar;
+  function markDirty() { dirty = true; $('avatar-save')?.classList.add('dirty'); }
+  function markClean() { dirty = false; $('avatar-save')?.classList.remove('dirty'); }
 
   function rebuild() {
     if (!scene || !ready) return;
     if (ctrl) { scene.remove(ctrl.group); ctrl.dispose?.(); }
-    ctrl = makeAvatar(stateHub.me.avatar);
+    ctrl = makeAvatar(av());
     ctrl.setAnim('idle');
     scene.add(ctrl.group);
   }
-  // Colour-only change: retint in place. A full rebuild clones a rigged GLB and
-  // makes dragging a colour input stutter.
-  let retintPending = false;
-  function retint() {
-    if (!ctrl) return;
-    ctrl.setColors(stateHub.me.avatar);
-    if (retintPending) return;
-    retintPending = true;                      // clothing meshes still need a rebuild
-    setTimeout(() => { retintPending = false; rebuild(); }, 110);
-  }
 
   async function init() {
-    buildOptionsUI();
+    buildTabs(); showPage('recent');
     const canvas = $('avatar-canvas');
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    } catch (e) { return; }
+    try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch { return; }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     scene = new THREE.Scene();
-    cam = new THREE.PerspectiveCamera(34, 1, 0.1, 30);
-    scene.add(new THREE.AmbientLight('#aab4c4', 1.5));
-    const key = new THREE.DirectionalLight('#fff4dc', 2.0); key.position.set(2, 4, 3); scene.add(key);
-    const rim = new THREE.DirectionalLight(settings.accent, 0.9); rim.position.set(-3, 2, -2); scene.add(rim);
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 0.1, 40), new THREE.MeshLambertMaterial({ color: '#26282f' }));
-    disc.position.y = -0.05; scene.add(disc);
-    bindPreviewControls(canvas);
-    await preloadAvatars(['boy', 'girl']);
+    cam = new THREE.PerspectiveCamera(30, 1, 0.1, 40);
+    scene.add(new THREE.AmbientLight('#fff3e0', 2.0));
+    const key = new THREE.DirectionalLight('#fff6e6', 2.1); key.position.set(2, 4, 4); scene.add(key);
+    const rim = new THREE.DirectionalLight('#ffd9a0', 1.0); rim.position.set(-3, 2, -2); scene.add(rim);
+    bindStage(canvas);
+    await preloadAvatars(['boy', 'girl', 'r6']);
     ready = true; rebuild();
   }
 
-  // drag to turn the model, wheel or pinch to zoom. Touch needs the pointer map
-  // so a second finger doesn't yank the rotation.
-  function bindPreviewControls(canvas) {
+  function bindStage(canvas) {
     canvas.style.touchAction = 'none';
-    canvas.addEventListener('pointerdown', (e) => {
-      canvas.setPointerCapture?.(e.pointerId);
-      view.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      view.auto = false;
-      if (view.pointers.size === 1) view.drag = { x: e.clientX, yaw: view.yaw };
+    canvas.addEventListener('pointerdown', (e) => { view.drag = { x: e.clientX, yaw: view.yaw }; spin = false; canvas.setPointerCapture?.(e.pointerId); });
+    addEventListener('pointerup', () => { view.drag = null; });
+    addEventListener('pointermove', (e) => { if (view.drag) view.yaw = view.drag.yaw + (e.clientX - view.drag.x) * 0.011; });
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); view.dist = Math.max(2.2, Math.min(7, view.dist + e.deltaY * 0.004)); }, { passive: false });
+    $('av-view').addEventListener('click', () => { spin = !spin; $('av-view').textContent = spin ? '3D' : '2D'; });
+    $('av-redraw').addEventListener('click', () => { rebuild(); toast('Avatar redrawn', '🔄'); });
+    $('av-getmore').addEventListener('click', () => selectTab('store'));
+    $('avatar-save').addEventListener('click', save);
+    const bt = $('av-bodytype');
+    bt.value = av().bodyType ?? 0;
+    $('av-bt-val').textContent = `${bt.value}%`;
+    bt.addEventListener('input', () => {
+      $('av-bt-val').textContent = `${bt.value}%`;
+      av().bodyType = +bt.value; markDirty();
     });
-    canvas.addEventListener('pointermove', (e) => {
-      if (!view.pointers.has(e.pointerId)) return;
-      view.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (view.pointers.size >= 2) {
-        const [a, b] = [...view.pointers.values()];
-        const gap = Math.hypot(a.x - b.x, a.y - b.y);
-        if (view.pinch > 0) view.dist = Math.max(2.2, Math.min(8, view.dist * (view.pinch / gap)));
-        view.pinch = gap;
-        return;
-      }
-      if (view.drag) view.yaw = view.drag.yaw + (e.clientX - view.drag.x) * 0.011;
-    });
-    const release = (e) => {
-      view.pointers.delete(e.pointerId);
-      if (view.pointers.size < 2) view.pinch = 0;
-      if (view.pointers.size === 0) view.drag = null;
-    };
-    canvas.addEventListener('pointerup', release);
-    canvas.addEventListener('pointercancel', release);
-    canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      view.auto = false;
-      view.dist = Math.max(2.2, Math.min(8, view.dist + e.deltaY * 0.004));
-    }, { passive: false });
+  }
+
+  async function save() {
+    try {
+      const { avatar } = await api('/avatar', { name: stateHub.me.name, avatar: av() });
+      stateHub.me.avatar = avatar; thumbInto($('me-thumb'), avatar);
+      markClean(); sfx.success(); toast('Avatar saved!', '✨');
+      showPage(page);
+    } catch (e) { toast(e.message, '⚠️'); }
   }
 
   function frame(now) {
     if (!running) return;
     requestAnimationFrame(frame);
     const canvas = renderer.domElement, w = canvas.clientWidth, h = canvas.clientHeight;
-    if (canvas.width !== Math.floor(w * renderer.getPixelRatio())) {
+    if (w && canvas.width !== Math.floor(w * renderer.getPixelRatio())) {
       renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
     }
     const dt = clock.getDelta();
     if (ctrl) {
       ctrl.update(dt);
-      // it turns by itself until you take hold of it
-      const yaw = view.auto && !settings.reduceMotion ? Math.sin(now / 1000 * 0.4) * 0.6 : view.yaw;
+      const yaw = spin && !settings.reduceMotion ? Math.sin(now / 1000 * 0.35) * 0.55 : view.yaw;
       ctrl.group.rotation.y = yaw;
     }
-    cam.position.set(0, view.height, view.dist);
-    cam.lookAt(0, view.height * 0.82, 0);
+    cam.position.set(0, 1.35, view.dist);
+    cam.lookAt(0, 0.95, 0);
     renderer.render(scene, cam);
   }
 
-  // ---- little UI builders ----
-  function swatchRow(current, onPick, list = PALETTE) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sw-row';
-    const paint = (v) => wrap.querySelectorAll('.sw').forEach((s) => s.classList.toggle('on', s.dataset.v === v));
-    for (const col of list) {
+  // ---- tabs + flyouts ----
+  function buildTabs() {
+    const host = $('av-tabs'); host.innerHTML = '';
+    for (const t of TABS) {
       const b = document.createElement('button');
-      b.className = 'sw'; b.dataset.v = col; b.style.background = col;
-      b.title = col;
-      b.addEventListener('click', () => { onPick(col); paint(col); ci.value = col; });
-      wrap.appendChild(b);
-    }
-    const ci = document.createElement('input');
-    ci.type = 'color'; ci.value = current || '#888888'; ci.title = 'Custom colour';
-    ci.addEventListener('input', () => { onPick(ci.value); paint(ci.value); });
-    wrap.appendChild(ci);
-    paint(current);
-    return wrap;
-  }
-
-  function colorBlock(label, current, onPick) {
-    const g = document.createElement('div');
-    g.className = 'col-block';
-    const h = document.createElement('div'); h.className = 'col-label'; h.textContent = label;
-    g.appendChild(h);
-    g.appendChild(swatchRow(current, onPick));
-    return g;
-  }
-
-  function buildOptionsUI() {
-    const host = $('avatar-options'); host.innerHTML = '';
-    const av = stateHub.me.avatar;
-
-    // ---- tab strip ----
-    const strip = document.createElement('div'); strip.className = 'av-tabs';
-    for (const t of AV_TABS) {
-      const b = document.createElement('button');
-      b.className = 'av-tab' + (t.id === tab ? ' on' : '');
-      b.innerHTML = `<span>${t.icon}</span><b>${t.label}</b>`;
-      b.addEventListener('click', () => { tab = t.id; sfx.tap(); buildOptionsUI(); });
-      strip.appendChild(b);
-    }
-    host.appendChild(strip);
-
-    const panel = document.createElement('div'); panel.className = 'av-panel';
-    host.appendChild(panel);
-
-    const def = AV_TABS.find((t) => t.id === tab) || AV_TABS[0];
-    if (def.r6) buildR6(panel);
-    else for (const row of def.rows) buildRow(panel, row, av);
-
-    // ---- actions ----
-    const bar = document.createElement('div'); bar.className = 'av-actions';
-    const rnd = document.createElement('button');
-    rnd.className = 'av-ghost'; rnd.textContent = '🎲 Randomize';
-    rnd.addEventListener('click', () => { randomize(); sfx.tap(); buildOptionsUI(); rebuild(); markDirty(); });
-    const rst = document.createElement('button');
-    rst.className = 'av-ghost'; rst.textContent = '↺ Reset';
-    rst.addEventListener('click', () => {
-      if (!confirm('Reset every clothing choice back to the defaults?')) return;
-      resetAvatar(); sfx.tap(); buildOptionsUI(); rebuild(); markDirty();
-    });
-    bar.appendChild(rnd); bar.appendChild(rst);
-    host.appendChild(bar);
-
-    const saveBtn = document.createElement('button');
-    saveBtn.id = 'avatar-save';
-    saveBtn.textContent = dirty ? '💾 Save avatar •' : '💾 Save avatar';
-    if (dirty) saveBtn.classList.add('dirty');
-    saveBtn.addEventListener('click', async () => {
-      try {
-        const { avatar } = await api('/avatar', { name: stateHub.me.name, avatar: stateHub.me.avatar });
-        stateHub.me.avatar = avatar; thumbInto($('me-thumb'), avatar);
-        markClean();
-        sfx.success(); toast('Avatar saved!', '✨');
-      } catch (e) { toast(e.message, '⚠️'); }
-    });
-    host.appendChild(saveBtn);
-  }
-
-  function buildRow(panel, row, av) {
-    const group = document.createElement('div'); group.className = 'opt-group';
-    group.innerHTML = `<h3>${row.label}</h3>`;
-
-    if (row.swatchesOnly) {
-      group.appendChild(swatchRow(av[row.key], (v) => { av[row.key] = v; retint(); markDirty(); }, row.swatchesOnly));
-      panel.appendChild(group); return;
-    }
-    if (row.colorOnly) {
-      group.appendChild(swatchRow(av[row.key], (v) => { av[row.key] = v; retint(); markDirty(); }));
-      panel.appendChild(group); return;
-    }
-
-    const grid = document.createElement('div'); grid.className = 'item-grid';
-    const allowed = unlockedValues(row.key);
-    for (const [value, label] of row.values) {
-      const locked = allowed && !allowed.has(value);
-      const btn = document.createElement('button');
-      btn.className = 'opt-btn' + ((av[row.key] || 'none') === value ? ' selected' : '') + (locked ? ' locked' : '');
-      btn.textContent = locked ? `${label} 🔒` : label;
-      if (locked) btn.title = 'Buy this in the Store to wear it';
-      btn.addEventListener('click', () => {
-        if (locked) { sfx.tap(); toast('Buy this in the Store to wear it', '🔒'); selectTab('store'); return; }
-        av[row.key] = value; sfx.tap(); markDirty();
-        // An item designed around specific colours (a branded cap) adopts them
-        // on pick, so it looks like its artwork straight away.
-        const picked = CLOTHING[itemCatOf(row.key)]?.find((i) => i.id === value);
-        if (picked?.pri && row.color) {
-          av[row.color] = picked.pri;
-          if (row.color2) av[row.color2] = picked.sec;
-        }
-        // Rebuild the panel, not just the button states: the colour pickers
-        // belong to the chosen item and appear/disappear with it.
-        buildOptionsUI();
-        rebuild();
+      b.className = 'rbx-tab';
+      b.innerHTML = `${t.label}${t.groups ? ' <span class="car">▾</span>' : ''}`;
+      b.addEventListener('click', () => {
+        if (!t.groups) { closeFlyout(); showPage(t.page); return; }
+        openTab === t.id ? closeFlyout() : openFlyout(t);
       });
-      grid.appendChild(btn);
+      host.appendChild(b);
     }
-    group.appendChild(grid);
-
-    // colours belong to the row, and are hidden when the slot is empty — a
-    // colour picker for "None" is just a dead control
-    const wearing = (av[row.key] || 'none') !== 'none';
-    if (row.color && wearing) {
-      group.appendChild(colorBlock(row.c1 || 'Colour', av[row.color], (v) => { av[row.color] = v; retint(); markDirty(); }));
-    }
-    if (row.color2 && wearing) {
-      const item = CLOTHING[itemCatOf(row.key)]?.find((i) => i.id === av[row.key]);
-      group.appendChild(colorBlock(row.c2 || 'Accent', av[row.color2] || item?.sec || '#ffffff',
-        (v) => { av[row.color2] = v; retint(); markDirty(); }));
-    }
-    panel.appendChild(group);
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.rbx-tabs') && !e.target.closest('.rbx-flyout')) closeFlyout();
+    });
+  }
+  function closeFlyout() { openTab = null; $('av-flyout').classList.add('hidden'); paintTabs(); }
+  function openFlyout(t) {
+    openTab = t.id;
+    const fly = $('av-flyout');
+    fly.innerHTML = t.groups.map(([label, items]) => `
+      <div class="rbx-fly-row">
+        <div class="rbx-fly-lab">${label}</div>
+        <div class="rbx-fly-items">${items.map(([id, name]) =>
+          `<button data-page="${id}" class="${page === id ? 'on' : ''}">${name}</button>`).join('')}</div>
+      </div>`).join('');
+    fly.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      showPage(b.dataset.page); closeFlyout(); sfx.tap();
+    }));
+    fly.classList.remove('hidden');
+    paintTabs();
+  }
+  function paintTabs() {
+    const owner = TABS.find((t) => t.page === page || t.groups?.some(([, its]) => its.some(([id]) => id === page)));
+    [...$('av-tabs').children].forEach((b, i) => {
+      b.classList.toggle('on', TABS[i] === owner);
+      b.classList.toggle('open', TABS[i].id === openTab);
+    });
   }
 
-  const CAT_OF = { hair: 'hair', hat: 'hats', back: 'backs', face2: 'faces', suit: 'suits', shoes: 'shoes', shirt: 'shirts' };
-  const itemCatOf = (key) => CAT_OF[key] || key;
-
-  // Slots the server gates on ownership, and the starter items that are free in
-  // each. Mirrors FREE_AVATAR in server/hub.js — picking an unowned paid item
-  // used to look like it worked and then quietly revert to 'none' on save.
-  const FREE_AV = { hat: ['none', 'cap', 'beanie'], back: ['none', 'backpack'], face2: ['none', 'glasses'], suit: ['none', 'swim'] };
-  function unlockedValues(slot) {
+  // ---- the grid ----
+  function unlocked(slot) {
     const free = FREE_AV[slot];
-    if (!free) return null;                    // this slot isn't gated at all
+    if (!free) return null;
     const set = new Set(free);
     const owned = new Set(wallet().ownedAvatar || []);
     for (const it of AVATAR_SHOP) if (it.slot === slot && owned.has(it.id)) set.add(it.value);
     return set;
   }
 
-  function randomize() {
-    const av = stateHub.me.avatar;
-    const any = (list) => list[Math.floor(Math.random() * list.length)];
-    const col = () => PALETTE[Math.floor(Math.random() * PALETTE.length)];
-    av.body = any(['boy', 'girl']);
-    av.skin = any(SKIN_TONES);
-    av.face = any(['happy', 'cool', 'surprised', 'sleepy']);
-    for (const [key, cat] of Object.entries(CAT_OF)) {
-      av[key] = any(CLOTHING[cat]).id;
-    }
-    av.suit = 'none';                       // don't randomly put everyone in swimwear
-    av.hairColor = col(); av.hairColor2 = col();
-    av.hatColor = col(); av.hatColor2 = col();
-    av.backColor = col(); av.backColor2 = col();
-    av.faceColor = col(); av.faceColor2 = col();
-    av.shirtColor = col(); av.shirtColor2 = col();
-    av.shoeColor = col(); av.shoeColor2 = col();
-    av.pantsColor = col();
+  function card({ label, on, locked, onClick, thumbKey, thumbProfile, frameKind, emoji }) {
+    const b = document.createElement('button');
+    b.className = 'rbx-card' + (on ? ' on' : '');
+    b.innerHTML = `<div class="rbx-thumb">${emoji ? `<span class="emoji">${emoji}</span>` : ''}${on ? '<span class="rbx-tick">✓</span>' : ''}</div>
+      <div class="rbx-name">${label}</div>${locked ? '<div class="rbx-price locked">Locked</div>' : ''}`;
+    if (thumbProfile) lazyThumb(b.querySelector('.rbx-thumb'), thumbKey, thumbProfile, frameKind);
+    b.addEventListener('click', onClick);
+    return b;
   }
 
-  function resetAvatar() {
-    const av = stateHub.me.avatar;
-    Object.assign(av, {
-      body: 'boy', skin: '#e8b48a', face: 'happy',
-      hair: 'short', hairColor: '#5d4037', hairColor2: undefined,
-      hat: 'none', hatColor: '#d2453a', hatColor2: undefined,
-      back: 'none', backColor: '#4a7ec0', backColor2: undefined,
-      face2: 'none', faceColor: '#222222', faceColor2: undefined,
-      suit: 'none', suitColor: '#19a3d6', suitColor2: undefined,
-      shirt: 'tee', shirtColor: '#3a7bd5', shirtColor2: undefined,
-      shoes: 'sneakers', shoeColor: '#22242c', shoeColor2: undefined,
-      pantsColor: '#34404f',
-    });
-  }
+  function showPage(id) {
+    page = id;
+    const def = PAGES[id] || PAGES.recent;
+    $('av-crumb').innerHTML = def.crumb.map((c, i, a) =>
+      i === a.length - 1 ? `<b>${c}</b>` : `${c}<span>›</span>`).join('');
+    const grid = $('av-grid');
+    grid.innerHTML = '';
+    grid.className = def.kind === 'swatch' || def.kind === 'r6' ? 'rbx-swatches' : 'rbx-grid';
+    const a = av();
 
-  // ---- R6 mode: a separate blocky look, saved alongside your avatar ----
-  // (Rivals always uses this model; other games keep the normal avatar)
-  function buildR6(panel) {
-    const r6 = stateHub.me.avatar.r6 = { head: '#f5cd30', torso: '#0f6cbd', armL: '#f5cd30', armR: '#f5cd30', legL: '#3aa03a', legR: '#3aa03a', accessory: 'none', face: 'smile', ...(stateHub.me.avatar.r6 || {}) };
-    const group = document.createElement('div'); group.className = 'opt-group';
-    group.innerHTML = `<h3>Blocky model · used by Rivals · saved separately</h3>`;
-    const partRow = document.createElement('div'); partRow.className = 'opt-row'; partRow.style.flexWrap = 'wrap';
-    const PARTS = [['head', 'Head'], ['torso', 'Torso'], ['armL', 'L Arm'], ['armR', 'R Arm'], ['legL', 'L Leg'], ['legR', 'R Leg']];
-    for (const [k, label] of PARTS) {
-      const wrap = document.createElement('label');
-      wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:#c9d2e0;';
-      const ci = document.createElement('input'); ci.type = 'color'; ci.value = r6[k];
-      ci.addEventListener('input', () => { r6[k] = ci.value; markDirty(); });
-      wrap.appendChild(ci); wrap.appendChild(document.createTextNode(label));
-      partRow.appendChild(wrap);
+    if (def.kind === 'swatch') {
+      for (const col of def.list) {
+        const sw = document.createElement('button');
+        sw.className = 'rbx-sw' + (a[def.key] === col ? ' on' : '');
+        sw.style.background = col;
+        sw.addEventListener('click', () => { a[def.key] = col; markDirty(); rebuild(); showPage(id); sfx.tap(); });
+        grid.appendChild(sw);
+      }
+      const ci = document.createElement('input');
+      ci.type = 'color'; ci.value = a[def.key] || '#888888';
+      ci.addEventListener('input', () => { a[def.key] = ci.value; markDirty(); rebuild(); });
+      grid.appendChild(ci);
+      paintTabs(); return;
     }
-    group.appendChild(partRow);
-    const selRow = document.createElement('div'); selRow.className = 'opt-row'; selRow.style.marginTop = '8px';
-    const mkSel = (key, opts) => {
-      const sel = document.createElement('select');
-      sel.style.cssText = 'background:#1c2029;color:#fff;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-weight:700;';
-      for (const o of opts) { const op = document.createElement('option'); op.value = o; op.textContent = o[0].toUpperCase() + o.slice(1); if (r6[key] === o) op.selected = true; sel.appendChild(op); }
-      sel.addEventListener('change', () => { r6[key] = sel.value; markDirty(); });
-      return sel;
-    };
-    selRow.appendChild(mkSel('accessory', ['none', 'cap', 'tophat', 'headphones', 'halo', 'horns', 'crown']));
-    selRow.appendChild(mkSel('face', ['smile', 'grin', 'serious', 'wink', 'shades']));
-    group.appendChild(selRow);
-    panel.appendChild(group);
+
+    if (def.kind === 'r6') {
+      const r6 = a.r6 = { head: '#f5cd30', torso: '#0f6cbd', armL: '#f5cd30', armR: '#f5cd30', legL: '#3aa03a', legR: '#3aa03a', ...(a.r6 || {}) };
+      for (const [k, lab] of [['head', 'Head'], ['torso', 'Torso'], ['armL', 'L Arm'], ['armR', 'R Arm'], ['legL', 'L Leg'], ['legR', 'R Leg']]) {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:5px;font-size:12px;font-weight:700;';
+        const ci = document.createElement('input');
+        ci.type = 'color'; ci.value = r6[k];
+        ci.addEventListener('input', () => { r6[k] = ci.value; markDirty(); rebuild(); });
+        wrap.appendChild(ci); wrap.appendChild(document.createTextNode(lab));
+        grid.appendChild(wrap);
+      }
+      paintTabs(); return;
+    }
+
+    if (def.kind === 'choice') {
+      for (const [value, label] of def.values) {
+        grid.appendChild(card({
+          label, on: (a[def.key] || def.values[0][0]) === value,
+          thumbKey: `${def.key}:${value}`,
+          thumbProfile: { ...a, [def.key]: value },
+          frameKind: def.frame,
+          onClick: () => { a[def.key] = value; markDirty(); rebuild(); showPage(id); sfx.tap(); },
+        }));
+      }
+      paintTabs(); return;
+    }
+
+    if (def.kind === 'recent') {
+      // a mixed shelf, the way the real editor opens on "Recently Added"
+      const picks = [
+        ['bodytype', 'Body Type'], ['hair', 'Hair'], ['shirts', 'T-Shirts'],
+        ['hats', 'Hats'], ['shoes', 'Shoes'], ['back', 'Back'], ['faceacc', 'Eyewear'], ['face', 'Face'],
+      ];
+      for (const [pid, label] of picks) {
+        const p = PAGES[pid];
+        grid.appendChild(card({
+          label, on: false, emoji: '',
+          thumbKey: `page:${pid}:${JSON.stringify(a).length}`,
+          thumbProfile: { ...a },
+          frameKind: p.frame,
+          onClick: () => { showPage(pid); sfx.tap(); },
+        }));
+      }
+      paintTabs(); return;
+    }
+
+    // ---- an item slot ----
+    const allow = unlocked(def.key);
+    const items = CLOTHING[def.cat] || [];
+    for (const it of items) {
+      const locked = allow ? !allow.has(it.id) : false;
+      const on = (a[def.key] || 'none') === it.id;
+      grid.appendChild(card({
+        label: it.label, on, locked,
+        emoji: it.id === 'none' ? '🚫' : '',
+        thumbKey: `${def.cat}:${it.id}:${a.body}:${a[def.color] || ''}:${a[def.color2] || ''}`,
+        thumbProfile: it.id === 'none' ? null : {
+          body: a.body, skin: a.skin,
+          [def.key]: it.id,
+          ...(def.color ? { [def.color]: a[def.color] || it.pri } : {}),
+          ...(def.color2 ? { [def.color2]: a[def.color2] } : {}),
+        },
+        frameKind: def.frame,
+        onClick: () => {
+          if (locked) { sfx.tap(); toast('Buy this in the Marketplace to wear it', '🔒'); selectTab('store'); return; }
+          a[def.key] = it.id;
+          if (it.pri && def.color) { a[def.color] = it.pri; if (def.color2) a[def.color2] = it.sec; }
+          markDirty(); rebuild(); showPage(id); sfx.tap();
+        },
+      }));
+    }
+    // the two colours for whatever is worn, shown under the grid
+    if (def.color && (a[def.key] || 'none') !== 'none') {
+      const worn = (CLOTHING[def.cat] || []).find((i) => i.id === a[def.key]);
+      const bar = document.createElement('div');
+      bar.style.cssText = 'grid-column:1/-1;display:flex;gap:26px;flex-wrap:wrap;margin-top:8px';
+      const mk = (title, field, fallback) => {
+        const col = document.createElement('div');
+        col.innerHTML = `<div style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin-bottom:7px">${title}</div>`;
+        const row = document.createElement('div'); row.className = 'rbx-swatches';
+        for (const c of PALETTE) {
+          const sw = document.createElement('button');
+          sw.className = 'rbx-sw' + ((a[field] || fallback) === c ? ' on' : '');
+          sw.style.background = c; sw.style.width = sw.style.height = '30px';
+          sw.addEventListener('click', () => { a[field] = c; markDirty(); rebuild(); showPage(id); });
+          row.appendChild(sw);
+        }
+        const ci = document.createElement('input');
+        ci.type = 'color'; ci.value = a[field] || fallback || '#888888';
+        ci.style.width = ci.style.height = '30px';
+        ci.addEventListener('input', () => { a[field] = ci.value; markDirty(); rebuild(); });
+        row.appendChild(ci);
+        col.appendChild(row); return col;
+      };
+      bar.appendChild(mk('Colour', def.color, worn?.pri));
+      if (def.color2) bar.appendChild(mk('Accent', def.color2, worn?.sec));
+      grid.appendChild(bar);
+    }
+    paintTabs();
   }
 
   return {
     async start() {
-      if (!stateHub.me) return; // profile not loaded yet
+      if (!stateHub.me) return;
       if (!renderer && !ready) await init();
       if (renderer && !running) { running = true; clock.getDelta(); requestAnimationFrame(frame); }
     },
     stop() { running = false; },
+    refresh() { if (ready) { rebuild(); showPage(page); } },
   };
 })();
 

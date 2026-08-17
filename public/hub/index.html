@@ -11,6 +11,7 @@
 <title>ClaudeBox</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/hub/hub.css">
+  <link rel="stylesheet" href="/hub/rbx.css">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <script type="importmap">
@@ -121,14 +122,34 @@
     <div id="shop-grid"></div>
   </section>
 
-  <!-- ================= AVATAR ================= -->
-  <section id="tab-avatar" class="tab-page hidden">
-    <div id="avatar-layout">
-      <div id="avatar-stage">
-        <div class="stage-glow"></div>
-        <canvas id="avatar-canvas"></canvas>
+  <!-- ================= AVATAR EDITOR ================= -->
+  <section id="tab-avatar" class="tab-page hidden rbx">
+    <header class="rbx-head">
+      <h1>Avatar Editor</h1>
+      <div class="rbx-head-right">
+        <span class="rbx-head-note">Explore the marketplace to find more clothes!</span>
+        <button id="av-getmore" class="rbx-dark-btn">Get More</button>
       </div>
-      <div id="avatar-options"></div>
+    </header>
+    <div class="rbx-editor">
+      <aside class="rbx-side">
+        <div class="rbx-stage">
+          <canvas id="avatar-canvas"></canvas>
+          <button id="av-view" class="rbx-2d" title="Spin the avatar">3D</button>
+        </div>
+        <div class="rbx-slider">
+          <div class="rbx-slider-top"><span>Body Type</span><b id="av-bt-val">0%</b></div>
+          <input type="range" id="av-bodytype" min="0" max="100" value="0">
+        </div>
+        <p class="rbx-redraw">Avatar isn't loading correctly? <button id="av-redraw">Redraw</button></p>
+        <button id="avatar-save" class="rbx-save">Save avatar</button>
+      </aside>
+      <div class="rbx-browser">
+        <nav class="rbx-tabs" id="av-tabs"></nav>
+        <div class="rbx-flyout hidden" id="av-flyout"></div>
+        <div class="rbx-crumb" id="av-crumb"></div>
+        <div class="rbx-grid" id="av-grid"></div>
+      </div>
     </div>
   </section>
 

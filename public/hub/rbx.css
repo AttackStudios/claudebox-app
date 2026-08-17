@@ -1,0 +1,126 @@
+/* Roblox-style surfaces for the Avatar Editor and the Marketplace.
+   These two pages deliberately break from the rest of ClaudeBox's dark glass:
+   the thing being copied is a light, flat, card-based UI, and a dark version of
+   it would not read as the same product. Everything here is scoped under .rbx
+   so it cannot leak into the other tabs. */
+.rbx {
+  --rbx-ink: #1b1f24;
+  --rbx-dim: #6b7280;
+  --rbx-line: #e3e6ea;
+  --rbx-card: #f0f1f5;
+  --rbx-card-hi: #e6e8ee;
+  --rbx-blue: #0b5fff;
+  --rbx-dark: #1f2430;
+  background: #fff;
+  color: var(--rbx-ink);
+  font-family: 'Builder Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  border-radius: 18px;
+  padding: 26px 28px 40px;
+}
+.rbx h1 { font-size: 34px; font-weight: 800; letter-spacing: -.5px; margin: 0; color: var(--rbx-ink); }
+
+.rbx-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.rbx-head-right { display: flex; align-items: center; gap: 14px; }
+.rbx-head-note { font-size: 14px; color: var(--rbx-ink); }
+.rbx-dark-btn {
+  background: var(--rbx-dark); color: #fff; border: 0; border-radius: 8px;
+  padding: 12px 20px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.rbx-dark-btn:hover { background: #2b3242; }
+
+/* ---------- editor ---------- */
+.rbx-editor { display: grid; grid-template-columns: 320px 1fr; gap: 26px; align-items: start; }
+.rbx-side { display: flex; flex-direction: column; gap: 14px; }
+.rbx-stage {
+  position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+  /* the warm radial the real editor renders behind the character */
+  background: radial-gradient(120% 100% at 50% 18%, #f7dcae 0%, #d7a869 45%, #b8843f 100%);
+}
+.rbx-stage canvas { width: 100%; height: 100%; display: block; }
+.rbx-2d {
+  position: absolute; right: 10px; bottom: 10px; z-index: 2;
+  background: rgba(60,40,20,.34); color: #fff; border: 0; border-radius: 7px;
+  padding: 7px 13px; font-size: 14px; font-weight: 700; cursor: pointer; backdrop-filter: blur(3px);
+}
+.rbx-slider-top { display: flex; justify-content: space-between; font-size: 17px; font-weight: 600; }
+.rbx-slider input { width: 100%; accent-color: #111; margin-top: 8px; }
+.rbx-redraw { font-size: 14px; color: var(--rbx-ink); margin: 0; }
+.rbx-redraw button { background: none; border: 0; color: var(--rbx-ink); text-decoration: underline; cursor: pointer; font: inherit; padding: 0 0 0 6px; }
+.rbx #avatar-save, .rbx-save {
+  margin-top: 4px; width: 100%; padding: 13px; border: 0; border-radius: 9px; cursor: pointer;
+  background: var(--rbx-blue); color: #fff; font-size: 15px; font-weight: 800;
+}
+.rbx #avatar-save:hover, .rbx-save:hover { background: #0a53e0; }
+.rbx #avatar-save.dirty::after, .rbx-save.dirty::after { content: ' •'; }
+
+/* ---------- category tabs ---------- */
+.rbx-browser { position: relative; min-width: 0; }
+.rbx-tabs {
+  display: flex; align-items: stretch; background: #f6f7f9;
+  border-radius: 10px 10px 0 0; overflow: hidden;
+}
+.rbx-tab {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 16px 10px; background: none; border: 0; cursor: pointer;
+  font-size: 17px; font-weight: 600; color: var(--rbx-ink); white-space: nowrap;
+}
+.rbx-tab .car { font-size: 11px; opacity: .6; }
+.rbx-tab:hover { background: #eef0f3; }
+.rbx-tab.on { background: #fff; border-bottom: 3px solid #111; font-weight: 700; }
+.rbx-tab.open { box-shadow: inset 0 0 0 2px var(--rbx-blue); border-radius: 8px; }
+
+/* the submenu that drops out of a tab */
+.rbx-flyout {
+  position: absolute; left: 0; right: 0; top: 54px; z-index: 30;
+  background: #f6f7f9; border-radius: 0 0 10px 10px; padding: 14px 22px 18px;
+  box-shadow: 0 18px 40px rgba(20,25,40,.13);
+}
+.rbx-flyout.hidden { display: none; }
+.rbx-fly-row { display: flex; align-items: flex-start; gap: 26px; padding: 9px 0; }
+.rbx-fly-row + .rbx-fly-row { border-top: 1px solid #e6e8ec; }
+.rbx-fly-lab { width: 128px; flex: none; font-size: 17px; font-weight: 700; }
+.rbx-fly-items { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.rbx-fly-items button {
+  background: none; border: 0; cursor: pointer; font: inherit; font-size: 15.5px;
+  color: var(--rbx-ink); padding: 2px 0;
+}
+.rbx-fly-items button:hover { text-decoration: underline; }
+.rbx-fly-items button.on { font-weight: 800; }
+
+.rbx-crumb { padding: 16px 2px 12px; font-size: 15px; color: var(--rbx-dim); }
+.rbx-crumb b { color: var(--rbx-ink); font-weight: 600; }
+.rbx-crumb span { margin: 0 7px; opacity: .55; }
+
+/* ---------- item grid ---------- */
+.rbx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 16px; }
+.rbx-card { cursor: pointer; border: 0; background: none; padding: 0; text-align: left; font: inherit; }
+.rbx-thumb {
+  position: relative; aspect-ratio: 1; border-radius: 9px; overflow: hidden;
+  background: var(--rbx-card); display: grid; place-items: center;
+}
+.rbx-card:hover .rbx-thumb { background: var(--rbx-card-hi); }
+.rbx-thumb canvas, .rbx-thumb img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.rbx-thumb .emoji { font-size: 48px; }
+.rbx-card.on .rbx-thumb { background: #b9bcc6; }
+.rbx-tick {
+  position: absolute; right: 7px; top: 7px; width: 26px; height: 26px; border-radius: 6px;
+  background: #fff; display: grid; place-items: center; font-size: 15px; color: #111; font-weight: 900;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+}
+.rbx-name { margin-top: 9px; font-size: 15px; font-weight: 600; line-height: 1.25; }
+.rbx-price { margin-top: 2px; font-size: 14px; color: var(--rbx-dim); display: flex; align-items: center; gap: 4px; }
+.rbx-price img { width: 14px; height: 14px; }
+.rbx-price.locked { color: #b0451f; }
+
+/* colour swatches, shown inline in the grid for tint-only categories */
+.rbx-swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.rbx-sw { width: 46px; height: 46px; border-radius: 10px; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--rbx-line); cursor: pointer; }
+.rbx-sw.on { border-color: #111; box-shadow: 0 0 0 2px #111; }
+.rbx-swatches input[type=color] { width: 46px; height: 46px; padding: 0; border: 1px solid var(--rbx-line); border-radius: 10px; background: none; cursor: pointer; }
+
+@media (max-width: 900px) {
+  .rbx-editor { grid-template-columns: 1fr; }
+  .rbx-tab { font-size: 14px; padding: 13px 6px; }
+  .rbx { padding: 18px 14px 30px; }
+  .rbx h1 { font-size: 26px; }
+}
