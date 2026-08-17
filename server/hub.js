@@ -391,7 +391,7 @@ function sanitizeAvatar(a = {}) {
   const pick = (v, list, fb) => (list.includes(v) ? v : fb);
   return {
     // body type for the 3D model ('a'/'b' kept for legacy saves → render as boy)
-    body: pick(a.body, ['a', 'b', 'boy', 'girl'], 'boy'),
+    body: pick(a.body, ['a', 'b', 'boy', 'girl', 'r6'], 'boy'),
     skin: cleanColor(a.skin, DEFAULT_AVATAR.skin),
     hair: pick(a.hair, ['none', 'short', 'long', 'spiky', 'bun', 'curly'], 'short'),
     hairColor: cleanColor(a.hairColor, DEFAULT_AVATAR.hairColor),

@@ -33,7 +33,7 @@ const meshRegion = (name) => {
   return 'skin';
 };
 
-export async function preloadAvatars(list = ['boy', 'girl']) {
+export async function preloadAvatars(list = ['boy', 'girl', 'r6']) {
   await Promise.all(list.map(loadGender));
 }
 
@@ -126,8 +126,16 @@ function splitBodyByRegion(mesh) {
 
 // game anim name -> model clip + how to play it
 
+// The six-bone classic. Joint name -> which colourable part it drives.
+const R6_PARTS = {
+  Torso_00: 'torso', Head_01: 'head',
+  Left_Arm_02: 'armL', Right_Arm_03: 'armR',
+  Left_Leg_04: 'legL', Right_Leg_05: 'legR',
+};
+
 function genderOf(profile) {
   const b = (profile.body || '').toString().toLowerCase();
+  if (b === 'r6' || b === 'blocky') return 'r6';
   // only an explicit girl choice picks the girl model; legacy 'a'/'b' = boy
   return (b === 'girl' || b === 'woman') ? 'girl' : 'boy';
 }
@@ -167,6 +175,42 @@ export function makeAvatar(profile = {}) {
 
   const bones = {};
   inner.traverse((o) => { if (o.isBone) bones[o.name] = o; });
+  const isR6 = gender === 'r6';
+  // R6 has no named body meshes to recolour, so parts are tinted per-vertex by
+  // whichever joint owns each vertex. This also lets the ordinary avatar colours
+  // (skin / shirt / pants) map onto the blocky body, so a profile does not need
+  // a separate R6 palette to look right.
+  let r6Tint = null;
+  if (isR6) {
+    const jointPart = [];
+    inner.traverse((o) => {
+      if (!o.isSkinnedMesh || jointPart.length) return;
+      o.skeleton.bones.forEach((b, i) => { jointPart[i] = R6_PARTS[b.name] || null; });
+    });
+    const meshes = [];
+    inner.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
+    r6Tint = (cols) => {
+      for (const o of meshes) {
+        const geo = o.geometry;
+        const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+        if (!si || !sw) continue;
+        const n = geo.attributes.position.count;
+        const arr = geo.attributes.color?.array instanceof Float32Array && geo.attributes.color.count === n
+          ? geo.attributes.color.array : new Float32Array(n * 3);
+        const col = new THREE.Color();
+        for (let i = 0; i < n; i++) {
+          let best = 0, bw = -1;
+          for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+          col.set(cols[jointPart[best]] || '#ffffff');
+          arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b;
+        }
+        if (geo.attributes.color?.array === arr) geo.attributes.color.needsUpdate = true;
+        else geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        o.material.vertexColors = true;
+        o.material.color.set('#ffffff');
+      }
+    };
+  }
   // resolve a logical bone name across the Roblox ('Neck'/'Chest') and Mixamo
   // ('mixamorig:*') skeletons so clothing attaches on either rig
   // Blender's glTF export strips the ':' from mixamorig bone names
@@ -275,6 +319,41 @@ export function makeAvatar(profile = {}) {
     }
   }
 
+  // R6's proportions are exact and known, so measure them off the skeleton
+  // rather than inferring from a bounding box that includes the outstretched
+  // arms. Everything is expressed in studs derived from the head, so this stays
+  // right whatever height the model is normalised to.
+  if (isR6) {
+    const wp = (n) => { const b = bones[n]; if (!b) return null; const v = new THREE.Vector3(); b.getWorldPosition(v); return v; };
+    const headB = wp('Head_01'), headT = wp('Head_end_06');
+    const shoulder = wp('Left_Arm_02'), hip = wp('Left_Leg_04'), toe = wp('Left_Leg_end_09');
+    if (headB && headT && shoulder && hip) {
+      const stud = (headT.y - headB.y) / 1.25;        // the R6 head is 1.25 studs tall
+      head.center.set(headB.x, (headB.y + headT.y) / 2, headB.z);
+      head.top = headT.y;
+      head.hw = head.hd = head.hh = (headT.y - headB.y) / 2;
+      head.radius = head.hw;
+      // R6 faces -Z, unlike the other two models. Without this every brim,
+      // fringe and face decal would point out of the back of its head.
+      head.forward = -1;
+
+      torso.center.set(0, (shoulder.y + hip.y) / 2, 0);
+      torso.height = shoulder.y - hip.y;
+      torso.halfW = stud * 1.0;                       // 2 studs across
+      torso.halfD = stud * 0.5;                       // 1 stud deep
+      torso.forward = -1;
+
+      // The leg-end bone sits on the floor, so the shoe has to be lifted by its
+      // own ankle height for the sole to land on the ground rather than under it.
+      foot.ankleY = stud * 0.55;
+      foot.halfW = stud * 0.5;                        // each leg is 1 stud wide
+      foot.toe = stud * 0.62;
+      foot.heel = stud * 0.34;
+      foot.lift = foot.ankleY;
+      if (toe) foot.groundY = toe.y;
+    }
+  }
+
   const modelQuat = new THREE.Quaternion(); inner.getWorldQuaternion(modelQuat);
 
   const anim = makeAnimator(THREE, bones, gender);
@@ -313,6 +392,18 @@ export function makeAvatar(profile = {}) {
       if (worn && worn.base) shirtC = worn.base;
       // a swimsuit bares the body — the suit itself is a separate overlay mesh
       if (p.suit && p.suit !== 'none') { shirtC = skin; pantsC = skin; }
+      // R6 colours by vertex, one colour per body part. The ordinary avatar
+      // fields map straight on (skin -> head and arms, shirt -> torso, pants ->
+      // legs), so an existing profile looks right on the blocky body without
+      // needing its own palette. An explicit `r6` block still wins if present.
+      if (r6Tint) {
+        const r6 = p.r6 && typeof p.r6 === 'object' ? p.r6 : {};
+        r6Tint({
+          head: r6.head || skin, armL: r6.armL || skin, armR: r6.armR || skin,
+          torso: r6.torso || shirtC, legL: r6.legL || pantsC, legR: r6.legR || pantsC,
+        });
+        return;
+      }
       const set = (mats, col) => { for (const m of mats) if (m.color && col) m.color.set(col); };
       if (multiPart) {
         set(regionMats.skin, skin);
@@ -366,6 +457,9 @@ export function makeAvatar(profile = {}) {
             const holder = new THREE.Group();
             holder.quaternion.copy(bq).invert();
             holder.scale.set(1 / bs.x, 1 / bs.y, 1 / bs.z);
+            // rigs whose anchor bone sits on the floor need the piece raised so
+            // its sole meets the ground instead of sinking through it
+            if (raw.attach === 'ankles' && foot.lift) piece.position.y += foot.lift;
             holder.add(piece);
             bone.add(holder);
             attachments.push(holder);
@@ -449,9 +543,13 @@ const shiny = (c, opts = {}) => new THREE.MeshPhongMaterial({ color: c, specular
 const glass = (c, o = 0.55) => new THREE.MeshPhongMaterial({ color: c, specular: '#ffffff', shininess: 120, transparent: true, opacity: o });
 
 // The bone pairs shoes and gloves hang from, in each rig's own naming.
+// R6 has no ankle joint; the bone at the bottom of each leg block sits exactly
+// on the ground, which is the right anchor for footwear.
 const BONE_SETS = {
-  ankles: [['R_Ankle', 'mixamorigRightFoot'], ['L_Ankle', 'mixamorigLeftFoot']],
-  wrists: [['R_Wrist', 'mixamorigRightHand'], ['L_Wrist', 'mixamorigLeftHand']],
+  ankles: [['R_Ankle', 'mixamorigRightFoot', 'Right_Leg_end_010'],
+           ['L_Ankle', 'mixamorigLeftFoot', 'Left_Leg_end_09']],
+  wrists: [['R_Wrist', 'mixamorigRightHand', 'Right_Arm_end_08'],
+           ['L_Wrist', 'mixamorigLeftHand', 'Left_Arm_end_07']],
 };
 
 export const CLOTHING = {

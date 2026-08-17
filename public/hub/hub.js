@@ -1056,7 +1056,7 @@ const SKIN_TONES = ['#f5d3b3', '#e8b48a', '#c98e62', '#9a6844', '#6e4a30', '#543
 // to two colours attached) or a bare colour.
 const AV_TABS = [
   { id: 'body', label: 'Body', icon: '🧍', rows: [
-    { key: 'body', label: 'Body type', values: [['boy', '🧍 Boy'], ['girl', '🧍‍♀️ Girl']] },
+    { key: 'body', label: 'Body type', values: [['boy', '🧍 Boy'], ['girl', '🧍‍♀️ Girl'], ['r6', '🟨 R6']] },
     { key: 'skin', label: 'Skin tone', swatchesOnly: SKIN_TONES },
     { key: 'face', label: 'Expression', values: [['happy', '🙂 Happy'], ['cool', '😎 Cool'], ['surprised', '😮 Surprised'], ['sleepy', '😴 Sleepy']] },
   ] },

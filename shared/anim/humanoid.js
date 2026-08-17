@@ -50,6 +50,31 @@ export const RIGS = {
     sign: { armL: -1, armR: -1, foreL: -1, foreR: -1, legL: -1, legR: -1, shinL: -1, shinR: -1, footL: -1, footR: -1, spine: -1, head: -1 },
     lift: { arm: 'z', armL: 1, armR: -1 },
   },
+  // Classic Roblox R6: six bones, no elbows or knees. Both arms and legs swing
+  // about local Z. The signs are all negative because R6 FACES -Z, unlike the
+  // other two rigs — rotating +z displaces a limb toward +Z, which on this model
+  // is backwards.
+  r6: {
+    joints: {
+      hips: 'Torso_00', spine: 'Torso_00', chest: 'Torso_00',
+      neck: 'Head_01', head: 'Head_01',
+      armL: 'Left_Arm_02', armR: 'Right_Arm_03',
+      legL: 'Left_Leg_04', legR: 'Right_Leg_05',
+    },
+    swing: { arm: 'z', fore: 'z', leg: 'z', shin: 'z', foot: 'z', spine: 'x', head: 'x' },
+    sign: { armL: -1, armR: -1, foreL: 0, foreR: 0, legL: -1, legR: -1,
+            shinL: 0, shinR: 0, footL: 0, footR: 0, spine: -1, head: -1 },
+    lift: { arm: 'x', armL: -1, armR: 1 },
+    // This model's bind pose splays the arms out from the shoulders; classic R6
+    // hangs them at the sides. No single lift value fixes that (rotating far
+    // enough just tucks them behind the torso), so the rest pose is corrected
+    // by solving for it — see normalizeRest below.
+    normalizeRest: ['armL', 'armR'],
+    // R6 has no knee or ankle, so the whole leg is one rigid block. Folding the
+    // shin into the thigh keeps the stride reading as a stride instead of
+    // silently dropping half the motion.
+    rigid: true,
+  },
 };
 
 // ---- the pose library ----
@@ -176,6 +201,29 @@ export function makeAnimator(THREE, bones, rigName) {
     joint[canon] = b;
     rest[canon] = b.quaternion.clone();
   }
+  // Some rigs are authored with limbs splayed. Rather than hunting for a magic
+  // offset, solve for the rest pose directly: find the rotation that takes the
+  // limb's current world direction onto straight-down, and fold it into rest.
+  // Everything the poses do then stacks on a sane neutral.
+  for (const canon of (rig.normalizeRest || [])) {
+    const b = joint[canon];
+    if (!b) continue;
+    const child = b.children.find((ch) => ch.isBone);
+    if (!child) continue;
+    b.updateWorldMatrix(true, false);
+    const parentQ = new THREE.Quaternion();
+    (b.parent || b).getWorldQuaternion(parentQ);
+    const worldQ = new THREE.Quaternion();
+    b.getWorldQuaternion(worldQ);
+    const dir = child.position.clone().applyQuaternion(worldQ).normalize();
+    if (!isFinite(dir.x) || dir.lengthSq() < 1e-6) continue;
+    const fix = new THREE.Quaternion().setFromUnitVectors(dir, new THREE.Vector3(0, -1, 0));
+    // move the world-space correction into the bone's local frame
+    const inv = parentQ.clone().invert();
+    const local = inv.multiply(fix).multiply(parentQ).multiply(rest[canon]);
+    rest[canon].copy(local);
+  }
+
   const e = new THREE.Euler(), q = new THREE.Quaternion();
   // Apply a rotation on top of the bind pose. Everything is relative to rest,
   // so a joint we never touch keeps exactly the shape the artist gave it.
@@ -204,12 +252,19 @@ export function makeAnimator(THREE, bones, rigName) {
       for (const k in c) c[k] = 0;
       (POSES[pose] || POSES.idle)(c, phase);
 
-      // The thigh and knee rotations compound down the leg, so without an
-      // ankle that gives most of it back the foot ends up pointing behind the
-      // character at the top of a stride. Real animation keeps the sole flat;
-      // this approximates that rather than authoring a foot curve per pose.
-      c.footL = -(c.legLS + c.shinL) * 0.85;
-      c.footR = -(c.legRS + c.shinR) * 0.85;
+      if (rig.rigid) {
+        // One-piece limbs: there is no knee to bend, so give the thigh a share
+        // of what the knee would have done rather than losing that motion.
+        c.legLS += c.shinL * 0.45; c.legRS += c.shinR * 0.45;
+        c.shinL = c.shinR = c.footL = c.footR = 0;
+      } else {
+        // The thigh and knee rotations compound down the leg, so without an
+        // ankle that gives most of it back the foot ends up pointing behind the
+        // character at the top of a stride. Real animation keeps the sole flat;
+        // this approximates that rather than authoring a foot curve per pose.
+        c.footL = -(c.legLS + c.shinL) * 0.85;
+        c.footR = -(c.legRS + c.shinR) * 0.85;
+      }
 
       const S = rig.sign, SW = rig.swing, LF = rig.lift;
       apply('armL', SW.arm, c.armLS * S.armL, LF.arm, c.armLL * LF.armL);
