@@ -43,6 +43,75 @@ let mode = 'rotate';        // 'rotate' | 'move'
 let world = 'flat';
 let joints = {};            // rig-specific joint table
 
+// ---- undo / redo ----
+// Snapshots of the whole set. A set is plain JSON and small, so cloning it is
+// cheaper and far less error-prone than trying to invert every edit.
+//
+// The one thing that needs care is continuous edits: a gizmo drag calls setKey
+// on every mouse move, and one undo step per frame would be useless. Drags
+// therefore open a change once and close it on release; everything discrete
+// pushes its own step.
+const undoStack = [], redoStack = [];
+let changeOpen = false;
+const HISTORY_MAX = 80;
+
+const snapshot = (label) => ({ label, clipName, state: structuredClone(set) });
+
+function pushUndo(label) {
+  undoStack.push(snapshot(label));
+  if (undoStack.length > HISTORY_MAX) undoStack.shift();
+  redoStack.length = 0;
+  paintHistory();
+}
+/** Begin a continuous edit — one undo step for the whole drag. */
+function openChange(label) { if (!changeOpen) { pushUndo(label); changeOpen = true; } }
+function closeChange() { changeOpen = false; }
+
+function restore(entry) {
+  const modelChanged = entry.state.model !== set.model;
+  set = entry.state;
+  clipName = entry.clipName;
+  selKey = null;
+  $('clip').value = clipName;
+  $('set-name').value = set.name;
+  $('cam-follow').checked = !!set.camera.followHead;
+  $('cam-global').checked = !!set.camera.applyGlobally;
+  $('cam-max').value = set.camera.maxOffset;
+  $('cam-max-val').textContent = Number(set.camera.maxOffset).toFixed(2);
+  const c = clip();
+  $('dur').value = c.duration;
+  $('loop').checked = c.loop !== false;
+  $('clip-label').textContent = clipName;
+  paintModels(); paintScope();
+  markDirty();
+  if (modelChanged) buildAvatar();
+  else { applyPreview(); refreshGizmo(); }
+  paintTimeline(); paintChannels(); paintHistory();
+}
+
+function undo() {
+  if (!undoStack.length) { toast('Nothing to undo'); return; }
+  const entry = undoStack.pop();
+  redoStack.push(snapshot(entry.label));
+  restore(entry);
+  toast(`Undid ${entry.label}`);
+}
+function redo() {
+  if (!redoStack.length) { toast('Nothing to redo'); return; }
+  const entry = redoStack.pop();
+  undoStack.push(snapshot(entry.label));
+  restore(entry);
+  toast(`Redid ${entry.label}`);
+}
+function paintHistory() {
+  $('undo').disabled = !undoStack.length;
+  $('redo').disabled = !redoStack.length;
+  $('undo').title = undoStack.length ? `Undo ${undoStack[undoStack.length - 1].label} (${modKey()}Z)` : 'Nothing to undo';
+  $('redo').title = redoStack.length ? `Redo ${redoStack[redoStack.length - 1].label} (${modKey()}⇧Z)` : 'Nothing to redo';
+}
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const modKey = () => (isMac ? '\u2318' : 'Ctrl+');
+
 const clip = () => (set.clips[clipName] ||= { duration: 1, loop: true, tracks: {} });
 const markDirty = (v = true) => { dirty = v; $('dirty').classList.toggle('hidden', !v); };
 const rigName = () => (set.model === 'any' ? 'boy' : set.model);
@@ -271,7 +340,7 @@ $('view').addEventListener('pointermove', (e) => {
   const j = hit ? hit.object.userData.joint : null;
   if (j !== hoverJoint) { hoverJoint = j; $('view').style.cursor = j ? 'pointer' : 'default'; }
 });
-addEventListener('pointerup', () => { orbit.drag = null; endDrag(); });
+addEventListener('pointerup', () => { orbit.drag = null; endDrag(); closeChange(); });
 addEventListener('pointermove', (e) => {
   if (drag) { moveDrag(e); return; }
   if (!orbit.drag) return;
@@ -293,6 +362,7 @@ function axisVec(axis) {
 
 function startDrag(data, e) {
   if (playing) { playing = false; $('play').textContent = '▶'; }
+  openChange(mode === 'move' ? 'move' : 'rotate');
   const o = jointObject(selJoint);
   if (!o) return;
   const centre = giz.group.position.clone();
@@ -340,7 +410,7 @@ function moveDrag(e) {
     setKey(drag.channel, time, drag.start + (t - drag.t0));
   }
 }
-function endDrag() { if (drag) { drag = null; paintChannels(); } }
+function endDrag() { closeChange(); if (drag) { drag = null; paintChannels(); } }
 
 // ---------------------------------------------------------------- frame
 const headPos = new THREE.Vector3();
@@ -418,6 +488,9 @@ function paintChannels() {
       <div class="n">${ch}${has ? ` · ${c.tracks[ch].length} keys` : ''}
         ${has ? '<button class="ch-clear" title="Delete this channel’s keys">clear</button>' : ''}</div>`;
     const inp = el.querySelector('input');
+    inp.addEventListener('pointerdown', () => openChange('slider'));
+    inp.addEventListener('keydown', () => openChange('slider'));
+    inp.addEventListener('change', closeChange);
     inp.addEventListener('input', () => {
       setKey(ch, time, +inp.value);
       el.querySelector('span').textContent = (+inp.value).toFixed(2);
@@ -457,6 +530,7 @@ function sample(keys, p) {
   return a.v + (b.v - a.v) * k;
 }
 function setKey(ch, t, v) {
+  if (!changeOpen) pushUndo('key change');
   const c = clip();
   const p = +(((t % c.duration) / c.duration).toFixed(4));
   const keys = (c.tracks[ch] ||= []);
@@ -470,6 +544,7 @@ function setKey(ch, t, v) {
 function deleteKey(ch, i) {
   const c = clip(), keys = c.tracks[ch];
   if (!keys || !keys[i]) return false;
+  pushUndo('delete key');
   keys.splice(i, 1);
   if (!keys.length) delete c.tracks[ch];
   if (selKey && selKey.ch === ch) selKey = null;
@@ -479,6 +554,7 @@ function deleteKey(ch, i) {
 function clearChannel(ch) {
   const c = clip();
   if (!c.tracks[ch]) return;
+  pushUndo('clear channel');
   delete c.tracks[ch];
   if (selKey?.ch === ch) selKey = null;
   markDirty(); applyPreview(); paintTimeline(); paintChannels();
@@ -492,16 +568,29 @@ function deleteSelected() {
   const c = clip();
   const chans = [...(joints[selJoint].rot || []), ...(joints[selJoint].move || [])].map((r) => r.channel);
   let n = 0;
+  const before = structuredClone(set);
   for (const ch of chans) {
     const keys = c.tracks[ch]; if (!keys) continue;
     const p = (time % c.duration) / c.duration;
     const i = keys.findIndex((k) => Math.abs(k.t - p) < 0.02);
     if (i >= 0) { keys.splice(i, 1); n++; if (!keys.length) delete c.tracks[ch]; }
   }
-  if (n) { markDirty(); applyPreview(); paintTimeline(); paintChannels(); toast(`Deleted ${n} key${n > 1 ? 's' : ''}`); }
+  if (n) {
+    undoStack.push({ label: 'delete keys', clipName, state: before });
+    redoStack.length = 0; paintHistory();
+    markDirty(); applyPreview(); paintTimeline(); paintChannels(); toast(`Deleted ${n} key${n > 1 ? 's' : ''}`);
+  }
   else toast('No key here to delete');
 }
 addEventListener('keydown', (e) => {
+  // Undo works even from inside a field — it is muscle memory, and a text
+  // caret is not a good reason for the shortcut to go dead.
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault();
+    if (e.shiftKey) redo(); else undo();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
   else if (e.key === 'r' || e.key === 'e') setMode('rotate');
@@ -539,6 +628,7 @@ function paintTimeline() {
         const r = track.getBoundingClientRect();
         let moved = false;
         const move = (ev) => {
+          if (!moved) openChange('move key');
           moved = true;
           k.t = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
           d.style.left = `${k.t * 100}%`;
@@ -546,6 +636,7 @@ function paintTimeline() {
         };
         const up = () => {
           removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+          closeChange();
           if (moved) { keys.sort((a, b) => a.t - b.t); applyPreview(); paintTimeline(); }
         };
         addEventListener('pointermove', move); addEventListener('pointerup', up);
@@ -553,6 +644,7 @@ function paintTimeline() {
       d.addEventListener('dblclick', (e) => { e.stopPropagation(); deleteKey(ch, i); });
       d.addEventListener('contextmenu', (e) => {
         e.preventDefault();
+        pushUndo('easing');
         k.e = k.e === 'smooth' ? 'linear' : k.e === 'linear' ? 'step' : 'smooth';
         markDirty(); applyPreview(); paintTimeline(); toast(`Easing: ${k.e}`);
       });
@@ -576,12 +668,15 @@ $('mode-move').addEventListener('click', () => setMode('move'));
 $('play').addEventListener('click', togglePlay);
 $('stop').addEventListener('click', () => { playing = false; time = 0; $('play').textContent = '▶'; });
 $('speed').addEventListener('input', (e) => { speed = +e.target.value; });
-$('loop').addEventListener('change', (e) => { clip().loop = e.target.checked; markDirty(); });
-$('dur').addEventListener('change', (e) => { clip().duration = Math.max(0.05, +e.target.value || 1); markDirty(); applyPreview(); paintTimeline(); });
+$('loop').addEventListener('change', (e) => { pushUndo('loop'); clip().loop = e.target.checked; markDirty(); });
+$('dur').addEventListener('change', (e) => { pushUndo('clip length'); clip().duration = Math.max(0.05, +e.target.value || 1); markDirty(); applyPreview(); paintTimeline(); });
 $('clip').addEventListener('change', (e) => { clipName = e.target.value; syncClip(); });
 $('del-key').addEventListener('click', deleteSelected);
+$('undo').addEventListener('click', undo);
+$('redo').addEventListener('click', redo);
 
 $('seed').addEventListener('click', () => {
+  pushUndo('seed');
   const c = clip();
   const N = 12;
   for (const ch of META.channels) c.tracks[ch] = [];
@@ -599,6 +694,7 @@ $('seed').addEventListener('click', () => {
   toast(`Seeded ${clipName} from the built-in pose`);
 });
 $('mirror').addEventListener('click', () => {
+  pushUndo('mirror');
   const c = clip(), t = c.tracks;
   const swap = [['armLS', 'armRS'], ['armLL', 'armRL'], ['foreL', 'foreR'], ['legLS', 'legRS'], ['shinL', 'shinR'], ['footL', 'footR']];
   for (const [a, b] of swap) { const tmp = t[a]; if (t[b]) t[a] = t[b]; else delete t[a]; if (tmp) t[b] = tmp; else delete t[b]; }
@@ -606,6 +702,7 @@ $('mirror').addEventListener('click', () => {
 });
 $('clear-clip').addEventListener('click', () => {
   if (!confirm(`Delete every key in "${clipName}"?`)) return;
+  pushUndo('clear clip');
   set.clips[clipName] = { duration: clip().duration, loop: clip().loop, tracks: {} };
   selKey = null;
   markDirty(); applyPreview(); paintTimeline(); paintChannels();
@@ -651,7 +748,7 @@ function paintModels() {
     const b = document.createElement('button');
     b.textContent = m === 'any' ? 'Any' : m === 'r6' ? 'R6' : m[0].toUpperCase() + m.slice(1);
     b.className = set.model === m ? 'on' : '';
-    b.addEventListener('click', () => { set.model = m; markDirty(); paintModels(); buildAvatar(); });
+    b.addEventListener('click', () => { if (set.model === m) return; pushUndo('model'); set.model = m; markDirty(); paintModels(); buildAvatar(); });
     host.appendChild(b);
   }
 }
@@ -673,7 +770,7 @@ function paintScope() {
   }
 }
 $('scope-global').addEventListener('change', (e) => { set.scope = e.target.checked ? 'global' : []; markDirty(); paintScope(); });
-$('cam-follow').addEventListener('change', (e) => { set.camera.followHead = e.target.checked; markDirty(); });
+$('cam-follow').addEventListener('change', (e) => { pushUndo('camera rule'); set.camera.followHead = e.target.checked; markDirty(); });
 $('cam-global').addEventListener('change', (e) => { set.camera.applyGlobally = e.target.checked; markDirty(); });
 $('cam-max').addEventListener('input', (e) => { set.camera.maxOffset = +e.target.value; $('cam-max-val').textContent = (+e.target.value).toFixed(2); markDirty(); });
 $('set-name').addEventListener('input', (e) => { set.name = e.target.value; markDirty(); });
@@ -710,8 +807,16 @@ function syncAll() {
   $('cam-max-val').textContent = Number(set.camera.maxOffset).toFixed(2);
   paintModels(); paintScope(); paintSets(); syncClip(); buildAvatar();
 }
-function loadSet(s) { set = structuredClone(s); markDirty(false); syncAll(); }
-$('new-set').addEventListener('click', () => { set = blankSet(); markDirty(true); syncAll(); });
+function loadSet(s) {
+  set = structuredClone(s);
+  undoStack.length = 0; redoStack.length = 0; paintHistory();
+  markDirty(false); syncAll();
+}
+$('new-set').addEventListener('click', () => {
+  set = blankSet();
+  undoStack.length = 0; redoStack.length = 0; paintHistory();
+  markDirty(true); syncAll();
+});
 
 (async () => {
   try {
@@ -728,6 +833,7 @@ $('new-set').addEventListener('click', () => { set = blankSet(); markDirty(true)
   set = sets.length ? structuredClone(sets[0]) : blankSet();
   setMode('rotate');
   syncAll();
+  paintHistory();
   setInterval(() => { if (!drag) paintChannels(); }, 300);
   // Debug handle, in the same spirit as rivals' window.__momentum: lets the
   // viewport be driven and inspected from the console (and from tests).
@@ -753,6 +859,8 @@ $('new-set').addEventListener('click', () => { set = blankSet(); markDirty(true)
     tracks: () => clip().tracks,
     select(c) { selJoint = c; refreshGizmo(); },
     setMode,
+    undo, redo,
+    history: () => ({ undo: undoStack.map((e) => e.label), redo: redoStack.map((e) => e.label) }),
   };
   requestAnimationFrame(frame);
 })();

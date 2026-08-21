@@ -169,3 +169,11 @@ h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: v
 }
 .ch-clear:hover { color: var(--danger); }
 .kf.sel { outline: 2px solid #fff; outline-offset: 1px; z-index: 3; }
+
+.icon {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--dim);
+  width: 30px; height: 28px; border-radius: 8px; cursor: pointer;
+  font-size: 14px; line-height: 1; display: grid; place-items: center;
+}
+.icon:hover:not(:disabled) { color: var(--ink); border-color: #3a4453; }
+.icon:disabled { opacity: .35; cursor: default; }
