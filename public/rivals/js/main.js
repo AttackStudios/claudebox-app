@@ -5,7 +5,10 @@
 import * as THREE from 'three';
 import { Net } from './net.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
-import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// Animation sets published from /animator. Fire and forget: sets that arrive
+// late are still applied to avatars that already exist.
+useGameAnimations('rivals').catch(() => {});
 import { makeR6, R6_DEFAULT, preloadR6 } from '/shared/r6.js';
 import { drawAvatarHead } from '/hub/avatarModel.js';
 import { MOVE, WEAPONS, LOADOUT, ROUND } from '/shared/rivals/config.js';

@@ -1,6 +1,9 @@
 // Web Rush — Spider-style web-swinging across a city, with crime-scene combat.
 import * as THREE from 'three';
-import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// Animation sets published from /animator. Fire and forget: sets that arrive
+// late are still applied to avatars that already exist.
+useGameAnimations('webrush').catch(() => {});
 import { fpFade } from '/js/fpzoom.js';
 import { Net, InterpBuffer } from './net.js';
 import { GROUND, SPAWN, BUILDINGS, CRIMES, MAX_HP, GRAVITY, WEB_RANGE, BLOCK, ROAD, SPAN, N, PLAZAS } from '/shared/webrush/city.js';

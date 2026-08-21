@@ -5,7 +5,10 @@
 import * as THREE from 'three';
 import { fpFade } from '/js/fpzoom.js';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
-import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// Animation sets published from /animator. Fire and forget: sets that arrive
+// late are still applied to avatars that already exist.
+useGameAnimations('obby').catch(() => {});
 import { Net, InterpBuffer } from './net.js';
 import { COURSE, START, moverPos, spinAngle, KILL_Y, checkpointById, FINISH_STAGE, applyCourse,
          blinkOn, blinkPhase, pendulumPos, laserOn } from '/shared/obby/course.js';
@@ -646,6 +649,7 @@ function win() {
 
 // ---------- camera (third-person orbit) ----------
 const orbit = { yaw: Math.PI, pitch: 0.42, dist: 9 };
+const _headOff = new THREE.Vector3();
 // Jump — routed through here so gear (higher jump, an extra air jump) and the
 // sound all live in one place.
 function tryJump() {
@@ -668,7 +672,14 @@ function updateCamera() {
   // camera framing tracks your size: tiny → close & low, giant → far & high
   const s = game.scale;
   const dist = orbit.dist * s;
-  const tx = player.pos.x, ty = player.pos.y + 1.4 * s, tz = player.pos.z;
+  let tx = player.pos.x, ty = player.pos.y + 1.4 * s, tz = player.pos.z;
+  // A published animation set can ask the camera to ride the head, so a bob or
+  // a lean in the animation moves the view with it. The offset is clamped by
+  // the set, and it is added to the target — your zoom and orbit are untouched.
+  if (myAvatar.ctrl?.headOffset) {
+    const ho = myAvatar.ctrl.headOffset(_headOff);
+    tx += ho.x; ty += ho.y; tz += ho.z;
+  }
   const cp = Math.cos(orbit.pitch);
   let cx = tx + Math.sin(orbit.yaw) * cp * dist;
   const cy = ty + Math.sin(orbit.pitch) * dist;

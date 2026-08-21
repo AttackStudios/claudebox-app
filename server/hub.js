@@ -14,6 +14,7 @@ import { toObbyCourse, toWibitWorld, toJuniorGuardsWorld } from '../shared/studi
 import { sanitizeLevel } from '../shared/studio/format.js';
 import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID } from '../shared/rewards.js';
 import { SKIN_BY_ID, CASE_PRICE, rollCase } from '../shared/rivals/skins.js';
+import * as anim from './anim/store.js';
 
 const DATA_DIR = process.env.CLAUDEBOX_DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const FILE = path.join(DATA_DIR, 'platform.json');
@@ -690,12 +691,46 @@ export function hubRouter() {
   r.use((req, res, next) => {
     if (!ACCESS_CODE) return next();
     if (OPEN.has(req.path) || (req.method === 'GET' && req.path.startsWith('/level/'))) return next();
+    // every player's game client fetches its animation sets on load
+    if (req.method === 'GET' && req.path.startsWith('/anim/for/')) return next();
     const code = req.get('x-cbx-code') || req.body?.code;
     if (checkAccess(code)) return next();
     res.status(403).json({ error: 'This ClaudeBox is locked — enter the invite code.' });
   });
 
   r.get('/games', (req, res) => res.json({ games: gamesWithStats() }));
+
+  // ---------------- animation sets ----------------
+  // Authored in /animator, stored here, played by the games. Reading what a
+  // game should play is open (every player needs it); writing is not.
+  r.get('/anim/sets', (req, res) => res.json({ sets: anim.allSets() }));
+  r.get('/anim/for/:game', (req, res) => res.json({ sets: anim.setsForGame(String(req.params.game || '')) }));
+  r.get('/anim/meta', (req, res) => res.json({
+    channels: anim.CHANNELS, clips: anim.CLIPS, models: anim.MODELS,
+    games: GAMES.map((g) => ({ id: g.id, name: g.title })),
+  }));
+  r.post('/anim/save', (req, res) => {
+    const name = clean(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const existing = anim.getSet(String(req.body?.set?.id || ''));
+    // only the author (or the owner) may overwrite a set
+    if (existing && existing.owner && existing.owner !== name.toLowerCase() && badgeFor(name) !== 'owner') {
+      return res.status(403).json({ error: 'that set belongs to someone else' });
+    }
+    const set = anim.sanitizeSet(req.body?.set, name.toLowerCase());
+    anim.putSet(set);
+    res.json({ ok: true, set });
+  });
+  r.post('/anim/delete', (req, res) => {
+    const name = clean(req.body?.name);
+    const set = anim.getSet(String(req.body?.id || ''));
+    if (!set) return res.json({ ok: true });
+    if (set.owner && set.owner !== name.toLowerCase() && badgeFor(name) !== 'owner') {
+      return res.status(403).json({ error: 'that set belongs to someone else' });
+    }
+    anim.deleteSet(set.id);
+    res.json({ ok: true });
+  });
 
   // Like / unlike a game (Roblox-style thumbs up). Idempotent per user.
   r.post('/game/like', (req, res) => {

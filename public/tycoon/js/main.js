@@ -4,7 +4,10 @@
 
 import * as THREE from 'three';
 import { fpFade } from '/js/fpzoom.js';
-import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// Animation sets published from /animator. Fire and forget: sets that arrive
+// late are still applied to avatars that already exist.
+useGameAnimations('tycoon').catch(() => {});
 import { Net, InterpBuffer } from './net.js';
 import {
   PLOTS, CENTER, GROUND, ARENA_RADIUS, ELEMENTS, ELEMENT_BY_ID, BUTTONS, BUTTON_BY_ID,

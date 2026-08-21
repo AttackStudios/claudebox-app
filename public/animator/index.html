@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClaudeBox — Animator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+<link rel="stylesheet" href="/animator/animator.css">
+</head>
+<body>
+<header id="bar">
+  <a id="home" href="/" title="Back to ClaudeBox">◀</a>
+  <h1>Animator</h1>
+  <input id="set-name" placeholder="Set name" maxlength="48">
+  <span id="dirty" class="hidden">unsaved</span>
+  <div class="grow"></div>
+  <span id="who"></span>
+  <button id="save" class="btn">Save</button>
+  <button id="publish" class="btn primary">Publish</button>
+</header>
+
+<main id="app">
+  <!-- ---------- left: sets, model, scope, camera ---------- -->
+  <aside id="left">
+    <section>
+      <h2>Sets <button id="new-set" class="mini">+ New</button></h2>
+      <div id="set-list"></div>
+    </section>
+
+    <section>
+      <h2>Model</h2>
+      <div id="model-row" class="chips"></div>
+      <p class="hint">Animations are keyframes on channels every rig shares, so
+        <b>Any</b> drives all four. Pick a model to make a set that only applies
+        to that one.</p>
+    </section>
+
+    <section>
+      <h2>Applies to</h2>
+      <label class="check"><input type="checkbox" id="scope-global"> <span>Every game</span></label>
+      <div id="scope-games" class="scope-list"></div>
+    </section>
+
+    <section>
+      <h2>Camera</h2>
+      <label class="check"><input type="checkbox" id="cam-follow"> <span>Camera follows the head</span></label>
+      <p class="hint">The camera stays locked to head motion this animation
+        produces, so moving the head in a keyframe moves the view with it. Zoom
+        is unaffected.</p>
+      <label class="slider">Max distance from head <b id="cam-max-val">0.35</b>
+        <input type="range" id="cam-max" min="0" max="3" step="0.05" value="0.35"></label>
+      <label class="check"><input type="checkbox" id="cam-global"> <span>Apply this rule game-wide</span></label>
+    </section>
+  </aside>
+
+  <!-- ---------- centre: viewport + transport ---------- -->
+  <section id="centre">
+    <div id="stage"><canvas id="view"></canvas>
+      <div id="viewhud">
+        <span id="clip-label">idle</span>
+        <span id="frame-label">0.00s</span>
+      </div>
+      <div id="world-pick"></div>
+    </div>
+    <div id="transport">
+      <button id="play" class="btn">▶</button>
+      <button id="stop" class="btn">■</button>
+      <label class="inline">Clip <select id="clip"></select></label>
+      <label class="inline">Length <input id="dur" type="number" min="0.05" max="20" step="0.05" value="1"> s</label>
+      <label class="check inline"><input type="checkbox" id="loop" checked> <span>Loop</span></label>
+      <label class="inline">Speed <input id="speed" type="range" min="0.1" max="2" step="0.1" value="1"></label>
+      <div class="grow"></div>
+      <button id="seed" class="btn">Start from built-in</button>
+      <button id="mirror" class="btn">Mirror L/R</button>
+      <button id="clear-clip" class="btn danger">Clear clip</button>
+    </div>
+  </section>
+
+  <!-- ---------- right: channels ---------- -->
+  <aside id="right">
+    <h2>Channels</h2>
+    <p class="hint">Move a slider to set a key at the playhead. Keys are stored
+      per channel, so you can animate one arm and leave everything else to the
+      built-in pose.</p>
+    <div id="channels"></div>
+  </aside>
+</main>
+
+<!-- ---------- timeline ---------- -->
+<footer id="timeline">
+  <div id="tl-head">
+    <span>Timeline</span>
+    <span class="hint">click a lane to add a key · drag to move · double-click to delete · right-click for easing</span>
+    <div class="grow"></div>
+    <span id="keycount"></span>
+  </div>
+  <div id="tl-body"><div id="tl-lanes"></div><div id="playhead"></div></div>
+</footer>
+
+<div id="toast"></div>
+<script type="module" src="/animator/animator.js"></script>
+</body>
+</html>

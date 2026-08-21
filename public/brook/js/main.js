@@ -2,7 +2,10 @@
 // Third-person multiplayer: walk the town, drive cars, enter houses, chat.
 import * as THREE from 'three';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
-import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// Animation sets published from /animator. Fire and forget: sets that arrive
+// late are still applied to avatars that already exist.
+useGameAnimations('brook').catch(() => {});
 import { Net, InterpBuffer } from './net.js';
 import { fpFade } from '/js/fpzoom.js';
 import { SPAWN, CARS, BUILDINGS, ROADS, GROUND } from '/shared/brook/town.js';

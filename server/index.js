@@ -82,6 +82,8 @@ app.get('/games/restaurant-sim-2', (req, res) => res.sendFile(path.join(ROOT, 'p
 app.get('/games/obby', (req, res) => res.sendFile(path.join(ROOT, 'public', 'obby', 'index.html')));
 // Character Lab — a tuning bench for the movement games (public/lab)
 app.get('/lab', (req, res) => res.sendFile(path.join(ROOT, 'public', 'lab', 'index.html')));
+// Animator — author animation sets that games load without any export step
+app.get('/animator', (req, res) => res.sendFile(path.join(ROOT, 'public', 'animator', 'index.html')));
 app.get('/games/wibit', (req, res) => res.sendFile(path.join(ROOT, 'public', 'wibit', 'index.html')));
 app.get('/games/juniorguards', (req, res) => res.sendFile(path.join(ROOT, 'public', 'juniorguards', 'index.html')));
 app.get('/games/rivals', (req, res) => res.sendFile(path.join(ROOT, 'public', 'rivals', 'index.html')));

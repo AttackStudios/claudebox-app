@@ -4,7 +4,10 @@
 // animatePlayer / makePlayerAnimState exactly as before; the work is delegated.
 
 import * as THREE from 'three';
-import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
+import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// Animation sets published from /animator. Fire and forget: sets that arrive
+// late are still applied to avatars that already exist.
+useGameAnimations('backpacking').catch(() => {});
 
 // Returns { name, avatar } or redirects to the hub for login. Also preloads the
 // avatar GLBs so the (synchronous) buildPlayerAvatar can run immediately after.

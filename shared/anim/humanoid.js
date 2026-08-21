@@ -269,6 +269,7 @@ export const resolvePose = (name) => (POSES[name] ? name : (POSES[ALIAS[name]] ?
 export function makeAnimator(THREE, bones, rigName, packName = 'none') {
   const rig = RIGS[rigName] || RIGS.boy;
   let pack = PACKS[packName] || PACKS.none;
+  let custom = null;
   const joint = {}, rest = {};
   for (const [canon, boneName] of Object.entries(rig.joints)) {
     const b = bones[boneName];
@@ -318,6 +319,15 @@ export function makeAnimator(THREE, bones, rigName, packName = 'none') {
     get pose() { return pose; },
     setSpeed(v) { speed = v; },
     setPack(name) { pack = PACKS[name] || PACKS.none; },
+    // An authored set arrives as a plain map of pose -> function, built by
+    // shared/anim/custom.js. It layers on top of whatever built-in pack is
+    // selected, so a set can replace one clip and leave the rest alone.
+    setCustomPack(obj) { custom = obj && typeof obj === 'object' ? obj : null; },
+    // Drive the phase directly. The animator normally advances on its own
+    // clock; an editor needs to put it at an exact time so the viewport and the
+    // playhead can never disagree.
+    setPhase(t) { phase = t; },
+    get phase() { return phase; },
     update(dt) {
       // Cycle rate follows how fast the body is actually travelling, so a walk
       // does not scrub at a fixed rate regardless of speed.
@@ -327,7 +337,7 @@ export function makeAnimator(THREE, bones, rigName, packName = 'none') {
       if (!STATIC.has(pose)) phase += dt * rate;
       for (const k in c) c[k] = 0;
       // a pack's pose wins; anything it leaves out falls through to the default
-      ((pack[pose]) || POSES[pose] || POSES.idle)(c, phase);
+      ((custom && custom[pose]) || pack[pose] || POSES[pose] || POSES.idle)(c, phase);
 
       if (rig.rigid) {
         // One-piece limbs: there is no knee to bend, so give the thigh a share

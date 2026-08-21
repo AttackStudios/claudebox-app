@@ -10,6 +10,7 @@ import { clone as cloneSkinned } from '/vendor/SkeletonUtils.js';
 import { mergeGeometries } from '/vendor/BufferGeometryUtils.js';
 import { makeAnimator } from '/shared/anim/humanoid.js';
 import { buildSteven, skinFromProfile, textureFromImage, STEVEN_HEIGHT } from '/shared/avatar/steven.js';
+import { loadGameAnimations } from '/shared/anim/custom.js';
 
 const loader = new GLTFLoader();
 const glbCache = new Map();
@@ -33,6 +34,71 @@ const meshRegion = (name) => {
   for (const [r, list] of Object.entries(REGIONS)) if (list.includes(name)) return r;
   return 'skin';
 };
+
+// Animation sets published from /animator. A game calls useGameAnimations once
+// and every avatar it makes afterwards plays them — that is the whole
+// integration, and it is why nothing has to be exported or rebuilt.
+let gamePack = null, gameCameraRule = null;
+const liveCtrls = new Set();
+export async function useGameAnimations(gameId) {
+  const { pack, camera } = await loadGameAnimations(gameId, 'any');
+  gamePack = pack; gameCameraRule = camera;
+  for (const c of liveCtrls) c.setCustomPack?.(gamePack);
+  return { pack, camera };
+}
+/** The camera rule the published sets ask for, or null. */
+export const animationCameraRule = () => gameCameraRule;
+
+// Camera rule support. A published set can ask that the camera follow the head
+// exactly — so a head bob or a lean in an animation moves the view with it —
+// without that ever becoming a way to fly the camera off the body. We report
+// the head's displacement from where it rests, clamped to the rule's limit;
+// the game adds it to its own camera target, so zoom and orbit still belong to
+// the player.
+function attachHeadRule(ctrl, THREE) {
+  // Measure against the BIND pose, not against the head's local position:
+  // animations rotate the spine, hips and head, and a rotation never changes a
+  // bone's own local position. So we pin a probe point rigidly to the head —
+  // roughly where the eyes sit, derived from the model so it works for every
+  // rig — and compare where it is now with where it rests. That picks up bobs
+  // and leans (ancestors moving the joint) and head tilts (the head's own
+  // rotation swinging the probe) alike.
+  let probeInHead = null, restInGroup = null;
+  const cur = new THREE.Vector3(), rest = new THREE.Vector3();
+  const headBone = () => {
+    const b = ctrl.bones || {};
+    // boy / r6 / girl / steven, in that order
+    return b.mixamorigHead || b.Head_01 || b.Neck || b.head || null;
+  };
+  const bind = () => {
+    const h = headBone();
+    if (!h) return false;
+    ctrl.group.updateMatrixWorld(true);
+    const headW = new THREE.Vector3(); h.getWorldPosition(headW);
+    const groupW = new THREE.Vector3(); ctrl.group.getWorldPosition(groupW);
+    const H = Math.max(0.2, headW.y - groupW.y);          // head height above the feet
+    const probeW = headW.clone().add(new THREE.Vector3(0, H * 0.09, 0));
+    probeInHead = h.worldToLocal(probeW.clone());
+    restInGroup = ctrl.group.worldToLocal(probeW.clone());
+    return true;
+  };
+  ctrl.headOffset = (out) => {
+    out = out || new THREE.Vector3();
+    out.set(0, 0, 0);
+    const rule = gameCameraRule;
+    if (!rule || !rule.followHead) return out;
+    const h = headBone();
+    if (!h) return out;
+    if (!probeInHead && !bind()) return out;
+    h.localToWorld(cur.copy(probeInHead));
+    ctrl.group.localToWorld(rest.copy(restInGroup));
+    out.copy(cur).sub(rest);
+    const max = typeof rule.maxOffset === 'number' ? rule.maxOffset : 0.35;
+    if (out.length() > max) out.setLength(max);
+    return out;
+  };
+  bind();
+}
 
 export async function preloadAvatars(list = ['boy', 'girl', 'r6']) {
   await Promise.all(list.map(loadGender));
@@ -503,12 +569,16 @@ export function makeAvatar(profile = {}) {
     },
 
     setPack(name) { anim.setPack(name); },
+    setCustomPack(obj) { anim.setCustomPack(obj); },
     dispose() { },
   };
 
   ctrl.setColors(profile);
   ctrl.setClothing(profile);
   ctrl.setAnim('idle');
+  if (gamePack) ctrl.setCustomPack(gamePack);
+  attachHeadRule(ctrl, THREE);
+  liveCtrls.add(ctrl);
   return ctrl;
 }
 
@@ -560,9 +630,13 @@ function makeStevenAvatar(profile = {}) {
     // caller in the editor already rebuilds the avatar, this is for anyone else
     get slim() { return built.slim; },
     setPack(name) { anim.setPack(name); },
+    setCustomPack(obj) { anim.setCustomPack(obj); },
     dispose() { tex?.dispose?.(); },
   };
   ctrl.setAnim('idle');
+  if (gamePack) ctrl.setCustomPack(gamePack);
+  attachHeadRule(ctrl, THREE);
+  liveCtrls.add(ctrl);
   return ctrl;
 }
 
