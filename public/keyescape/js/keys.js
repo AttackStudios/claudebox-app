@@ -16,7 +16,8 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 export const KEY_SIZE = 1.9;      // world units across a cap
 export const KEY_GAP = 0.26;      // a real board leaves air between caps
 export const KEY_H = 0.86;        // cap height
-export const PRESS_DEPTH = 0.34;  // how far a cap sinks
+export const PRESS_DEPTH = 0.44;  // how far a cap sinks when struck
+export const REST_PRESS = 0.30;   // struck caps stay this far down, so your path is readable
 
 const texCache = new Map();
 function letterTexture(ch) {
@@ -210,10 +211,18 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
     const { c, r } = worldToCell(x, z);
     const rec = grid.get(`${c},${r}`);
     if (!rec) return null;
-    return rec.h + KEY_H;
+    return rec.h + KEY_H - REST_PRESS * PRESS_DEPTH;
   }
 
   const active = new Set();   // caps mid-animation
+
+  const writeMatrix = (rec) => {
+    dummy.position.set(ox + rec.col * pitch, rec.h + KEY_H / 2 - rec.press * PRESS_DEPTH, oz + rec.row * pitch);
+    dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    rec.mesh.setMatrixAt(rec.idx, dummy.matrix);
+    rec.mesh.instanceMatrix.needsUpdate = true;
+  };
 
   /** Press the cap under a point. Returns the record if this is its first press. */
   function pressAt(x, z) {
@@ -223,8 +232,12 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
     const fresh = !rec.pressed;
     rec.pressed = 1;
     rec.press = 1;
-    rec.hold = 0.06;
+    rec.hold = 0.09;
     active.add(rec);
+    // Draw the pressed state NOW. Waiting for the next update() meant the hold
+    // frames rendered the cap still up, so the bottom of the stroke was never
+    // on screen at all — the keys looked like they did not move.
+    writeMatrix(rec);
     return fresh ? rec : null;
   }
 
@@ -252,17 +265,16 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
   function update(dt) {
     if (!active.size) return;
     for (const rec of active) {
-      if (rec.hold > 0) { rec.hold -= dt; continue; }
-      // springs back, but never all the way — a struck key stays a shade down
-      // so you can read your own path across the board behind you
-      const rest = 0.18;
-      rec.press += (rest - rec.press) * Math.min(1, dt * 7);
-      if (Math.abs(rec.press - rest) < 0.004) { rec.press = rest; active.delete(rec); }
-      dummy.position.set(ox + rec.col * pitch, rec.h + KEY_H / 2 - rec.press * PRESS_DEPTH, oz + rec.row * pitch);
-      dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      rec.mesh.setMatrixAt(rec.idx, dummy.matrix);
-      rec.mesh.instanceMatrix.needsUpdate = true;
+      if (rec.hold > 0) {
+        // held at the bottom of the stroke — and still drawn there
+        rec.hold -= dt;
+        continue;
+      }
+      // springs back, but never all the way: a struck key stays down so you can
+      // read your own path across the board behind you
+      rec.press += (REST_PRESS - rec.press) * Math.min(1, dt * 5);
+      if (Math.abs(rec.press - REST_PRESS) < 0.004) { rec.press = REST_PRESS; active.delete(rec); }
+      writeMatrix(rec);
     }
   }
 
