@@ -65,7 +65,11 @@ export const totalMult = (s) => rebirthMult(s) * trailOf(s).mult;
  */
 export function actualSpeed(save) {
   const raw = (save.level || 0) * totalMult(save) + 1;
-  return Math.min(112, 11 + 3.0 * Math.pow(raw, 0.42));
+  // The exponent is the pacing dial. At 0.42 a single stage's worth of keys
+  // roughly doubled your speed, which ran away from the player inside one run;
+  // 0.30 spreads the same growth across many stages, so a stage makes you
+  // noticeably quicker rather than uncontrollable.
+  return Math.min(112, 11 + 2.2 * Math.pow(raw, 0.30));
 }
 
 const UNITS = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];

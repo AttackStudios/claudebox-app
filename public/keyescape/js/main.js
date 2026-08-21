@@ -206,6 +206,13 @@ function respawn() {
   player.x = stage.spawn.x; player.z = stage.spawn.z;
   player.y = stage.spawn.y + 2; player.vy = 0; player.dead = false;
   prevX = player.x; prevZ = player.z;
+  camY = player.y;
+  invuln = 1.6;
+  // shove any chaser that wandered onto the spawn back out of the safe zone
+  for (const h of stage.hazards) {
+    if (h.kind !== 'chaser') continue;
+    if (h.group.position.z < stage.safeZ + 6) h.group.position.z = stage.safeZ + 14;
+  }
   clearTrail();
 }
 
@@ -441,6 +448,7 @@ const GRAV = -84, JUMP_V = 25.5;
 let last = performance.now();
 // yaw = PI puts forward at +Z, which is the direction the board runs
 const orbit = { yaw: Math.PI, pitch: 0.34, dist: 19 };
+let camY = 0;   // damped follow height
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -470,6 +478,7 @@ function frame(now) {
 
 let moving = false, fastNow = 12;
 let prevX = 0, prevZ = 0;   // last frame's position, for the swept key test
+let invuln = 0;             // brief grace after a respawn
 function step(dt) {
   const sp = actualSpeed(save);
   fastNow = sp;
@@ -549,7 +558,12 @@ function step(dt) {
   player.x = Math.max(stage.midX - half - 2, Math.min(stage.midX + half + 2, player.x));
   player.z = Math.max(-4, Math.min(stage.length + 8, player.z));
   if (player.y < -22) die();
-  for (const h of stage.hazards) if (h.hits && h.hits(player)) { die(); break; }
+  // Nothing can touch you in the safe zone, and a respawn buys you a moment to
+  // get moving — between them, a hazard sitting on the spawn cannot lock you out.
+  invuln = Math.max(0, invuln - dt);
+  const safe = player.z < stage.safeZ || invuln > 0;
+  if (avatar) avatar.group.visible = !(invuln > 0 && Math.floor(invuln * 12) % 2);
+  if (!safe) { for (const h of stage.hazards) if (h.hits && h.hits(player)) { die(); break; } }
   if (player.z >= stage.goal.z - 1) finish();
 
   $('progfill').style.width = `${Math.max(0, Math.min(100, (player.z / stage.goal.z) * 100))}%`;
@@ -562,7 +576,16 @@ function updateCamera(dt) {
   // pinch, and the player runs relative to wherever you are looking.
   const s = 1;
   const dist = orbit.dist * s;
-  const tx = player.x, ty = player.y + 2.2 * s, tz = player.z;
+  // Follow a damped height rather than the player's exact y. Steps, kerbs and
+  // landings are small vertical jumps, and tying the camera to them rigidly
+  // reads as a stutter however smooth the movement actually is.
+  // Two rates: a lazy one so kerbs, cap tops and slope rows glide by, and a
+  // quick one so a real jump or fall still feels connected. One rate cannot do
+  // both — fast enough for a jump is fast enough to show every 0.2u step.
+  const dy = player.y - camY;
+  camY += dy * Math.min(1, dt * (Math.abs(dy) > 2 ? 14 : 4.5));
+  if (Math.abs(dy) > 6) camY = player.y;                  // respawns snap
+  const tx = player.x, ty = camY + 2.2 * s, tz = player.z;
   const cp = Math.cos(orbit.pitch);
   const cx = tx + Math.sin(orbit.yaw) * cp * dist;
   const cy = ty + Math.sin(orbit.pitch) * dist;
@@ -645,7 +668,7 @@ canvas.addEventListener('touchcancel', camEnd, { passive: true });
   // a debug handle, matching the convention the other ClaudeBox games use
   window.__key = {
     get save() { return save; }, get player() { return player; }, get stage() { return stage; },
-    load: loadStage, speed: () => actualSpeed(save), get orbit() { return orbit; },
+    load: loadStage, speed: () => actualSpeed(save), get orbit() { return orbit; }, get camera() { return camera; },
     give(w) { save.wins += w; hudWins(); paintShop?.(); },
   };
 })();

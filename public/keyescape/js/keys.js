@@ -198,13 +198,19 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
   });
   const cellCentre = (c, r) => ({ x: ox + c * pitch, z: oz + r * pitch });
 
-  /** Top surface under a point, or null over a gap. */
+  /**
+   * Top surface under a point, or null over a gap.
+   *
+   * Deliberately ignores the press animation. Letting the collision surface
+   * follow the cap meant the ground dropped a third of a unit the instant you
+   * touched a key, so your feet — and the camera watching them — snapped down
+   * on every single keystroke. The press is cosmetic; the floor is flat.
+   */
   function heightAt(x, z) {
     const { c, r } = worldToCell(x, z);
     const rec = grid.get(`${c},${r}`);
     if (!rec) return null;
-    // a pressed cap really is lower — you can feel the board sink under a run
-    return rec.h + KEY_H - rec.press * PRESS_DEPTH;
+    return rec.h + KEY_H;
   }
 
   const active = new Set();   // caps mid-animation

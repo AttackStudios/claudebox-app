@@ -64,7 +64,7 @@ const W1 = [
   { n: 5,  title: 'Vanishing Path',   theme: 'candy',     shape: 'narrow',  opt: { width: 3 },             wins: 50,   rec: 20, diff: 'Medium', rows: 70,  hazards: [{ t: 'dissolve', from: 0.22, to: 0.86, fade: 3 }] },
   { n: 6,  title: 'Double Trouble',   theme: 'chocolate', shape: 'flat',    opt: {},                       wins: 80,   rec: 26, diff: 'Medium', rows: 92,  hazards: [{ t: 'chaser', at: 0.3, speed: 5.6 }, { t: 'chaser', at: 0.66, speed: 6.1 }] },
   { n: 7,  title: 'Spin Cycle',       theme: 'candy',     shape: 'flat',    opt: {},                       wins: 120,  rec: 32, diff: 'Medium', rows: 96,  hazards: [{ t: 'spinner', at: 0.25 }, { t: 'spinner', at: 0.5 }, { t: 'spinner', at: 0.75 }] },
-  { n: 8,  title: 'The Long Drop',    theme: 'mint',      shape: 'islands', opt: { every: 7, size: 2 },    wins: 180,  rec: 40, diff: 'Hard',   rows: 90,  hazards: [] },
+  { n: 8,  title: 'The Long Drop',    theme: 'mint',      shape: 'islands', opt: { every: 6, size: 2 },    wins: 180,  rec: 40, diff: 'Hard',   rows: 90,  hazards: [] },
   { n: 9,  title: 'Rolling Thunder',  theme: 'candy',     shape: 'slope',   opt: { rise: 20 },             wins: 260,  rec: 48, diff: 'Hard',   rows: 100, hazards: [{ t: 'roller', lane: 0.34, radius: 5, period: 5.2 }, { t: 'roller', lane: 0.66, radius: 5, period: 5.2, offset: 2.6 }] },
   { n: 10, title: 'Cookie Crush',     theme: 'chocolate', shape: 'flat',    opt: {},                       wins: 380,  rec: 58, diff: 'Hard',   rows: 96,  hazards: [{ t: 'crusher', at: 0.22 }, { t: 'crusher', at: 0.44, off: 1 }, { t: 'crusher', at: 0.66, off: 2 }, { t: 'crusher', at: 0.86, off: 0.5 }] },
   { n: 11, title: 'Tightrope',        theme: 'mint',      shape: 'narrow',  opt: { width: 1.4 },             wins: 520,  rec: 70, diff: 'Hard',   rows: 88,  hazards: [{ t: 'spinner', at: 0.4 }, { t: 'spinner', at: 0.72 }] },
@@ -190,6 +190,20 @@ export function buildStage(scene, spec) {
   }
 
   // ---- start / finish ----
+  // A safe zone over the start apron, like the real game's. Nothing can hurt you
+  // inside it and chasers cannot enter, which is what stops a chaser parking on
+  // the spawn and killing you the instant you respawn, forever.
+  const safeZ = 9 * PITCH;
+  const safePad = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.98, 0.3, safeZ),
+    new THREE.MeshBasicMaterial({ color: 0x2fe58a, transparent: true, opacity: 0.16, depthWrite: false }));
+  safePad.position.set(midX, shapeHeight(cols / 2, 4) + 1.0, safeZ / 2 - PITCH);
+  scene.add(safePad);
+  const safeSign = new THREE.Mesh(new THREE.BoxGeometry(width * 0.5, 2.4, 0.4),
+    new THREE.MeshBasicMaterial({ color: 0x2fe58a, transparent: true, opacity: 0.4 }));
+  safeSign.position.set(midX, shapeHeight(cols / 2, 4) + 5, safeZ);
+  scene.add(safeSign);
+
   const spawn = { x: midX, z: 2 * PITCH, y: shapeHeight(cols / 2, 2) + 2 };
   const goalZ = (rows - 3) * PITCH;
   const goalY = shapeHeight(cols / 2, rows - 3);
@@ -211,6 +225,7 @@ export function buildStage(scene, spec) {
     if (h.t === 'chaser') {
       hazards.push(makeChaser(scene, {
         x: midX, z, speed: h.speed || 5.4, scale: h.scale || 1, chase: h.chase !== false,
+        minZ: safeZ + 4,
         colour: spec.theme === 'chocolate' ? '#f0d9c0' : '#ffe6f2',
         dress: spec.theme === 'chocolate' ? '#7b4b2a' : '#ff5c8a',
       }));
@@ -243,7 +258,8 @@ export function buildStage(scene, spec) {
     for (const h of hazards) h.dispose();
     for (const p of rests) scene.remove(p);
     scene.remove(decor); scene.remove(goal); scene.remove(goalPost);
+    scene.remove(safePad); scene.remove(safeSign);
   }
 
-  return { field, hazards, rests, spawn, goal: { z: goalZ, y: goalY }, width, length, midX, cols, rows, theme: th, spec, dispose };
+  return { field, hazards, rests, spawn, safeZ, goal: { z: goalZ, y: goalY }, width, length, midX, cols, rows, theme: th, spec, dispose };
 }

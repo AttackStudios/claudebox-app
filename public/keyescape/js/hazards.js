@@ -10,7 +10,7 @@ import * as THREE from 'three';
 const mat = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: c, ...opts });
 
 /** A blocky character that walks you down. Slow, relentless, kills on touch. */
-export function makeChaser(scene, { x, z, speed = 5.4, colour = '#ffd9e6', dress = '#ff5c8a', scale = 1, chase = true }) {
+export function makeChaser(scene, { x, z, speed = 5.4, colour = '#ffd9e6', dress = '#ff5c8a', scale = 1, chase = true, minZ = 0 }) {
   const g = new THREE.Group();
   const head = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.6, 2.6), mat(colour));
   head.position.y = 4.6;
@@ -50,6 +50,8 @@ export function makeChaser(scene, { x, z, speed = 5.4, colour = '#ffd9e6', dress
       const sp = chase ? Math.max(speed, mine * 0.78) * catchUp : speed;
       g.position.x += (dx / d) * sp * dt;
       g.position.z += (dz / d) * sp * dt;
+      // never follow you into the safe zone
+      if (g.position.z < minZ) g.position.z = minZ;
       const h = field?.heightAt(g.position.x, g.position.z);
       g.position.y = (h == null ? 0 : h);
       g.rotation.y = Math.atan2(dx, dz);
