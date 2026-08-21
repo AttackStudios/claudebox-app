@@ -101,6 +101,9 @@ const ch = () => ({
   foreL: 0, foreR: 0,
   legLS: 0, legRS: 0, shinL: 0, shinR: 0, footL: 0, footR: 0,
   spine: 0, head: 0, bob: 0, rootPitch: 0,
+  // Root translation. Nothing procedural uses these — they exist so an authored
+  // set can slide the whole body (a lunge, a dodge, a landing skid).
+  rootX: 0, rootZ: 0,
 });
 
 export const POSES = {

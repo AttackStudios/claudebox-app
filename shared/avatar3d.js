@@ -447,7 +447,11 @@ export function makeAvatar(profile = {}) {
       // The root carries what bones cannot: the vertical bob of a stride, and
       // the pitch that lays the body flat for swimming or death.
       inner.position.y = baseY + (c.bob || 0);
-      rootPitch += ((c.rootPitch || 0) - rootPitch) * Math.min(1, dt * 8);
+      inner.position.x = c.rootX || 0;
+      inner.position.z = c.rootZ || 0;
+      // dt === 0 means an editor is scrubbing to an exact time, so snap rather
+      // than smooth — otherwise the root never reaches the authored value.
+      rootPitch += ((c.rootPitch || 0) - rootPitch) * (dt > 0 ? Math.min(1, dt * 8) : 1);
       inner.rotation.x = rootPitch;
     },
 
@@ -621,7 +625,9 @@ function makeStevenAvatar(profile = {}) {
       anim.setSpeed(this.moveSpeed);
       const c = anim.update(dt);
       built.root.position.y = baseY + (c.bob || 0);
-      rootPitch += ((c.rootPitch || 0) - rootPitch) * Math.min(1, dt * 8);
+      built.root.position.x = c.rootX || 0;
+      built.root.position.z = c.rootZ || 0;
+      rootPitch += ((c.rootPitch || 0) - rootPitch) * (dt > 0 ? Math.min(1, dt * 8) : 1);
       built.root.rotation.x = rootPitch;
     },
     setColors(p = {}) { paint({ ...profile, ...p }); },

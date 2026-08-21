@@ -19,7 +19,7 @@ const FILE = path.join(DATA_DIR, 'animations.json');
 export const CHANNELS = [
   'armLS', 'armRS', 'armLL', 'armRL', 'foreL', 'foreR',
   'legLS', 'legRS', 'shinL', 'shinR', 'footL', 'footR',
-  'spine', 'head', 'bob', 'rootPitch',
+  'spine', 'head', 'bob', 'rootPitch', 'rootX', 'rootZ',
 ];
 // Poses a set may replace. These are the names the games ask for by state.
 export const CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'sit', 'swim', 'tread', 'climb', 'dance', 'death'];

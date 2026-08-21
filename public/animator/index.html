@@ -63,6 +63,27 @@
         <span id="frame-label">0.00s</span>
       </div>
       <div id="world-pick"></div>
+      <div id="tools">
+        <button id="mode-rotate" class="tool" title="Rotate (R)">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke-width="2">
+            <ellipse cx="12" cy="12" rx="9" ry="4.2" stroke="#4de07f"/>
+            <ellipse cx="12" cy="12" rx="4.2" ry="9" stroke="#ff4d5e"/>
+            <circle cx="12" cy="12" r="9" stroke="#4d8bff"/>
+          </svg><span>Rotate</span>
+        </button>
+        <button id="mode-move" class="tool" title="Move (G)">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke-width="2">
+            <path d="M12 21V6" stroke="#4de07f"/><path d="M9 9l3-3 3 3" stroke="#4de07f"/>
+            <path d="M12 21L4 17" stroke="#4d8bff"/><path d="M12 21l8-4" stroke="#ff4d5e"/>
+          </svg><span>Move</span>
+        </button>
+        <button id="del-key" class="tool danger" title="Delete the key here (Delete)">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
+          </svg><span>Delete</span>
+        </button>
+      </div>
+      <div id="sel-label">nothing selected</div>
     </div>
     <div id="transport">
       <button id="play" class="btn">▶</button>

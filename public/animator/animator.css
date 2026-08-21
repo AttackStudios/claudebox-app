@@ -139,3 +139,33 @@ h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: v
 .boot-error b { color: var(--ink); font-size: 15px; }
 .boot-error p { margin: 0; max-width: 34ch; }
 .boot-error a { color: var(--accent); margin-top: 8px; }
+
+/* ---- viewport tools ---- */
+#tools {
+  position: absolute; left: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.tool {
+  display: flex; align-items: center; gap: 7px; padding: 7px 11px 7px 8px;
+  background: rgba(22, 26, 34, .92); border: 1px solid var(--line); color: var(--dim);
+  border-radius: 9px; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 700;
+  backdrop-filter: blur(6px); min-width: 96px;
+}
+.tool:hover { color: var(--ink); border-color: #3a4453; }
+.tool.on { color: var(--ink); border-color: var(--accent); background: rgba(110, 231, 255, .12); }
+.tool.danger:hover { color: var(--danger); border-color: var(--danger); }
+.tool svg { flex: none; }
+
+#sel-label {
+  position: absolute; left: 12px; bottom: 12px; padding: 6px 11px;
+  background: rgba(22, 26, 34, .92); border: 1px solid var(--line); border-radius: 9px;
+  font-size: 11.5px; color: var(--dim); backdrop-filter: blur(6px); pointer-events: none;
+}
+#sel-label b { color: var(--ink); }
+#sel-label i { font-style: normal; font-weight: 700; margin-left: 5px; }
+
+.ch-clear {
+  float: right; background: none; border: 0; color: var(--dim); cursor: pointer;
+  font: inherit; font-size: 10.5px; text-decoration: underline; padding: 0;
+}
+.ch-clear:hover { color: var(--danger); }
+.kf.sel { outline: 2px solid #fff; outline-offset: 1px; z-index: 3; }
