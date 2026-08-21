@@ -80,6 +80,7 @@ app.get('/games/backpacking', (req, res) => {
 });
 app.get('/games/restaurant-sim-2', (req, res) => res.sendFile(path.join(ROOT, 'public', 'restaurant-sim-2', 'index.html')));
 app.get('/games/obby', (req, res) => res.sendFile(path.join(ROOT, 'public', 'obby', 'index.html')));
+app.get('/games/keyescape', (req, res) => res.sendFile(path.join(ROOT, 'public', 'keyescape', 'index.html')));
 // Character Lab — a tuning bench for the movement games (public/lab)
 app.get('/lab', (req, res) => res.sendFile(path.join(ROOT, 'public', 'lab', 'index.html')));
 // Animator — author animation sets that games load without any export step

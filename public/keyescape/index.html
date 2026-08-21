@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2a0b22">
+<title>+1 Speed Keyboard Escape — ClaudeBox</title>
+<link rel="stylesheet" href="/keyescape/css/game.css">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="topleft">
+    <a id="back" href="/" title="Back to ClaudeBox">‹</a>
+    <div class="chip speed"><span class="ci">⚡</span><b id="speed">0</b><small>speed</small></div>
+    <div class="chip wins"><span class="ci">🏆</span><b id="wins">0</b><small>wins</small></div>
+    <div class="chip rb"><span class="ci">🔄</span><b id="rbmult">1x</b><small>rebirth</small></div>
+  </div>
+
+  <div id="topright">
+    <button id="btn-stages" class="tb" title="Stages">🗺️</button>
+    <button id="btn-shop" class="tb" title="Shop">🛒</button>
+    <button id="btn-mute" class="tb" title="Sound">🔊</button>
+  </div>
+
+  <div id="stagebar">
+    <div id="stagename">Stage 1</div>
+    <div id="progress"><i id="progfill"></i></div>
+  </div>
+
+  <div id="combo" class="hidden"><b id="combonum">0</b><small>keys</small></div>
+  <div id="popups"></div>
+
+  <!-- touch controls -->
+  <div id="stick" class="hidden"><div id="stick-knob"></div></div>
+  <button id="btn-jump" class="hidden">JUMP</button>
+</div>
+
+<!-- title / menu -->
+<div id="menu">
+  <div class="mcard">
+    <div class="mlogo"><span class="plus">+1</span> SPEED<br><small>KEYBOARD ESCAPE</small></div>
+    <p class="mtag">Every key you step on makes you faster. Reach the end.</p>
+    <button id="btn-play" class="big">▶ PLAY</button>
+    <div class="mrow">
+      <button id="btn-menu-stages" class="alt">🗺️ Stages</button>
+      <button id="btn-menu-shop" class="alt">🛒 Shop</button>
+    </div>
+    <p class="mhint">WASD or arrows to run · Space to jump · Shift to slide</p>
+  </div>
+</div>
+
+<!-- stage select -->
+<div id="stages" class="panel hidden">
+  <div class="phead"><h2>Stages</h2><button class="close" data-close="stages">✕</button></div>
+  <div id="worldtabs" class="tabs"></div>
+  <div id="stagelist" class="grid"></div>
+</div>
+
+<!-- shop -->
+<div id="shop" class="panel hidden">
+  <div class="phead"><h2>Shop</h2><button class="close" data-close="shop">✕</button></div>
+  <div class="tabs">
+    <button class="tab on" data-shop="trails">🌈 Trails</button>
+    <button class="tab" data-shop="auras">✨ Auras</button>
+    <button class="tab" data-shop="rebirth">🔄 Rebirth</button>
+  </div>
+  <div id="shopwallet"></div>
+  <div id="shoplist" class="grid"></div>
+</div>
+
+<!-- win / death -->
+<div id="result" class="hidden">
+  <div class="rcard">
+    <h2 id="rtitle">Stage Complete!</h2>
+    <p id="rsub"></p>
+    <div id="rstats"></div>
+    <div class="mrow">
+      <button id="btn-next" class="big">Next Stage ›</button>
+      <button id="btn-retry" class="alt">↻ Retry</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading"><div class="spin"></div><span>Building the keyboard…</span></div>
+
+<script src="/js/claudebox.js"></script>
+<script type="module" src="/js/voice.js"></script>
+<script type="module" src="/keyescape/js/main.js"></script>
+</body>
+</html>

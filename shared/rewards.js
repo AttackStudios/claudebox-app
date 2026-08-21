@@ -21,6 +21,13 @@ export const CUBE_RATE = 10; // Stars per 1 Bit when converting
 // id must be globally unique. `game` matches a GAMES id. `stars` is the
 // one-time reward. `hint` tells the player how to earn it.
 export const CHALLENGES = [
+  // +1 Speed Keyboard Escape
+  { id: 'keyescape-first',   game: 'keyescape', emoji: '⌨️', title: 'First Keystroke',  hint: 'Finish your first stage.',                  stars: 40 },
+  { id: 'keyescape-five',    game: 'keyescape', emoji: '🗝️', title: 'Five Down',        hint: 'Finish five stages.',                       stars: 120 },
+  { id: 'keyescape-upgrade', game: 'keyescape', emoji: '🌈', title: 'Trail Blazer',     hint: 'Buy a trail or an aura from the shop.',     stars: 60 },
+  { id: 'keyescape-rebirth', game: 'keyescape', emoji: '🔄', title: 'Born Again',       hint: 'Trade all your speed for your first rebirth.', stars: 200 },
+  { id: 'keyescape-world2',  game: 'keyescape', emoji: '🍫', title: 'Chocolate Factory', hint: 'Reach World 2.',                           stars: 250 },
+
   // Backpacking
   { id: 'bp-scare-bear', game: 'backpacking',     emoji: '🐻', title: 'Bear Scare',         hint: 'Scare off a bear with bear spray.',     stars: 150 },
   { id: 'bp-camp',       game: 'backpacking',     emoji: '⛺', title: 'Home Sweet Tent',    hint: 'Set up your first campsite (place a tent).', stars: 50 },

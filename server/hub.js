@@ -85,6 +85,16 @@ const GAMES = [
     playable: true,
   },
   {
+    id: 'keyescape',
+    title: '+1 Speed Keyboard Escape',
+    tagline: 'Every key you step on makes you faster — run the giant keyboard and escape',
+    art: '/icons/game-keyescape.svg',
+    url: '/games/keyescape',
+    creators: ['ClaudeBox Studios'],
+    tags: ['Runner', 'Speed', 'Obstacle'],
+    playable: true,
+  },
+  {
     id: 'obby',
     title: 'Obby',
     tagline: 'Jump, climb, don\'t fall. Beat the tower.',

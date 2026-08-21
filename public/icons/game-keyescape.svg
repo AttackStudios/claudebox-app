@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff86cf"/><stop offset="1" stop-color="#7a2a63"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe89a"/><stop offset="1" stop-color="#ffb02e"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="46" fill="url(#bg)"/>
+  <!-- a slab of keycaps in perspective -->
+  <g>
+    <g transform="translate(20,150) skewY(-11)">
+      <g fill="#ffd0ec">
+        <rect x="0"   y="0"  width="34" height="30" rx="6"/>
+        <rect x="40"  y="0"  width="34" height="30" rx="6" fill="#e0b3ff"/>
+        <rect x="80"  y="0"  width="34" height="30" rx="6"/>
+        <rect x="120" y="0"  width="34" height="30" rx="6" fill="#e0b3ff"/>
+        <rect x="160" y="0"  width="34" height="30" rx="6"/>
+      </g>
+      <g fill="#ffe7f6">
+        <rect x="18"  y="40" width="34" height="30" rx="6"/>
+        <rect x="58"  y="40" width="34" height="30" rx="6" fill="#efd6ff"/>
+        <rect x="98"  y="40" width="34" height="30" rx="6"/>
+        <rect x="138" y="40" width="34" height="30" rx="6" fill="#efd6ff"/>
+      </g>
+    </g>
+  </g>
+  <!-- pressed key, mid-strike -->
+  <rect x="98" y="176" width="42" height="26" rx="7" fill="#ff4fa8" opacity=".95"/>
+  <!-- +1 -->
+  <text x="128" y="98" font-family="ui-rounded, Trebuchet MS, system-ui, sans-serif"
+        font-size="76" font-weight="900" fill="url(#gold)" text-anchor="middle"
+        stroke="#6d1a4f" stroke-width="7" paint-order="stroke">+1</text>
+  <text x="128" y="130" font-family="ui-rounded, Trebuchet MS, system-ui, sans-serif"
+        font-size="25" font-weight="800" fill="#fff" text-anchor="middle"
+        letter-spacing="2" stroke="#6d1a4f" stroke-width="5" paint-order="stroke">SPEED</text>
+</svg>
