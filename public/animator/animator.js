@@ -106,23 +106,56 @@ async function buildAvatar() {
   refreshGizmo();
 }
 
-// Invisible pick targets at each joint. Raycasting the skinned mesh and working
-// back to a bone is unreliable across four different rigs; a proxy per joint is
-// exact and costs nothing.
+// Invisible pick targets. These cover the whole visible limb, not the pivot:
+// a joint's pivot sits inside the body, so proxies at pivots meant that clicking
+// the arm you can see selected nothing. Each joint gets a capsule spanning the
+// bone to its child (the limb), plus a ball at the pivot itself.
+//
+// Raycasting the skinned mesh and working back to a bone would be the obvious
+// alternative, but it behaves differently across the four rigs — and Steven is
+// not skinned at all — so explicit proxies are the portable answer.
 function buildProxies() {
   for (const p of proxies) { p.geometry.dispose(); p.material.dispose(); }
   proxies = []; proxyGroup.clear();
   const scale = modelScale();
+  const hidden = () => new THREE.MeshBasicMaterial({ color: 0x6ee7ff, transparent: true, opacity: 0, depthTest: false });
+
   for (const [canon, j] of Object.entries(joints)) {
-    const r = canon === 'root' ? scale * 0.07 : scale * (canon === 'spine' ? 0.11 : 0.075);
-    const m = new THREE.Mesh(
-      new THREE.SphereGeometry(r, 12, 10),
-      new THREE.MeshBasicMaterial({ color: 0x6ee7ff, transparent: true, opacity: 0, depthTest: false }));
-    m.userData.joint = canon;
-    m.renderOrder = 998;
-    proxyGroup.add(m); proxies.push(m);
+    const o = jointObject(canon);
+    if (!o) continue;
+    const isRoot = canon === 'root';
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), hidden());
+    ball.userData = { joint: canon, kind: 'ball', r: scale * (isRoot ? 0.10 : canon === 'spine' ? 0.13 : 0.062) };
+    ball.renderOrder = 998;
+    proxyGroup.add(ball); proxies.push(ball);
+    if (isRoot) continue;
+
+    // the limb this joint drives: bone -> first child bone
+    const child = o.children?.find((ch) => ch.isBone) || null;
+    // Steven's parts are plain meshes under a group, so measure those instead
+    const ownMesh = !child && o.children?.some((ch) => ch.isMesh);
+    if (child) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), hidden());
+      cap.userData = { joint: canon, kind: 'seg', child, r: scale * 0.055 };
+      cap.renderOrder = 998;
+      proxyGroup.add(cap); proxies.push(cap);
+    } else if (ownMesh) {
+      const box = new THREE.Box3();
+      for (const ch of o.children) if (ch.isMesh) box.expandByObject(ch);
+      const size = new THREE.Vector3(), centre = new THREE.Vector3();
+      box.getSize(size); box.getCenter(centre);
+      if (size.lengthSq() > 1e-6) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), hidden());
+        m.userData = { joint: canon, kind: 'box', offset: o.worldToLocal(centre.clone()) };
+        m.renderOrder = 998;
+        proxyGroup.add(m); proxies.push(m);
+      }
+    }
   }
 }
+
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _dir = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 
 const modelScale = () => {
   const b = new THREE.Box3().setFromObject(ctrl.group);
@@ -141,13 +174,31 @@ const _p = new THREE.Vector3(), _q = new THREE.Quaternion();
 function syncProxies() {
   if (!ctrl) return;
   for (const m of proxies) {
-    const o = jointObject(m.userData.joint);
+    const d = m.userData;
+    const o = jointObject(d.joint);
     if (!o) { m.visible = false; continue; }
     m.visible = true;
     o.getWorldPosition(_p);
-    if (m.userData.joint === 'root') _p.y += modelScale() * 0.5;
-    m.position.copy(_p);
-    m.material.opacity = m.userData.joint === selJoint ? 0.22 : (hoverJoint === m.userData.joint ? 0.14 : 0);
+    if (d.kind === 'ball') {
+      if (d.joint === 'root') _p.y += modelScale() * 0.5;
+      m.position.copy(_p);
+      m.scale.setScalar(d.r);
+    } else if (d.kind === 'seg') {
+      d.child.getWorldPosition(_b);
+      _a.copy(_p);
+      _dir.copy(_b).sub(_a);
+      const len = _dir.length();
+      if (len < 1e-4) { m.visible = false; continue; }
+      m.position.copy(_a).addScaledVector(_dir, 0.5);
+      m.quaternion.setFromUnitVectors(UP, _dir.normalize());
+      m.scale.set(d.r, len, d.r);
+    } else {
+      m.position.copy(o.localToWorld(d.offset.clone()));
+      o.getWorldQuaternion(_q); m.quaternion.copy(_q);
+      m.scale.setScalar(1);
+    }
+    const lit = showProxies ? 0.30 : d.joint === selJoint ? 0.20 : (hoverJoint === d.joint ? 0.12 : 0);
+    m.material.opacity = lit;
   }
 }
 
@@ -189,6 +240,7 @@ const orbit = { yaw: 0.5, pitch: 0.22, dist: 4.6, drag: null };
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 let hoverJoint = null;
+let showProxies = false;   // debug: reveal the pick volumes
 let drag = null;   // active gizmo drag
 
 function pointerNDC(e) {
@@ -690,6 +742,7 @@ $('new-set').addEventListener('click', () => { set = blankSet(); markDirty(true)
       return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (-v.y + 1) / 2 * r.height };
     },
     joints: () => Object.keys(joints),
+    showProxies(v) { showProxies = !!v; },
     handleOf(channel) {
       const w = giz.pointOn(channel, THREE); if (!w) return null;
       const v = w.clone().project(cam);
