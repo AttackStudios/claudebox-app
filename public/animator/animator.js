@@ -86,7 +86,7 @@ function restore(entry) {
   markDirty();
   if (modelChanged) buildAvatar();
   else { applyPreview(); refreshGizmo(); }
-  paintTimeline(); paintChannels(); paintHistory();
+  paintTimeline(); paintChannels(); paintRuler(); paintHistory();
 }
 
 function undo() {
@@ -502,11 +502,64 @@ function paintChannels() {
 
 // ---------------------------------------------------------------- keyframes
 function trackRect() {
-  const t = document.querySelector('.lane-track');
-  const body = $('tl-body');
-  if (!t || !body) return { left: 96, width: 600 };
-  const r = t.getBoundingClientRect(), b = body.getBoundingClientRect();
-  return { left: r.left - b.left, width: Math.max(40, r.width) };
+  // the ruler is the reference: it is always present, and unlike the lanes it
+  // does not scroll, so the playhead cannot drift away from the keys
+  const t = document.querySelector('.ruler-track');
+  const area = $('tl-area');
+  if (!t || !area) return { left: 96, width: 600 };
+  const r = t.getBoundingClientRect(), b = area.getBoundingClientRect();
+  return { left: r.left - b.left, width: Math.max(40, r.width), pageLeft: r.left };
+}
+
+// ---- scrubbing ----
+// Drag the ruler or the playhead handle to move through the clip. Playback
+// stops on grab, because scrubbing against a running clock fights you.
+let scrubbing = false, wasPlaying = false;
+function timeFromX(clientX) {
+  const tr = trackRect();
+  const p = Math.max(0, Math.min(1, (clientX - tr.pageLeft) / tr.width));
+  return p * clip().duration;
+}
+function startScrub(e) {
+  scrubbing = true;
+  wasPlaying = playing;
+  if (playing) { playing = false; $('play').textContent = '▶'; }
+  document.body.classList.add('scrubbing');
+  time = timeFromX(e.clientX);
+  e.preventDefault();
+}
+function moveScrub(e) { if (scrubbing) time = timeFromX(e.clientX); }
+function endScrub() {
+  if (!scrubbing) return;
+  scrubbing = false;
+  document.body.classList.remove('scrubbing');
+  paintChannels();
+}
+$('tl-ruler').addEventListener('pointerdown', startScrub);
+document.querySelector('.ph-grab').addEventListener('pointerdown', (e) => { e.stopPropagation(); startScrub(e); });
+addEventListener('pointermove', moveScrub);
+addEventListener('pointerup', endScrub);
+
+// Ruler ticks, spaced so the labels stay readable whatever the clip length.
+function paintRuler() {
+  const host = document.querySelector('.ruler-track');
+  if (!host) return;
+  const dur = clip().duration;
+  const steps = [0.05, 0.1, 0.25, 0.5, 1, 2, 5];
+  const want = dur / 10;
+  const step = steps.find((x) => x >= want) || 10;
+  let html = '';
+  // Count in whole steps. Accumulating `t += step` drifts (0.1 + 0.1 + 0.1 is
+  // not 0.3), which silently dropped most of the labels.
+  const n = Math.floor(dur / step + 1e-6);
+  for (let i = 0; i <= n; i++) {
+    const t = i * step;
+    const pc = (t / dur) * 100;
+    const major = i % 2 === 0;
+    html += `<div class="tick${major ? ' major' : ''}" style="left:${pc}%"></div>`;
+    if (major) html += `<div class="tlabel" style="left:${pc}%">${+t.toFixed(2)}s</div>`;
+  }
+  host.innerHTML = html;
 }
 function valueAt(ch, t) {
   const c = clip();
@@ -669,7 +722,7 @@ $('play').addEventListener('click', togglePlay);
 $('stop').addEventListener('click', () => { playing = false; time = 0; $('play').textContent = '▶'; });
 $('speed').addEventListener('input', (e) => { speed = +e.target.value; });
 $('loop').addEventListener('change', (e) => { pushUndo('loop'); clip().loop = e.target.checked; markDirty(); });
-$('dur').addEventListener('change', (e) => { pushUndo('clip length'); clip().duration = Math.max(0.05, +e.target.value || 1); markDirty(); applyPreview(); paintTimeline(); });
+$('dur').addEventListener('change', (e) => { pushUndo('clip length'); clip().duration = Math.max(0.05, +e.target.value || 1); markDirty(); applyPreview(); paintTimeline(); paintRuler(); });
 $('clip').addEventListener('change', (e) => { clipName = e.target.value; syncClip(); });
 $('del-key').addEventListener('click', deleteSelected);
 $('undo').addEventListener('click', undo);
@@ -797,7 +850,7 @@ function syncClip() {
   $('dur').value = c.duration;
   $('loop').checked = c.loop !== false;
   time = 0; selKey = null;
-  applyPreview(); paintTimeline(); paintChannels();
+  applyPreview(); paintTimeline(); paintChannels(); paintRuler();
 }
 function syncAll() {
   $('set-name').value = set.name;
