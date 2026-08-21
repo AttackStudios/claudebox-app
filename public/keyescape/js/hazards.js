@@ -10,7 +10,7 @@ import * as THREE from 'three';
 const mat = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: c, ...opts });
 
 /** A blocky character that walks you down. Slow, relentless, kills on touch. */
-export function makeChaser(scene, { x, z, speed = 5.4, colour = '#ffd9e6', dress = '#ff5c8a', scale = 1 }) {
+export function makeChaser(scene, { x, z, speed = 5.4, colour = '#ffd9e6', dress = '#ff5c8a', scale = 1, chase = true }) {
   const g = new THREE.Group();
   const head = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.6, 2.6), mat(colour));
   head.position.y = 4.6;
@@ -42,8 +42,14 @@ export function makeChaser(scene, { x, z, speed = 5.4, colour = '#ffd9e6', dress
       t += dt;
       const dx = p.x - g.position.x, dz = p.z - g.position.z;
       const d = Math.hypot(dx, dz) || 1;
-      g.position.x += (dx / d) * speed * dt;
-      g.position.z += (dz / d) * speed * dt;
+      // A flat speed stops being a threat the moment you have any upgrades, so
+      // it paces off yours — always slower, never irrelevant. It also closes in
+      // when it falls a long way behind, so running past it is not a free pass.
+      const mine = p.speed || 0;
+      const catchUp = d > 46 ? 1.35 : 1;
+      const sp = chase ? Math.max(speed, mine * 0.78) * catchUp : speed;
+      g.position.x += (dx / d) * sp * dt;
+      g.position.z += (dz / d) * sp * dt;
       const h = field?.heightAt(g.position.x, g.position.z);
       g.position.y = (h == null ? 0 : h);
       g.rotation.y = Math.atan2(dx, dz);

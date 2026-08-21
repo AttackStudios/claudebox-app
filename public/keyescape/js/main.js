@@ -205,12 +205,24 @@ function respawn() {
   if (!stage) return;
   player.x = stage.spawn.x; player.z = stage.spawn.z;
   player.y = stage.spawn.y + 2; player.vy = 0; player.dead = false;
+  prevX = player.x; prevZ = player.z;
   clearTrail();
 }
 
 function die() {
   if (player.dead) return;
   player.dead = true;
+  // Dying has to cost something or every hazard is just a short pause. You keep
+  // the speed you arrived with — progress is never rolled back — but a third of
+  // what you banked on this attempt is gone.
+  const banked = save.level - levelAtStart;
+  if (banked > 0) {
+    const lost = Math.ceil(banked * 0.34);
+    save.level -= lost;
+    keysThisRun = Math.max(0, keysThisRun - lost);
+    popup(`-${lost}`);
+    hudSpeed();
+  }
   audio.die();
   setTimeout(() => { if (stage) respawn(); }, 620);
 }
@@ -425,9 +437,10 @@ function firstUnbeaten() {
 }
 
 // ---------------------------------------------------------------- loop
-const GRAV = -78, JUMP_V = 27;
+const GRAV = -84, JUMP_V = 25.5;
 let last = performance.now();
-let camYaw = 0;
+// yaw = PI puts forward at +Z, which is the direction the board runs
+const orbit = { yaw: Math.PI, pitch: 0.34, dist: 19 };
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -438,6 +451,7 @@ function frame(now) {
     stage.field.update(dt);
     for (const h of stage.hazards) h.update(dt, player, stage.field);
   }
+  player.speed = fastNow;   // hazards pace themselves off this
   if (running && stage && !player.dead) step(dt);
   updateTrail(dt);
   updateCamera(dt);
@@ -455,6 +469,7 @@ function frame(now) {
 }
 
 let moving = false, fastNow = 12;
+let prevX = 0, prevZ = 0;   // last frame's position, for the swept key test
 function step(dt) {
   const sp = actualSpeed(save);
   fastNow = sp;
@@ -470,9 +485,14 @@ function step(dt) {
   moving = mag > 0.08;
   if (moving) { ix /= mag; iz /= mag; }
 
-  // The board runs away from the camera, so forward is -Z... except the stage
-  // is laid out along +Z, so forward is +Z and the camera sits behind at -Z.
-  const wx = ix, wz = iz;
+  // Camera-relative, using Obby's exact basis. Doing this in world axes is what
+  // made left and right come out swapped: the camera looks down +Z, and under a
+  // right-handed basis +X is then screen-LEFT, so pushing right walked you left.
+  const yaw = orbit.yaw;
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);      // forward, away from the camera
+  const rx = Math.cos(yaw), rz = -Math.sin(yaw);       // camera-right
+  const wx = fx * iz + rx * ix;
+  const wz = fz * iz + rz * ix;
   if (moving) {
     player.x += wx * sp * dt;
     player.z += wz * sp * dt;
@@ -503,21 +523,26 @@ function step(dt) {
   } else player.grounded = false;
 
   // ---- keys ----
+  // Sweep the whole path walked this frame. Every cap crossed counts, however
+  // fast you are moving; only the click is rationed, because forty at once is
+  // noise rather than feedback.
   if (player.grounded) {
-    const fresh = stage.field.pressAt(player.x, player.z);
-    if (fresh) {
-      save.level += 1;
-      keysThisRun += 1;
+    const fresh = stage.field.pressSegment(prevX, prevZ, player.x, player.z);
+    if (fresh.length) {
+      save.level += fresh.length;
+      keysThisRun += fresh.length;
       const pan = ((player.x / stage.width) - 0.5) * 1.6;
-      audio.key(pan, Math.min(1, sp / 90));
-      if (keysThisRun % 10 === 0) audio.levelUp();
-      popup('+1');
+      const rush = Math.min(1, sp / 90);
+      for (let i = 0; i < Math.min(fresh.length, 4); i++) audio.key(pan + (i - 1.5) * 0.12, rush);
+      if (Math.floor(keysThisRun / 10) !== Math.floor((keysThisRun - fresh.length) / 10)) audio.levelUp();
+      popup(fresh.length > 1 ? `+${fresh.length}` : '+1');
       hudSpeed();
       $('combo').classList.remove('hidden');
       $('combonum').textContent = keysThisRun;
-      if (keysThisRun % 25 === 0) persist();
+      if (keysThisRun % 25 < fresh.length) persist();
     }
   }
+  prevX = player.x; prevZ = player.z;
 
   // ---- bounds, death, finish ----
   const half = stage.width / 2;
@@ -532,16 +557,80 @@ function step(dt) {
 }
 
 function updateCamera(dt) {
-  const sp = fastNow;
-  // pull back and widen as you speed up — the classic sense of rushing
-  const dist = 17 + Math.min(16, sp * 0.18);
-  const hgt = 11.5 + Math.min(8, sp * 0.07);
-  const want = new THREE.Vector3(player.x, player.y + hgt, player.z - dist);
-  camera.position.lerp(want, Math.min(1, dt * 6.5));
-  camera.lookAt(player.x, player.y + 2.0, player.z + 9);
-  const fov = 62 + Math.min(22, sp * 0.22);
+  // Same orbit rig as Obby and Backpacking: you own the camera, it does not own
+  // you. Yaw/pitch from the mouse or a finger, distance from the wheel or a
+  // pinch, and the player runs relative to wherever you are looking.
+  const s = 1;
+  const dist = orbit.dist * s;
+  const tx = player.x, ty = player.y + 2.2 * s, tz = player.z;
+  const cp = Math.cos(orbit.pitch);
+  const cx = tx + Math.sin(orbit.yaw) * cp * dist;
+  const cy = ty + Math.sin(orbit.pitch) * dist;
+  const cz = tz + Math.cos(orbit.yaw) * cp * dist;
+  camera.position.lerp(new THREE.Vector3(cx, cy, cz), Math.min(1, dt * 12));
+  camera.lookAt(tx, ty, tz);
+  // a gentle widening as you gather speed — enough to feel it, not enough to
+  // fight the framing you chose
+  const fov = 62 + Math.min(14, fastNow * 0.13);
   if (Math.abs(camera.fov - fov) > 0.2) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
 }
+
+// ---- camera input (mouse, pointer lock, wheel, touch) ----
+let dragging = false, lastX = 0, lastY = 0, locked = false;
+canvas.addEventListener('click', () => {
+  if (!locked && $('stages').classList.contains('hidden') && $('shop').classList.contains('hidden')
+      && $('result').classList.contains('hidden') && $('menu').classList.contains('hidden')) {
+    try { canvas.requestPointerLock?.(); } catch {}   // unavailable in some embeds
+  }
+});
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
+canvas.addEventListener('mousedown', (e) => { if (!locked) { dragging = true; lastX = e.clientX; lastY = e.clientY; } });
+addEventListener('mouseup', () => { dragging = false; });
+addEventListener('mousemove', (e) => {
+  if (locked) {
+    orbit.yaw -= e.movementX * 0.0024; orbit.pitch += e.movementY * 0.0024;
+    orbit.pitch = Math.max(-0.3, Math.min(1.3, orbit.pitch));
+    return;
+  }
+  if (!dragging) return;
+  orbit.yaw -= (e.clientX - lastX) * 0.005; orbit.pitch += (e.clientY - lastY) * 0.005;
+  orbit.pitch = Math.max(-0.3, Math.min(1.3, orbit.pitch));
+  lastX = e.clientX; lastY = e.clientY;
+});
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  orbit.dist = Math.max(4, Math.min(46, orbit.dist + e.deltaY * 0.02));
+}, { passive: false });
+
+// Only the touches that BEGAN on the canvas count, so the finger parked on the
+// joystick never turns a look-drag into a pinch. One finger looks, two zoom.
+const camTouches = new Map();
+let pinchGap = 0;
+const gapOf = () => { const [a, b] = [...camTouches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+canvas.addEventListener('touchstart', (e) => {
+  for (const t of e.changedTouches) camTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+  if (camTouches.size === 2) pinchGap = gapOf();
+}, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  for (const t of e.changedTouches) {
+    const p = camTouches.get(t.identifier);
+    if (!p) continue;
+    if (camTouches.size === 1) {
+      orbit.yaw -= (t.clientX - p.x) * 0.006;
+      orbit.pitch += (t.clientY - p.y) * 0.006;
+      orbit.pitch = Math.max(-0.3, Math.min(1.3, orbit.pitch));
+    }
+    p.x = t.clientX; p.y = t.clientY;
+  }
+  if (camTouches.size === 2) {
+    const gap = gapOf();
+    if (pinchGap > 0 && gap > 0) orbit.dist = Math.max(4, Math.min(46, orbit.dist * (pinchGap / gap)));
+    pinchGap = gap;
+  }
+}, { passive: true });
+const camEnd = (e) => { for (const t of e.changedTouches) camTouches.delete(t.identifier); if (camTouches.size < 2) pinchGap = 0; };
+canvas.addEventListener('touchend', camEnd, { passive: true });
+canvas.addEventListener('touchcancel', camEnd, { passive: true });
 
 // ---------------------------------------------------------------- boot
 (async () => {
@@ -556,7 +645,7 @@ function updateCamera(dt) {
   // a debug handle, matching the convention the other ClaudeBox games use
   window.__key = {
     get save() { return save; }, get player() { return player; }, get stage() { return stage; },
-    load: loadStage, speed: () => actualSpeed(save),
+    load: loadStage, speed: () => actualSpeed(save), get orbit() { return orbit; },
     give(w) { save.wins += w; hudWins(); paintShop?.(); },
   };
 })();

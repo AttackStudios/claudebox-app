@@ -19,12 +19,13 @@ const SHAPES = {
   // bands of keys with gaps between them — jumpable early, walkable once fast
   gaps: ({ every = 9, width = 3 }) => (c, r) => (r % every < every - width ? { h: 0 } : null),
 
+
   // a long ramp; the rolling ball stages use this
   slope: ({ rows, rise = 14 }) => (c, r) => ({ h: (1 - r / rows) * rise }),
 
   // straight, left, straight, right, straight
   turns: ({ cols, rows }) => {
-    const seg = rows / 5, mid = cols / 2, half = 3.2;
+    const seg = rows / 5, mid = cols / 2, half = 2.2;
     return (c, r) => {
       const s = Math.floor(r / seg);
       let centre = mid;
@@ -39,7 +40,11 @@ const SHAPES = {
   },
 
   // a narrow beam with the void either side
-  narrow: ({ cols, width = 4 }) => (c, r) => (Math.abs(c - cols / 2) <= width + Math.sin(r * 0.13) * 2 ? { h: 0 } : null),
+  // The sine makes the beam weave. Clamped, because on a narrow board the
+  // trough went negative and produced rows with no floor at all — an
+  // unfinishable stage rather than a hard one.
+  narrow: ({ cols, width = 4 }) => (c, r) =>
+    (Math.abs(c - cols / 2) <= Math.max(1.1, width + Math.sin(r * 0.13) * 1.6) ? { h: 0 } : null),
 
   // stepping islands
   islands: ({ every = 7, size = 3 }) => (c, r) =>
@@ -52,20 +57,20 @@ const SHAPES = {
 // ---- the table ----------------------------------------------------------
 // wins/rec follow the wiki where it records them.
 const W1 = [
-  { n: 1,  title: 'First Steps',      theme: 'candy',     shape: 'gaps',    opt: { every: 10, width: 2 }, wins: 1,    rec: 1,  diff: 'Easy',   rows: 74,  hazards: [] },
+  { n: 1,  title: 'First Steps',      theme: 'candy',     shape: 'gaps',    opt: { every: 8, width: 3 }, wins: 1,    rec: 1,  diff: 'Easy',   rows: 74,  hazards: [] },
   { n: 2,  title: 'The Ballerina',    theme: 'chocolate', shape: 'flat',    opt: {},                       wins: 3,    rec: 8,  diff: 'Easy',   rows: 82,  hazards: [{ t: 'chaser', at: 0.42, speed: 5.2 }] },
   { n: 3,  title: 'Gumball Hill',     theme: 'candy',     shape: 'slope',   opt: { rise: 15 },             wins: 10,   rec: 10, diff: 'Easy',   rows: 88,  hazards: [{ t: 'roller', lane: 0.5, radius: 5.4, period: 6.2 }, { t: 'rest', at: 0.35 }, { t: 'rest', at: 0.7 }] },
   { n: 4,  title: 'The Course',       theme: 'chocolate', shape: 'turns',   opt: {},                       wins: 25,   rec: 14, diff: 'Medium', rows: 95,  hazards: [{ t: 'crusher', at: 0.3 }, { t: 'crusher', at: 0.68 }] },
-  { n: 5,  title: 'Vanishing Path',   theme: 'candy',     shape: 'narrow',  opt: { width: 5 },             wins: 50,   rec: 20, diff: 'Medium', rows: 70,  hazards: [{ t: 'dissolve', from: 0.22, to: 0.86, fade: 3 }] },
+  { n: 5,  title: 'Vanishing Path',   theme: 'candy',     shape: 'narrow',  opt: { width: 3 },             wins: 50,   rec: 20, diff: 'Medium', rows: 70,  hazards: [{ t: 'dissolve', from: 0.22, to: 0.86, fade: 3 }] },
   { n: 6,  title: 'Double Trouble',   theme: 'chocolate', shape: 'flat',    opt: {},                       wins: 80,   rec: 26, diff: 'Medium', rows: 92,  hazards: [{ t: 'chaser', at: 0.3, speed: 5.6 }, { t: 'chaser', at: 0.66, speed: 6.1 }] },
   { n: 7,  title: 'Spin Cycle',       theme: 'candy',     shape: 'flat',    opt: {},                       wins: 120,  rec: 32, diff: 'Medium', rows: 96,  hazards: [{ t: 'spinner', at: 0.25 }, { t: 'spinner', at: 0.5 }, { t: 'spinner', at: 0.75 }] },
-  { n: 8,  title: 'The Long Drop',    theme: 'mint',      shape: 'islands', opt: { every: 8, size: 3 },    wins: 180,  rec: 40, diff: 'Hard',   rows: 90,  hazards: [] },
+  { n: 8,  title: 'The Long Drop',    theme: 'mint',      shape: 'islands', opt: { every: 7, size: 2 },    wins: 180,  rec: 40, diff: 'Hard',   rows: 90,  hazards: [] },
   { n: 9,  title: 'Rolling Thunder',  theme: 'candy',     shape: 'slope',   opt: { rise: 20 },             wins: 260,  rec: 48, diff: 'Hard',   rows: 100, hazards: [{ t: 'roller', lane: 0.34, radius: 5, period: 5.2 }, { t: 'roller', lane: 0.66, radius: 5, period: 5.2, offset: 2.6 }] },
   { n: 10, title: 'Cookie Crush',     theme: 'chocolate', shape: 'flat',    opt: {},                       wins: 380,  rec: 58, diff: 'Hard',   rows: 96,  hazards: [{ t: 'crusher', at: 0.22 }, { t: 'crusher', at: 0.44, off: 1 }, { t: 'crusher', at: 0.66, off: 2 }, { t: 'crusher', at: 0.86, off: 0.5 }] },
-  { n: 11, title: 'Tightrope',        theme: 'mint',      shape: 'narrow',  opt: { width: 2 },             wins: 520,  rec: 70, diff: 'Hard',   rows: 88,  hazards: [{ t: 'spinner', at: 0.4 }, { t: 'spinner', at: 0.72 }] },
+  { n: 11, title: 'Tightrope',        theme: 'mint',      shape: 'narrow',  opt: { width: 1.4 },             wins: 520,  rec: 70, diff: 'Hard',   rows: 88,  hazards: [{ t: 'spinner', at: 0.4 }, { t: 'spinner', at: 0.72 }] },
   { n: 12, title: 'Stair Sprint',     theme: 'candy',     shape: 'stairs',  opt: { step: 5, rise: 1.1 },   wins: 700,  rec: 84, diff: 'Hard',   rows: 94,  hazards: [{ t: 'chaser', at: 0.35, speed: 6.8 }] },
   { n: 13, title: 'Crossfire',        theme: 'chocolate', shape: 'flat',    opt: {},                       wins: 950,  rec: 100, diff: 'Insane', rows: 98, hazards: [{ t: 'spinner', at: 0.2 }, { t: 'crusher', at: 0.42 }, { t: 'chaser', at: 0.6, speed: 7 }, { t: 'spinner', at: 0.82 }] },
-  { n: 14, title: 'The Gauntlet',     theme: 'mint',      shape: 'gaps',    opt: { every: 7, width: 3 },   wins: 1300, rec: 120, diff: 'Insane', rows: 100, hazards: [{ t: 'roller', lane: 0.5, radius: 6, period: 4.6 }, { t: 'chaser', at: 0.5, speed: 7.4 }] },
+  { n: 14, title: 'The Gauntlet',     theme: 'mint',      shape: 'gaps',    opt: { every: 6, width: 3 },   wins: 1300, rec: 120, diff: 'Insane', rows: 100, hazards: [{ t: 'roller', lane: 0.5, radius: 6, period: 4.6 }, { t: 'chaser', at: 0.5, speed: 7.4 }] },
   { n: 15, title: 'Keyboard King',    theme: 'candy',     shape: 'flat',    opt: {},                       wins: 2000, rec: 150, diff: 'Insane', rows: 110, hazards: [{ t: 'chaser', at: 0.28, speed: 7.2, scale: 1.6 }, { t: 'crusher', at: 0.5 }, { t: 'spinner', at: 0.66 }, { t: 'roller', lane: 0.5, radius: 6.5, period: 4.2 }] },
 ];
 
@@ -80,8 +85,8 @@ function derive(world, list, mult, themes) {
     rec: Math.round(s.rec * mult),
     hazards: s.hazards.map((h) => ({
       ...h,
-      speed: h.speed ? h.speed * 1.18 : undefined,
-      period: h.period ? h.period * 0.82 : undefined,
+      speed: h.speed ? h.speed * 1.3 : undefined,
+      period: h.period ? h.period * 0.72 : undefined,
     })),
   }));
 }
@@ -106,7 +111,9 @@ export const stageIndex = (world, n) => allStages().findIndex((s) => s.world ===
 
 // ---- building a stage into the scene ------------------------------------
 export function buildStage(scene, spec) {
-  const cols = 34;
+  // A narrow board is the difficulty dial that costs nothing: less room to
+  // drift around a hazard, and the edges are a real threat.
+  const cols = 21;
   const rows = spec.rows || 90;
   const shape = SHAPES[spec.shape](({ ...spec.opt, cols, rows }));
 
@@ -203,7 +210,7 @@ export function buildStage(scene, spec) {
     const z = (h.at ?? 0.5) * length;
     if (h.t === 'chaser') {
       hazards.push(makeChaser(scene, {
-        x: midX, z, speed: h.speed || 5.4, scale: h.scale || 1,
+        x: midX, z, speed: h.speed || 5.4, scale: h.scale || 1, chase: h.chase !== false,
         colour: spec.theme === 'chocolate' ? '#f0d9c0' : '#ffe6f2',
         dress: spec.theme === 'chocolate' ? '#7b4b2a' : '#ff5c8a',
       }));

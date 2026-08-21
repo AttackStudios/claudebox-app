@@ -14,54 +14,105 @@ import * as THREE from 'three';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 export const KEY_SIZE = 1.9;      // world units across a cap
-export const KEY_GAP = 0.14;
-export const KEY_H = 0.62;        // cap height
+export const KEY_GAP = 0.26;      // a real board leaves air between caps
+export const KEY_H = 0.86;        // cap height
 export const PRESS_DEPTH = 0.34;  // how far a cap sinks
 
 const texCache = new Map();
 function letterTexture(ch) {
   if (texCache.has(ch)) return texCache.get(ch);
-  const S = 128;
+  const S = 160;
   const cv = document.createElement('canvas');
   cv.width = S * 2; cv.height = S;
   const g = cv.getContext('2d');
-  // left tile: the legend. Near-white so per-instance colour does the tinting.
+
+  // --- left tile: the cap's top surface ---
+  // Near-white, because per-instance colour tints it. The soft radial darkening
+  // fakes the dish a real keycap has scooped into it, which no amount of
+  // geometry at this scale would sell as cheaply.
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S);
-  g.fillStyle = 'rgba(0,0,0,0.06)';
-  g.fillRect(0, 0, S, 6);                                  // a hint of a bevel
-  g.fillStyle = 'rgba(255,255,255,0.5)';
-  g.fillRect(0, S - 7, S, 7);
-  g.fillStyle = 'rgba(30,12,40,0.72)';
-  g.font = `700 ${Math.round(S * 0.5)}px ui-rounded, "Trebuchet MS", system-ui, sans-serif`;
+  const dish = g.createRadialGradient(S / 2, S * 0.46, S * 0.08, S / 2, S * 0.5, S * 0.72);
+  dish.addColorStop(0, 'rgba(255,255,255,0)');
+  dish.addColorStop(1, 'rgba(0,0,0,0.13)');
+  g.fillStyle = dish; g.fillRect(0, 0, S, S);
+  // a highlight along the top edge, the way light catches a moulded cap
+  const sheen = g.createLinearGradient(0, 0, 0, S * 0.42);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.85)');
+  sheen.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = sheen; g.fillRect(0, 0, S, S * 0.42);
+
+  // the legend
+  g.fillStyle = 'rgba(26,10,34,0.78)';
+  g.font = `600 ${Math.round(S * 0.46)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(ch, S / 2, S / 2 + S * 0.03);
-  // right tile: blank, for the sides
-  g.fillStyle = '#f3f3f6'; g.fillRect(S, 0, S, S);
+  g.fillText(ch, S / 2, S * 0.53);
+
+  // --- right tile: the skirt ---
+  // Deliberately darker than the top so the taper reads as shading even under
+  // flat lighting; the tint multiplies both, so the relationship survives.
+  const side = g.createLinearGradient(S, 0, S, S);
+  side.addColorStop(0, '#e6e6ec');
+  side.addColorStop(1, '#a9a9b6');
+  g.fillStyle = side; g.fillRect(S, 0, S, S);
+
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = 8;
   texCache.set(ch, t);
   return t;
 }
 
-// BoxGeometry face order is +X, -X, +Y, -Y, +Z, -Z — four UVs each. Only the
-// +Y face keeps the legend half; everything else is pushed onto the blank half.
+/**
+ * A keycap, not a box: a tapered skirt, a bevelled crown and a small flat top,
+ * roughly Cherry profile. Built by hand and left non-indexed so
+ * computeVertexNormals gives crisp facets instead of smearing the taper.
+ *
+ * The top face samples the legend half of the 2:1 atlas (flipped in both axes,
+ * because the camera looks down +Z); every other face takes the skirt half.
+ */
 function keycapGeometry() {
-  const g = new THREE.BoxGeometry(KEY_SIZE, KEY_H, KEY_SIZE);
-  const uv = g.attributes.uv;
-  for (let f = 0; f < 6; f++) {
-    for (let i = 0; i < 4; i++) {
-      const k = f * 4 + i;
-      const u = uv.getX(k), v = uv.getY(k);
-      // The cap's legend needs a half turn to face a camera that looks down +Z:
-      // u runs along +X (which is screen-left from here) and v runs along -Z,
-      // so leaving either alone gives you mirrored or upside-down letters.
-      // Everything but the top face is pushed onto the blank half of the atlas.
-      if (f === 2) { uv.setX(k, (1 - u) * 0.5); uv.setY(k, 1 - v); }
-      else uv.setX(k, 0.5 + u * 0.5);
-    }
+  const h = KEY_H;
+  const B = KEY_SIZE * 0.50;    // base half-width
+  const M = KEY_SIZE * 0.425;   // shoulder, where the skirt meets the crown
+  const T = KEY_SIZE * 0.375;   // the flat top
+  const yM = h * 0.80;
+
+  const pos = [], uv = [];
+  // Legend UVs live in [0,0.5]; the skirt gets [0.5,1]. u is flipped because the
+  // corner order below runs along +X, which is screen-LEFT for a camera looking
+  // down +Z — leave it alone and every N reads as И. v needs no flip: the top
+  // face's far edge is already the top of the glyph, which is how you read a
+  // real keyboard from behind it.
+  const capUV = (u, v) => { uv.push((1 - u) * 0.5, v); };
+  const skirtUV = (u, v) => { uv.push(0.5 + u * 0.5, v); };
+
+  const quad = (a, b, c, d, uvfn, uvs) => {
+    // two triangles, wound counter-clockwise seen from outside
+    pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+    const [u0, u1, u2, u3] = uvs;
+    uvfn(...u0); uvfn(...u1); uvfn(...u2);
+    uvfn(...u0); uvfn(...u2); uvfn(...u3);
+  };
+
+  // the four sides, each in two bands (skirt then crown bevel)
+  const corners = (r, y) => [[-r, y, r], [r, y, r], [r, y, -r], [-r, y, -r]];
+  const b = corners(B, 0), m = corners(M, yM), t = corners(T, h);
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    quad(b[i], b[j], m[j], m[i], skirtUV, [[0, 0], [1, 0], [1, 0.8], [0, 0.8]]);
+    quad(m[i], m[j], t[j], t[i], skirtUV, [[0, 0.8], [1, 0.8], [1, 1], [0, 1]]);
   }
-  uv.needsUpdate = true;
+  // the top, carrying the legend
+  quad(t[0], t[1], t[2], t[3], capUV, [[0, 1], [1, 1], [1, 0], [0, 0]]);
+  // and a floor, so a cap seen from under a gap is not hollow
+  quad(b[3], b[2], b[1], b[0], skirtUV, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  // the cap sits ON the surface, so shift it up out of its own base
+  g.translate(0, -h / 2, 0);
   return g;
 }
 
@@ -120,7 +171,8 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
   const dummy = new THREE.Object3D();
   const colour = new THREE.Color();
   for (const [ch, list] of buckets) {
-    const mat = new THREE.MeshLambertMaterial({ map: letterTexture(ch) });
+    // a little specular: ABS caps are matte but not dead flat
+    const mat = new THREE.MeshPhongMaterial({ map: letterTexture(ch), shininess: 16, specular: 0x1a1a1a });
     const inst = new THREE.InstancedMesh(geo, mat, list.length);
     inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     inst.frustumCulled = false;
@@ -170,6 +222,27 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
     return fresh ? rec : null;
   }
 
+  /**
+   * Press every cap along the path travelled since last frame.
+   *
+   * Testing only the cell under the player drops keys the moment one frame
+   * carries you further than a cap is wide — which is most of the late game,
+   * and any frame hitch at any speed. Walking the segment means a key registers
+   * no matter how fast you are going or how badly the frame stuttered.
+   */
+  function pressSegment(x0, z0, x1, z1) {
+    const dist = Math.hypot(x1 - x0, z1 - z0);
+    // sample below half a cap so no cell along the line can be stepped over
+    const steps = Math.min(160, Math.max(1, Math.ceil(dist / (pitch * 0.4))));
+    const fresh = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const rec = pressAt(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+      if (rec) fresh.push(rec);
+    }
+    return fresh;
+  }
+
   function update(dt) {
     if (!active.size) return;
     for (const rec of active) {
@@ -193,5 +266,5 @@ export function makeKeyField(scene, { cols, rows, cells, theme, origin }) {
   }
 
   const total = grid.size;
-  return { meshes, heightAt, pressAt, update, dispose, worldToCell, cellCentre, pitch, total, theme: th, grid };
+  return { meshes, heightAt, pressAt, pressSegment, update, dispose, worldToCell, cellCentre, pitch, total, theme: th, grid };
 }
