@@ -448,7 +448,17 @@ function loadSet(s) { set = structuredClone(s); markDirty(false); syncAll(); }
 $('new-set').addEventListener('click', () => { set = blankSet(); markDirty(true); syncAll(); });
 
 (async () => {
-  META = await api('/anim/meta');
+  try {
+    META = await api('/anim/meta');
+  } catch (e) {
+    // A blank editor tells you nothing. The usual cause is arriving here
+    // without having signed in on the hub, so say that.
+    $('stage').insertAdjacentHTML('beforeend',
+      `<div class="boot-error"><b>Can't load the animator</b>
+       <p>${e.message}</p><p>Open the hub and sign in, then come back.</p>
+       <a href="/">Go to ClaudeBox</a></div>`);
+    return;
+  }
   $('clip').innerHTML = META.clips.map((c) => `<option>${c}</option>`).join('');
   try { sets = (await api('/anim/sets')).sets || []; } catch { sets = []; }
   set = sets.length ? structuredClone(sets[0]) : blankSet();
