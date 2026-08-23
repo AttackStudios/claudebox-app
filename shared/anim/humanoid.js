@@ -303,15 +303,56 @@ export function makeAnimator(THREE, bones, rigName, packName = 'none') {
     rest[canon].copy(local);
   }
 
-  const e = new THREE.Euler(), q = new THREE.Quaternion();
+  // ---- corrected rotation axes ----
+  // The `swing`/`lift` tables above name the best CARDINAL axis (x, y or z) for
+  // each rig. Best is not right: a shoulder's rest orientation is not aligned to
+  // the world, so the nearest cardinal axis leaves a residue — on the boy rig a
+  // pure forward arm swing also dragged the hand 43% of that distance inward.
+  //
+  // The axis that swings a limb purely forward is the world left-right axis,
+  // written in the frame the rotation actually acts in (parent world x rest).
+  // Deriving it per bone removes the cross-body drift on every rig at once, and
+  // it is the same reasoning normalizeRest already uses for R6's shoulders.
+  const AX_SWING = new THREE.Vector3(1, 0, 0);   // rotate about world right -> forward/back
+  const AX_LIFT = new THREE.Vector3(0, 0, 1);    // rotate about world forward -> out to the side
+  //
+  // The derived axis is a line, not a direction: +a and -a describe the same
+  // rotation axis but opposite senses. Point each one the same way the cardinal
+  // axis it replaces pointed, so every existing pose keeps the direction it was
+  // authored with and only loses the sideways residue.
+  const CARD = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+  const SWING_KEY = {
+    armL: 'arm', armR: 'arm', foreL: 'fore', foreR: 'fore',
+    legL: 'leg', legR: 'leg', shinL: 'shin', shinR: 'shin',
+    footL: 'foot', footR: 'foot', spine: 'spine', chest: 'spine',
+    hips: 'spine', neck: 'head', head: 'head',
+  };
+  const axisOf = {};
+  {
+    const pq = new THREE.Quaternion(), inv = new THREE.Quaternion();
+    for (const canon of Object.keys(joint)) {
+      const b = joint[canon];
+      b.updateWorldMatrix(true, false);
+      (b.parent || b).getWorldQuaternion(pq);
+      inv.copy(pq).multiply(rest[canon]).invert();
+      const swing = AX_SWING.clone().applyQuaternion(inv).normalize();
+      const lift = AX_LIFT.clone().applyQuaternion(inv).normalize();
+      const swingCard = CARD[(rig.swing || {})[SWING_KEY[canon]] || 'x'];
+      const liftCard = CARD[(rig.lift || {}).arm || 'x'];
+      if (swing.dot(swingCard) < 0) swing.negate();
+      if (lift.dot(liftCard) < 0) lift.negate();
+      axisOf[canon] = { swing, lift };
+    }
+  }
+
+  const e = new THREE.Euler(), q = new THREE.Quaternion(), q2 = new THREE.Quaternion();
   // Apply a rotation on top of the bind pose. Everything is relative to rest,
   // so a joint we never touch keeps exactly the shape the artist gave it.
   const apply = (canon, axis, amount, axis2, amount2) => {
     const b = joint[canon]; if (!b) return;
-    e.set(0, 0, 0);
-    if (axis) e[axis] = amount;
-    if (axis2 && amount2) e[axis2] = (e[axis2] || 0) + amount2;
-    q.setFromEuler(e);
+    const ax = axisOf[canon];
+    q.setFromAxisAngle(ax.swing, amount || 0);
+    if (amount2) { q2.setFromAxisAngle(ax.lift, amount2); q.multiply(q2); }
     b.quaternion.copy(rest[canon]).multiply(q);
   };
 
