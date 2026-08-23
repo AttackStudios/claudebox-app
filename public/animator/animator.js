@@ -37,7 +37,13 @@ let sets = [];
 let set = null;
 let clipName = 'idle';
 let playing = false, time = 0, speed = 1, dirty = false;
-let selKey = null;          // { ch, i } — the keyframe under the cursor
+// Selection holds the keyframe OBJECTS, mapped to the channel they live on.
+// Indices would be wrong the moment a drag re-sorts a track; object identity
+// survives sorting, deletion elsewhere, and paste.
+let sel = new Map();        // keyObject -> channel name
+let clipboard = null;       // [{ ch, dt, v, e }] relative to the earliest key
+const selCount = () => sel.size;
+const clearSel = () => { if (sel.size) { sel = new Map(); paintTimeline(); } };
 let selJoint = null;        // canonical joint name, e.g. 'armL'
 let mode = 'rotate';        // 'rotate' | 'move'
 let world = 'flat';
@@ -71,7 +77,7 @@ function restore(entry) {
   const modelChanged = entry.state.model !== set.model;
   set = entry.state;
   clipName = entry.clipName;
-  selKey = null;
+  sel = new Map();
   $('clip').value = clipName;
   $('set-name').value = set.name;
   $('cam-follow').checked = !!set.camera.followHead;
@@ -631,7 +637,7 @@ function deleteKey(ch, i) {
   pushUndo('delete key');
   keys.splice(i, 1);
   if (!keys.length) delete c.tracks[ch];
-  if (selKey && selKey.ch === ch) selKey = null;
+  sel.delete(keys[i]);
   markDirty(); applyPreview(); paintTimeline(); paintChannels();
   return true;
 }
@@ -640,12 +646,27 @@ function clearChannel(ch) {
   if (!c.tracks[ch]) return;
   pushUndo('clear channel');
   delete c.tracks[ch];
-  if (selKey?.ch === ch) selKey = null;
+  for (const [k, c2] of [...sel]) if (c2 === ch) sel.delete(k);
   markDirty(); applyPreview(); paintTimeline(); paintChannels();
   toast(`Deleted every key on ${ch}`);
 }
 function deleteSelected() {
-  if (selKey && deleteKey(selKey.ch, selKey.i)) { toast('Key deleted'); return; }
+  if (sel.size) {
+    pushUndo(`delete ${sel.size} key${sel.size > 1 ? 's' : ''}`);
+    const c = clip();
+    const n = sel.size;
+    for (const [k, ch] of sel) {
+      const keys = c.tracks[ch];
+      if (!keys) continue;
+      const i = keys.indexOf(k);
+      if (i >= 0) keys.splice(i, 1);
+      if (!keys.length) delete c.tracks[ch];
+    }
+    sel = new Map();
+    markDirty(); applyPreview(); paintTimeline(); paintChannels();
+    toast(`Deleted ${n} key${n > 1 ? 's' : ''}`);
+    return;
+  }
   // nothing picked in the timeline: fall back to the selected joint's channels
   // at the playhead, which is what "delete" means while you are posing
   if (!selJoint || !joints[selJoint]) { toast('Nothing selected to delete'); return; }
@@ -666,6 +687,43 @@ function deleteSelected() {
   }
   else toast('No key here to delete');
 }
+function copySel(cut = false) {
+  if (!sel.size) { toast('Select some keyframes first'); return; }
+  const items = [...sel].map(([k, ch]) => ({ ch, t: k.t, v: k.v, e: k.e }));
+  const t0 = Math.min(...items.map((i) => i.t));
+  // stored relative to the earliest key, so a paste keeps the shape of what you
+  // copied wherever you drop it
+  clipboard = items.map((i) => ({ ch: i.ch, dt: i.t - t0, v: i.v, e: i.e }));
+  toast(`${cut ? 'Cut' : 'Copied'} ${items.length} key${items.length > 1 ? 's' : ''}`);
+  if (cut) deleteSelected();
+}
+function pasteSel() {
+  if (!clipboard?.length) { toast('Nothing copied'); return; }
+  pushUndo('paste');
+  const c = clip();
+  const base = (time % c.duration) / c.duration;
+  const landed = new Map();
+  for (const it of clipboard) {
+    const t = Math.max(0, Math.min(1, +(base + it.dt).toFixed(4)));
+    const keys = (c.tracks[it.ch] ||= []);
+    const at = keys.find((k) => Math.abs(k.t - t) < 0.004);
+    if (at) { at.v = it.v; at.e = it.e; landed.set(at, it.ch); }
+    else { const k = { t, v: it.v, e: it.e }; keys.push(k); landed.set(k, it.ch); }
+    keys.sort((a, b) => a.t - b.t);
+  }
+  sel = landed;                     // leave the paste selected, ready to nudge
+  markDirty(); applyPreview(); paintTimeline(); paintChannels();
+  toast(`Pasted ${clipboard.length} key${clipboard.length > 1 ? 's' : ''} at ${time.toFixed(2)}s`);
+}
+function selectAllKeys() {
+  const c = clip();
+  sel = new Map();
+  for (const ch of META.channels) for (const k of (c.tracks[ch] || [])) sel.set(k, ch);
+  paintTimeline();
+  toast(sel.size ? `Selected ${sel.size} keys` : 'No keys in this clip');
+}
+
+
 addEventListener('keydown', (e) => {
   // Undo works even from inside a field — it is muscle memory, and a text
   // caret is not a good reason for the shortcut to go dead.
@@ -675,12 +733,36 @@ addEventListener('keydown', (e) => {
     return;
   }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
+  // clipboard, but only when the caret is not in a field — Cmd+C in the set
+  // name box should copy text, not keyframes
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if ((e.ctrlKey || e.metaKey) && !typing) {
+    const k = e.key.toLowerCase();
+    if (k === 'c') { e.preventDefault(); copySel(); return; }
+    if (k === 'x') { e.preventDefault(); copySel(true); return; }
+    if (k === 'v') { e.preventDefault(); pasteSel(); return; }
+    if (k === 'a') { e.preventDefault(); selectAllKeys(); return; }
+  }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
   else if (e.key === 'r' || e.key === 'e') setMode('rotate');
   else if (e.key === 'g' || e.key === 'w') setMode('move');
   else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'Escape') clearSel();
 });
+
+// Dragging rebuilds nothing: it only moves the pips that already exist. A full
+// paintTimeline() per mouse move would destroy the element under the cursor and
+// drop the drag.
+function paintTimelinePositions() {
+  const c = clip();
+  for (const lane of $('tl-lanes').children) {
+    const ch = lane.dataset.ch;
+    const keys = c.tracks[ch] || [];
+    const pips = lane.querySelectorAll('.kf');
+    for (let i = 0; i < pips.length && i < keys.length; i++) pips[i].style.left = `${keys[i].t * 100}%`;
+  }
+}
 
 function paintTimeline() {
   const host = $('tl-lanes'); host.innerHTML = '';
@@ -691,10 +773,12 @@ function paintTimeline() {
     total += keys.length;
     const lane = document.createElement('div');
     lane.className = 'lane' + (keys.length ? ' has' : '');
+    lane.dataset.ch = ch;
     lane.innerHTML = `<div class="lane-name">${CH_LABEL[ch] || ch}</div><div class="lane-track"></div>`;
     const track = lane.querySelector('.lane-track');
     track.addEventListener('click', (e) => {
       if (e.target.classList.contains('kf')) return;
+      if (e.shiftKey) return;               // shift on empty space is not a new key
       const r = track.getBoundingClientRect();
       const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
       setKey(ch, p * c.duration, valueAt(ch, p * c.duration));
@@ -702,26 +786,53 @@ function paintTimeline() {
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
       const d = document.createElement('div');
-      d.className = `kf ${k.e}` + (selKey && selKey.ch === ch && selKey.i === i ? ' sel' : '');
+      d.className = `kf ${k.e}` + (sel.has(k) ? ' sel' : '');
       d.style.left = `${k.t * 100}%`;
-      d.title = `${k.v.toFixed(2)} @ ${(k.t * c.duration).toFixed(2)}s (${k.e}) — double-click or press Delete to remove`;
+      d.title = `${k.v.toFixed(2)} @ ${(k.t * c.duration).toFixed(2)}s (${k.e})\n`
+        + 'shift-click to add to the selection · drag to move every selected key · double-click to delete';
       d.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        selKey = { ch, i };
-        paintTimeline();
+        if (e.shiftKey) {
+          // extend or trim the selection, and do not start a drag
+          if (sel.has(k)) sel.delete(k); else sel.set(k, ch);
+          paintTimeline();
+          return;
+        }
+        // Measure BEFORE repainting. paintTimeline() rebuilds these elements, and
+        // a detached node reports a 0x0 rect — which made the drag divide by
+        // zero and set every key's time to NaN.
         const r = track.getBoundingClientRect();
+
+        // clicking an unselected key selects just it; clicking one already in
+        // the selection keeps the group, so you can drag the whole set
+        if (!sel.has(k)) sel = new Map([[k, ch]]);
+        paintTimeline();
+
+        const start = new Map();
+        for (const [kk] of sel) start.set(kk, kk.t);
+        const t0 = (e.clientX - r.left) / r.width;
         let moved = false;
         const move = (ev) => {
-          if (!moved) openChange('move key');
+          if (!(r.width > 0)) return;
+          if (!moved) openChange(sel.size > 1 ? `move ${sel.size} keys` : 'move key');
           moved = true;
-          k.t = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
-          d.style.left = `${k.t * 100}%`;
+          // shift everything by the same amount, and stop the whole group at
+          // the ends rather than letting keys pile up on the boundary
+          let dt = (ev.clientX - r.left) / r.width - t0;
+          let lo = 1, hi = 0;
+          for (const [, s0] of start) { lo = Math.min(lo, s0); hi = Math.max(hi, s0); }
+          dt = Math.max(-lo, Math.min(1 - hi, dt));
+          for (const [kk, s0] of start) kk.t = s0 + dt;
           markDirty();
+          paintTimelinePositions();
         };
         const up = () => {
           removeEventListener('pointermove', move); removeEventListener('pointerup', up);
           closeChange();
-          if (moved) { keys.sort((a, b) => a.t - b.t); applyPreview(); paintTimeline(); }
+          if (moved) {
+            for (const [, chName] of sel) (c.tracks[chName] || []).sort((a, b) => a.t - b.t);
+            applyPreview(); paintTimeline();
+          }
         };
         addEventListener('pointermove', move); addEventListener('pointerup', up);
       });
@@ -736,7 +847,9 @@ function paintTimeline() {
     }
     host.appendChild(lane);
   }
-  $('keycount').textContent = `${total} keys in ${clipName}`;
+  $('keycount').textContent = sel.size
+    ? `${sel.size} selected · ${total} keys in ${clipName}`
+    : `${total} keys in ${clipName}`;
 }
 
 // ---------------------------------------------------------------- transport
@@ -788,7 +901,7 @@ $('clear-clip').addEventListener('click', () => {
   if (!confirm(`Delete every key in "${clipName}"?`)) return;
   pushUndo('clear clip');
   set.clips[clipName] = { duration: clip().duration, loop: clip().loop, tracks: {} };
-  selKey = null;
+  sel = new Map();
   markDirty(); applyPreview(); paintTimeline(); paintChannels();
   toast(`Cleared ${clipName}`);
 });
@@ -880,7 +993,7 @@ function syncClip() {
   $('clip-label').textContent = clipName;
   $('dur').value = c.duration;
   $('loop').checked = c.loop !== false;
-  time = 0; selKey = null;
+  time = 0; sel = new Map();
   applyPreview(); paintTimeline(); paintChannels(); paintRuler();
 }
 function syncAll() {
@@ -922,7 +1035,9 @@ $('new-set').addEventListener('click', () => {
   // Debug handle, in the same spirit as rivals' window.__momentum: lets the
   // viewport be driven and inspected from the console (and from tests).
   window.__anim = {
-    get state() { return { clipName, mode, selJoint, selKey, time, playing }; },
+    get state() { return { clipName, mode, selJoint, selected: sel.size, time, playing }; },
+    selectedTimes: () => [...sel.keys()].map((k) => +k.t.toFixed(4)).sort((a, b) => a - b),
+    setTime(t) { time = t; },
     screenOf(canon) {
       const o = jointObject(canon); if (!o) return null;
       const v = new THREE.Vector3(); o.getWorldPosition(v);
