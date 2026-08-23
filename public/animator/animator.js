@@ -468,6 +468,8 @@ function frame(now) {
 }
 
 // ---------------------------------------------------------------- channels
+// what server/anim/store.js will accept for a key value
+const CH_LIMIT = 6.5;
 const CH_LABEL = {
   armLS: 'L arm swing', armRS: 'R arm swing', armLL: 'L arm lift', armRL: 'R arm lift',
   foreL: 'L forearm', foreR: 'R forearm', legLS: 'L leg swing', legRS: 'R leg swing',
@@ -476,24 +478,53 @@ const CH_LABEL = {
   rootX: 'Body sideways', rootZ: 'Body forward',
 };
 function paintChannels() {
-  const host = $('channels'); host.innerHTML = '';
+  const host = $('channels');
+  // Never rebuild under a field being typed into: the 300ms repaint would drop
+  // the caret and discard the half-entered number.
+  if (host.contains(document.activeElement) && document.activeElement !== document.body) return;
+  host.innerHTML = '';
   const c = clip();
   for (const ch of META.channels) {
     const has = !!c.tracks[ch]?.length;
     const el = document.createElement('div');
     el.className = 'ch' + (has ? ' active' : '');
     const v = valueAt(ch, time);
-    el.innerHTML = `<div class="ch-top"><b>${CH_LABEL[ch] || ch}</b><span>${v.toFixed(2)}</span></div>
-      <input type="range" min="-3.2" max="3.2" step="0.01" value="${v}">
+    el.innerHTML = `<div class="ch-top"><b>${CH_LABEL[ch] || ch}</b>
+        <input class="ch-val" type="number" step="0.01" min="${-CH_LIMIT}" max="${CH_LIMIT}"
+               value="${v.toFixed(2)}" title="Type an exact value"></div>
+      <input class="ch-slider" type="range" min="-3.2" max="3.2" step="0.01" value="${v}">
       <div class="n">${ch}${has ? ` · ${c.tracks[ch].length} keys` : ''}
         ${has ? '<button class="ch-clear" title="Delete this channel’s keys">clear</button>' : ''}</div>`;
-    const inp = el.querySelector('input');
+    const inp = el.querySelector('.ch-slider');
+    const box = el.querySelector('.ch-val');
     inp.addEventListener('pointerdown', () => openChange('slider'));
     inp.addEventListener('keydown', () => openChange('slider'));
     inp.addEventListener('change', closeChange);
     inp.addEventListener('input', () => {
       setKey(ch, time, +inp.value);
-      el.querySelector('span').textContent = (+inp.value).toFixed(2);
+      box.value = (+inp.value).toFixed(2);
+    });
+
+    // Typed entry. The slider is fine for finding a pose and useless for
+    // reproducing one, so the readout is the input: type a number, get exactly
+    // that number. The slider's range is narrower than what a set can store, so
+    // it just pins at its end rather than rewriting what you typed.
+    const commit = () => {
+      const n = parseFloat(box.value);
+      if (!isFinite(n)) { box.value = valueAt(ch, time).toFixed(2); return; }
+      const clamped = Math.max(-CH_LIMIT, Math.min(CH_LIMIT, n));
+      box.value = clamped.toFixed(2);
+      inp.value = String(clamped);
+      setKey(ch, time, clamped);
+    };
+    box.addEventListener('focus', () => box.select());
+    box.addEventListener('change', commit);
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); box.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); box.value = valueAt(ch, time).toFixed(2); box.blur(); }
+      // Let Delete and space edit the text rather than the timeline, but leave
+      // the shortcuts alone so Cmd+Z still undoes the edit, not the typing.
+      if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
     });
     el.querySelector('.ch-clear')?.addEventListener('click', () => clearChannel(ch));
     host.appendChild(el);

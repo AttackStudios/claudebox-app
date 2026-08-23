@@ -203,3 +203,15 @@ body.scrubbing #tl-ruler, body.scrubbing .ph-grab { cursor: ew-resize; }
 }
 .icon:hover:not(:disabled) { color: var(--ink); border-color: #3a4453; }
 .icon:disabled { opacity: .35; cursor: default; }
+
+/* the channel readout is an input, styled to stay a readout until you use it */
+.ch input.ch-val {
+  width: 62px; margin: 0; padding: 1px 3px; text-align: right;
+  background: transparent; border: 1px solid transparent; border-radius: 5px;
+  color: var(--accent); font: inherit; font-size: 11.5px;
+  font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+}
+.ch input.ch-val::-webkit-outer-spin-button,
+.ch input.ch-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ch input.ch-val:hover { border-color: var(--line); }
+.ch input.ch-val:focus { outline: none; border-color: var(--accent); background: rgba(110, 231, 255, .1); }
