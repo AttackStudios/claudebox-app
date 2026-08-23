@@ -8,12 +8,28 @@ import { POSES } from './humanoid.js';
 
 const smooth = (t) => t * t * (3 - 2 * t);
 
-/** Sample one track at phase p (0..1), honouring each key's easing. */
-function sampleTrack(keys, p) {
+/**
+ * Sample one track at phase p (0..1), honouring each key's easing.
+ *
+ * `loop` matters at the ends. The stretch between the last key and the first is
+ * a real segment for a cycling clip — it just happens to cross t=1 — so it is
+ * interpolated through. Holding the last value there and then snapping back to
+ * the first is precisely what a visible loop seam is: a flat spot followed by a
+ * jump. A one-shot clip still holds, because that is what a one-shot should do.
+ */
+function sampleTrack(keys, p, loop = true) {
   if (!keys.length) return 0;
-  if (keys.length === 1 || p <= keys[0].t) return keys[0].v;
-  const last = keys[keys.length - 1];
-  if (p >= last.t) return last.v;
+  if (keys.length === 1) return keys[0].v;
+  const first = keys[0], last = keys[keys.length - 1];
+  if (p >= last.t || p <= first.t) {
+    if (!loop) return p >= last.t ? last.v : first.v;
+    const span = (1 - last.t) + first.t;
+    if (span <= 1e-6) return first.v;
+    if (last.e === 'step') return last.v;
+    const raw = (p >= last.t ? p - last.t : p + 1 - last.t) / span;
+    const k = last.e === 'linear' ? raw : smooth(raw);
+    return last.v + (first.v - last.v) * k;
+  }
   let i = 0;
   while (i < keys.length - 1 && keys[i + 1].t <= p) i++;
   const a = keys[i], b = keys[i + 1];
@@ -41,7 +57,7 @@ export function packFromSet(set) {
       // its own timeline, so a two-second clip is not forced into one cycle
       let p = (t % dur) / dur;
       if (!loop) p = Math.min(1, t / dur);
-      for (const [ch, keys] of tracks) c[ch] = sampleTrack(keys, p);
+      for (const [ch, keys] of tracks) c[ch] = sampleTrack(keys, p, loop);
     };
   }
   return pack;

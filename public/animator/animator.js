@@ -601,16 +601,28 @@ function paintRuler() {
 function valueAt(ch, t) {
   const c = clip();
   const keys = c.tracks[ch];
-  if (keys?.length) return sample(keys, (t % c.duration) / c.duration);
+  if (keys?.length) return sample(keys, (t % c.duration) / c.duration, c.loop !== false);
   const probe = {}; for (const k of META.channels) probe[k] = 0;
   (POSES[clipName] || POSES.idle)(probe, t);
   return probe[ch] || 0;
 }
-function sample(keys, p) {
+// Mirrors sampleTrack in shared/anim/custom.js — the editor must show exactly
+// what a game will play, seam included, or the preview is a lie.
+function sample(keys, p, loop = true) {
   if (!keys.length) return 0;
-  if (keys.length === 1 || p <= keys[0].t) return keys[0].v;
-  const last = keys[keys.length - 1];
-  if (p >= last.t) return last.v;
+  if (keys.length === 1) return keys[0].v;
+  const first = keys[0], last = keys[keys.length - 1];
+  // the stretch from the last key back round to the first is a real segment for
+  // a cycling clip; holding then snapping is what a loop seam looks like
+  if (p >= last.t || p <= first.t) {
+    if (!loop) return p >= last.t ? last.v : first.v;
+    const span = (1 - last.t) + first.t;
+    if (span <= 1e-6) return first.v;
+    if (last.e === 'step') return last.v;
+    const raw = (p >= last.t ? p - last.t : p + 1 - last.t) / span;
+    const k = last.e === 'linear' ? raw : raw * raw * (3 - 2 * raw);
+    return last.v + (first.v - last.v) * k;
+  }
   let i = 0; while (i < keys.length - 1 && keys[i + 1].t <= p) i++;
   const a = keys[i], b = keys[i + 1], span = b.t - a.t;
   if (span <= 0) return b.v;
