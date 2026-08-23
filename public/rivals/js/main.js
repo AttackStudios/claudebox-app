@@ -389,6 +389,39 @@ function buildMap(def) {
   const sky = def.sky2 || [def.sky, def.sky, def.sky];
   scene.background = skyTex(sky[0], sky[1], sky[2]);
   scene.fog = new THREE.FogExp2(sky[2], def.fog || 0.01);
+  if (def.clouds) { hemi.intensity = 1.15; hemi.groundColor.set('#d6dde8'); }   // white arenas need bounce, not blue shadow
+  // Big soft cumulus on a dome. The arenas are deliberately near-white, so a
+  // flat gradient overhead left the whole frame feeling like an empty render;
+  // clouds give the sky depth without adding anything to read as cover.
+  if (def.clouds) {
+    const cc = document.createElement('canvas'); cc.width = 1024; cc.height = 512;
+    const g = cc.getContext('2d');
+    g.clearRect(0, 0, 1024, 512);
+    let seed = 7;
+    const rr = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    for (let n = 0; n < 26; n++) {
+      const cx = rr() * 1024, cy = 60 + rr() * 300, s = 46 + rr() * 92;
+      // a puff is a cluster of soft blobs — cheaper than noise and reads better
+      for (let k = 0; k < 9; k++) {
+        const ox = (rr() - 0.5) * s * 2.4, oy = (rr() - 0.5) * s * 0.7;
+        const r = s * (0.42 + rr() * 0.55);
+        const grd = g.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, r);
+        grd.addColorStop(0, 'rgba(255,255,255,0.92)');
+        grd.addColorStop(0.55, 'rgba(255,255,255,0.5)');
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grd;
+        g.beginPath(); g.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); g.fill();
+      }
+    }
+    const ct = new THREE.CanvasTexture(cc);
+    ct.colorSpace = THREE.SRGBColorSpace;
+    ct.wrapS = THREE.RepeatWrapping;
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(620, 32, 20, 0, Math.PI * 2, 0, Math.PI * 0.52),
+      new THREE.MeshBasicMaterial({ map: ct, transparent: true, depthWrite: false, side: THREE.BackSide, fog: false }));
+    dome.position.y = -40;
+    mapGroup.add(dome);
+  }
   // ground — textured grid with a soft centre glow (flat colour for the lobby)
   const gW = def.ground.sizeX || def.ground.size, gL = def.ground.sizeZ || def.ground.size;
   const gt = def.ground.tex;
@@ -1460,7 +1493,9 @@ function buildViewmodels() {
     };
     viewmodels.catpaw = g;
   }
-  for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.68); viewRoot.add(g); }
+  // 0.68 framed the gun as a small prop in the corner; the series holds it
+  // large and high-right, which is most of why its weapons read as chunky.
+  for (const [k, g] of Object.entries(viewmodels)) { g.visible = false; g.scale.setScalar(0.86); viewRoot.add(g); }
 }
 buildViewmodels();
 // every gun now has a bespoke model (weapons.js); vmVariant survives only for

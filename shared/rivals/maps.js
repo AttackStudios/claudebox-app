@@ -37,7 +37,7 @@ const TEAM_A = '#2fa4ff', TEAM_B = '#ff7a34';   // blue side vs orange side
 // Laid out with 180° rotational symmetry so the two diagonal spawns are fair.
 export const ARENA = {
   id: 'arena', name: 'Arena',
-  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#e8f1f8'], fog: 0.006,
+  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#e8f1f8'], fog: 0.006, clouds: true,
   ground: { color: '#eef1f6', sizeX: 46, sizeZ: 62, thick: 4, tex: ['#eef1f6', 'rgba(120,135,160,0.34)', 'rgba(150,175,205,0.12)'] },
   emblem: '#8fa7c4',
   boxes: [
@@ -75,12 +75,16 @@ export const ARENA = {
 };
 
 // ============ BATTLEGROUND — big outdoor industrial ========
-const BG_P = '#8a4fd0', BG_P2 = '#6d3ba8', BG_G = '#9aa3ad', BG_C = '#c69a5a', BG_B = '#586170';
-const BG_NEON = '#c17bff', BG_NEON2 = '#57e0ff';
+// Retheme to the series' own arena language: near-white panelled greybox with
+// two greys for depth and one cool accent. The old green-field/purple-wall pass
+// fought the weapons for attention — a bright, near-monochrome arena is what
+// lets a saturated gun and a player silhouette read instantly at range.
+const BG_P = '#e6eaf1', BG_P2 = '#d5dbe5', BG_G = '#c8cfda', BG_C = '#b9c2ce', BG_B = '#aab4c2';
+const BG_NEON = '#57e0ff', BG_NEON2 = '#9ad9ff';
 export const BATTLEGROUND = {
   id: 'battleground', name: 'Battleground',
-  sky: '#9cc6ee', sky2: ['#4f96e4', '#8fc0ee', '#d3e6f6'], fog: 0.006,
-  ground: { color: '#6f9e56', size: 124, tex: ['#6f9e56', 'rgba(40,70,30,0.32)', 'rgba(170,215,130,0.14)'] },
+  sky: '#cfe3f4', sky2: ['#7db9ec', '#b7d8f0', '#eef6fc'], fog: 0.0028, clouds: true,
+  ground: { color: '#f7f8fa', size: 124, tex: ['#fafbfd', 'rgba(126,140,164,0.26)', 'rgba(160,185,215,0.08)'] },
   emblem: '#ffd24a',
   boxes: [
     // perimeter
