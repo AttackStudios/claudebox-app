@@ -365,6 +365,200 @@ function withBarriers(map) {
 }
 [ARENA, BATTLEGROUND, LOBBY, FRONTIER, COLOSSUS].forEach(withBarriers);
 
-export const MAPS = { arena: ARENA, battleground: BATTLEGROUND, frontier: FRONTIER, colossus: COLOSSUS };
+
+// ============================================================================
+// The rest of the vote roster. Every one is 180-degree rotationally symmetric
+// so the two spawns are mirror images and neither side owns a better angle.
+// Each keeps the same greybox language — chunky readable cover, a raised
+// centre worth contesting, ramps that push you toward the opposite side — and
+// changes only palette and silhouette, so learning one map teaches you all of
+// them.
+// ============================================================================
+
+// ---- BACKROOMS: tight yellow corridors, low ceiling, no sky ----
+const BR_W = '#d9c169', BR_W2 = '#c7ad55', BR_T = '#b89c46', BR_C = '#8f7833';
+export const BACKROOMS = {
+  id: 'backrooms', name: 'Backrooms',
+  sky: '#c9b262', sky2: ['#b39b4e', '#c9b262', '#ddc87f'], fog: 0.02,
+  ground: { color: '#c2a851', sizeX: 62, sizeZ: 62, thick: 3, tex: ['#c9b062', 'rgba(90,72,20,0.30)', 'rgba(255,240,170,0.10)'] },
+  emblem: '#8f7833',
+  ceiling: { y: 9, color: '#cbb257' },
+  boxes: [
+    // perimeter
+    B(0, 4.5, -31, 62, 9, 1.2, BR_W), B(0, 4.5, 31, 62, 9, 1.2, BR_W),
+    B(-31, 4.5, 0, 1.2, 9, 62, BR_W), B(31, 4.5, 0, 1.2, 9, 62, BR_W),
+    // the maze: long partitions leaving offset doorways, mirrored 180 degrees
+    B(-10, 4.5, -20, 22, 9, 1.1, BR_W2), B(10, 4.5, 20, 22, 9, 1.1, BR_W2),
+    B(14, 4.5, -20, 12, 9, 1.1, BR_T), B(-14, 4.5, 20, 12, 9, 1.1, BR_T),
+    B(-20, 4.5, -10, 1.1, 9, 20, BR_W2), B(20, 4.5, 10, 1.1, 9, 20, BR_W2),
+    B(-20, 4.5, 14, 1.1, 9, 12, BR_T), B(20, 4.5, -14, 1.1, 9, 12, BR_T),
+    B(-4, 4.5, -6, 1.1, 9, 18, BR_W2), B(4, 4.5, 6, 1.1, 9, 18, BR_W2),
+    B(8, 4.5, -4, 16, 9, 1.1, BR_T), B(-8, 4.5, 4, 16, 9, 1.1, BR_T),
+    // low cover in the open pockets
+    B(-24, 1.1, 24, 3.2, 2.2, 3.2, BR_C), B(24, 1.1, -24, 3.2, 2.2, 3.2, BR_C),
+    B(0, 1.1, -13, 4, 2.2, 2.6, BR_C), B(0, 1.1, 13, 4, 2.2, 2.6, BR_C),
+    B(13, 1.1, 8, 2.6, 2.2, 5, BR_C), B(-13, 1.1, -8, 2.6, 2.2, 5, BR_C),
+    // spawn pads
+    B(-26, 0.05, -26, 5, 0.1, 5, TEAM_A, { glow: true }), B(26, 0.05, 26, 5, 0.1, 5, TEAM_B, { glow: true }),
+  ],
+  spawnsA: [{ x: -26, z: -26, ry: -2.36 }, { x: -23, z: -27, ry: -2.2 }],
+  spawnsB: [{ x: 26, z: 26, ry: 0.78 }, { x: 23, z: 27, ry: 0.94 }],
+};
+
+// ---- CROSSROADS: open green crossing, four approach lanes ----
+const CR_S = '#e3e8ee', CR_S2 = '#cfd6df', CR_G = '#7fb45f', CR_G2 = '#6aa04d', CR_A = '#b9c4d0';
+export const CROSSROADS = {
+  id: 'crossroads', name: 'Crossroads',
+  sky: '#cfe3f4', sky2: ['#6fb0e8', '#a8d0ee', '#eaf3fa'], fog: 0.0032, clouds: true,
+  ground: { color: '#7fb45f', size: 96, tex: ['#84b862', 'rgba(40,70,30,0.22)', 'rgba(200,240,170,0.12)'] },
+  emblem: '#e3e8ee',
+  boxes: [
+    // perimeter
+    B(0, 6, -46, 96, 12, 1.4, CR_S), B(0, 6, 46, 96, 12, 1.4, CR_S),
+    B(-46, 6, 0, 1.4, 12, 92, CR_S), B(46, 6, 0, 1.4, 12, 92, CR_S),
+    // the crossing itself: a raised stone plus-shape at the middle
+    B(0, 1.0, 0, 26, 2, 9, CR_S2, { walk: true }), B(0, 1.0, 0, 9, 2, 26, CR_S2, { walk: true }),
+    ...table(0, 0, 7, 7, 4.4, CR_S, CR_A),
+    // ramps up onto the crossing from all four sides
+    slope(0, 0, -18, 'z', 9, 2, 8, 1, CR_S2), slope(0, 0, 18, 'z', 9, 2, 8, -1, CR_S2),
+    slope(-18, 0, 0, 'x', 9, 2, 8, 1, CR_S2), slope(18, 0, 0, 'x', 9, 2, 8, -1, CR_S2),
+    // corner blockhouses with walkable roofs
+    B(-22, 3, -22, 12, 6, 12, CR_S, { walk: true }), B(22, 3, 22, 12, 6, 12, CR_S, { walk: true }),
+    B(22, 3, -22, 10, 6, 10, CR_S2, { walk: true }), B(-22, 3, 22, 10, 6, 10, CR_S2, { walk: true }),
+    slope(-22, 0, -14, 'z', 8, 6, 5, -1, CR_A), slope(22, 0, 14, 'z', 8, 6, 5, 1, CR_A),
+    // hedgerow cover along the lanes
+    B(-12, 1.2, -32, 8, 2.4, 2.2, CR_G2), B(12, 1.2, 32, 8, 2.4, 2.2, CR_G2),
+    B(32, 1.2, -12, 2.2, 2.4, 8, CR_G2), B(-32, 1.2, 12, 2.2, 2.4, 8, CR_G2),
+    B(-14, 1.4, 8, 3, 2.8, 3, CR_A), B(14, 1.4, -8, 3, 2.8, 3, CR_A),
+    B(8, 1.4, 16, 3, 2.8, 3, CR_A), B(-8, 1.4, -16, 3, 2.8, 3, CR_A),
+    B(-34, 0.05, -34, 6, 0.1, 6, TEAM_A, { glow: true }), B(34, 0.05, 34, 6, 0.1, 6, TEAM_B, { glow: true }),
+  ],
+  spawnsA: [{ x: -34, z: -34, ry: -2.36 }, { x: -30, z: -36, ry: -2.2 }],
+  spawnsB: [{ x: 34, z: 34, ry: 0.78 }, { x: 30, z: 36, ry: 0.94 }],
+};
+
+// ---- DOCKS: stacked containers on a quay ----
+const DK_C1 = '#e08a3c', DK_C2 = '#3b7fc4', DK_C3 = '#d6503f', DK_C4 = '#4aa86a';
+const DK_S = '#cdd5df', DK_S2 = '#b4bdc9', DK_W = '#5f7f9c';
+export const DOCKS = {
+  id: 'docks', name: 'Docks',
+  sky: '#cfe3f4', sky2: ['#6aa8dd', '#a6cbe6', '#e6f0f7'], fog: 0.004, clouds: true,
+  ground: { color: '#c3ccd6', sizeX: 84, sizeZ: 84, thick: 3, tex: ['#c8d1da', 'rgba(70,90,110,0.30)', 'rgba(200,225,245,0.10)'] },
+  emblem: '#5f7f9c',
+  boxes: [
+    B(0, 6, -42, 84, 12, 1.4, DK_S), B(0, 6, 42, 84, 12, 1.4, DK_S),
+    B(-42, 6, 0, 1.4, 12, 84, DK_S), B(42, 6, 0, 1.4, 12, 84, DK_S),
+    // container stacks — walkable tops, staggered so you can climb them
+    B(-14, 1.6, -10, 12, 3.2, 5, DK_C1, { walk: true }), B(14, 1.6, 10, 12, 3.2, 5, DK_C1, { walk: true }),
+    B(-14, 4.8, -10, 10, 3.2, 4.6, DK_C2, { walk: true }), B(14, 4.8, 10, 10, 3.2, 4.6, DK_C2, { walk: true }),
+    B(-6, 1.6, 6, 5, 3.2, 12, DK_C3, { walk: true }), B(6, 1.6, -6, 5, 3.2, 12, DK_C3, { walk: true }),
+    B(20, 1.6, -20, 12, 3.2, 5, DK_C4, { walk: true }), B(-20, 1.6, 20, 12, 3.2, 5, DK_C4, { walk: true }),
+    B(20, 4.8, -20, 8, 3.2, 4.6, DK_C1, { walk: true }), B(-20, 4.8, 20, 8, 3.2, 4.6, DK_C1, { walk: true }),
+    B(28, 1.6, 8, 5, 3.2, 14, DK_C2, { walk: true }), B(-28, 1.6, -8, 5, 3.2, 14, DK_C2, { walk: true }),
+    // the quay: a long raised platform down the middle
+    B(0, 1.0, 0, 30, 2, 8, DK_S2, { walk: true }),
+    slope(-19, 0, 0, 'x', 8, 2, 7, 1, DK_S2), slope(19, 0, 0, 'x', 8, 2, 7, -1, DK_S2),
+    // bollards / crates
+    B(-32, 1.2, 30, 3, 2.4, 3, DK_S2), B(32, 1.2, -30, 3, 2.4, 3, DK_S2),
+    B(8, 1.2, 26, 4, 2.4, 3, DK_W), B(-8, 1.2, -26, 4, 2.4, 3, DK_W),
+    B(-30, 0.05, -30, 6, 0.1, 6, TEAM_A, { glow: true }), B(30, 0.05, 30, 6, 0.1, 6, TEAM_B, { glow: true }),
+  ],
+  spawnsA: [{ x: -30, z: -30, ry: -2.36 }, { x: -34, z: -27, ry: -2.5 }],
+  spawnsB: [{ x: 30, z: 30, ry: 0.78 }, { x: 34, z: 27, ry: 0.64 }],
+};
+
+// ---- STATION: a covered platform hall, trains either side ----
+const ST_W = '#d8ccc2', ST_W2 = '#c2b4a8', ST_R = '#9c4a3c', ST_M = '#6f7b88', ST_T = '#3f4956';
+export const STATION = {
+  id: 'station', name: 'Station',
+  sky: '#e0dcd6', sky2: ['#b9b2a8', '#d3cdc4', '#eeeae4'], fog: 0.009,
+  ground: { color: '#cfc6bc', sizeX: 70, sizeZ: 92, thick: 3, tex: ['#d4cbc1', 'rgba(80,66,54,0.28)', 'rgba(255,244,230,0.10)'] },
+  emblem: '#9c4a3c',
+  ceiling: { y: 15, color: '#b9b2a8' },
+  boxes: [
+    B(0, 7.5, -46, 70, 15, 1.4, ST_W), B(0, 7.5, 46, 70, 15, 1.4, ST_W),
+    B(-35, 7.5, 0, 1.4, 15, 92, ST_R), B(35, 7.5, 0, 1.4, 15, 92, ST_R),
+    // two train bodies flanking the platform — walkable roofs
+    B(-22, 2.2, -12, 8, 4.4, 40, ST_T, { walk: true }), B(22, 2.2, 12, 8, 4.4, 40, ST_T, { walk: true }),
+    B(-22, 4.7, -12, 8.6, 0.6, 40, ST_M), B(22, 4.7, 12, 8.6, 0.6, 40, ST_M),
+    // platform edge strips
+    B(-15, 0.6, 0, 3, 1.2, 88, ST_W2, { walk: true }), B(15, 0.6, 0, 3, 1.2, 88, ST_W2, { walk: true }),
+    // roof pillars down the middle
+    B(-6, 5, -28, 1.6, 10, 1.6, ST_M), B(6, 5, -28, 1.6, 10, 1.6, ST_M),
+    B(-6, 5, 0, 1.6, 10, 1.6, ST_M), B(6, 5, 0, 1.6, 10, 1.6, ST_M),
+    B(-6, 5, 28, 1.6, 10, 1.6, ST_M), B(6, 5, 28, 1.6, 10, 1.6, ST_M),
+    // benches / kiosks as cover
+    B(0, 1.3, -18, 7, 2.6, 3, ST_W2), B(0, 1.3, 18, 7, 2.6, 3, ST_W2),
+    B(-9, 1.1, 8, 3, 2.2, 3, ST_R), B(9, 1.1, -8, 3, 2.2, 3, ST_R),
+    ...table(0, 0, 8, 6, 3.2, ST_W2, ST_M),
+    slope(-11, 0, -34, 'z', 8, 4.4, 5, 1, ST_M), slope(11, 0, 34, 'z', 8, 4.4, 5, -1, ST_M),
+    B(0, 0.05, -40, 7, 0.1, 6, TEAM_A, { glow: true }), B(0, 0.05, 40, 7, 0.1, 6, TEAM_B, { glow: true }),
+  ],
+  spawnsA: [{ x: -2, z: -40, ry: Math.PI }, { x: 2, z: -40, ry: Math.PI }],
+  spawnsB: [{ x: 2, z: 40, ry: 0 }, { x: -2, z: 40, ry: 0 }],
+};
+
+// ---- CONSTRUCTION: scaffolding and half-built floors ----
+const CN_F = '#d9dee6', CN_S = '#e8a13a', CN_B = '#9aa3ad', CN_D = '#7a828d', CN_W = '#c9a06a';
+export const CONSTRUCTION = {
+  id: 'construction', name: 'Construction',
+  sky: '#dce6f0', sky2: ['#8ab4dd', '#bcd4e9', '#eef4fa'], fog: 0.005, clouds: true,
+  ground: { color: '#cdd3db', sizeX: 76, sizeZ: 76, thick: 3, tex: ['#d2d8e0', 'rgba(70,80,95,0.26)', 'rgba(220,235,250,0.10)'] },
+  emblem: '#e8a13a',
+  boxes: [
+    B(0, 7, -38, 76, 14, 1.4, CN_F), B(0, 7, 38, 76, 14, 1.4, CN_F),
+    B(-38, 7, 0, 1.4, 14, 76, CN_F), B(38, 7, 0, 1.4, 14, 76, CN_F),
+    // a half-built two-storey block in the middle
+    B(0, 3.2, 0, 22, 0.7, 22, CN_B, { walk: true }),          // first floor slab
+    B(-10, 1.6, -10, 1.4, 3.2, 1.4, CN_D), B(10, 1.6, -10, 1.4, 3.2, 1.4, CN_D),
+    B(-10, 1.6, 10, 1.4, 3.2, 1.4, CN_D), B(10, 1.6, 10, 1.4, 3.2, 1.4, CN_D),
+    B(0, 1.6, 0, 1.4, 3.2, 1.4, CN_D),
+    B(0, 6.6, 0, 14, 0.7, 14, CN_B, { walk: true }),           // second floor
+    B(-6, 5.0, -6, 1.2, 3.0, 1.2, CN_D), B(6, 5.0, 6, 1.2, 3.0, 1.2, CN_D),
+    // ramps up to the first floor, mirrored
+    slope(-16, 0, 6, 'z', 12, 3.5, 5, -1, CN_S), slope(16, 0, -6, 'z', 12, 3.5, 5, 1, CN_S),
+    // scaffold towers in opposite corners
+    B(-26, 2, -26, 8, 0.6, 8, CN_S, { walk: true }), B(26, 2, 26, 8, 0.6, 8, CN_S, { walk: true }),
+    B(-26, 5, -26, 8, 0.6, 8, CN_S, { walk: true }), B(26, 5, 26, 8, 0.6, 8, CN_S, { walk: true }),
+    slope(-26, 0, -19, 'z', 7, 2, 4, -1, CN_D), slope(26, 0, 19, 'z', 7, 2, 4, 1, CN_D),
+    // pipe stacks and material piles
+    B(24, 1.2, -18, 6, 2.4, 3, CN_W), B(-24, 1.2, 18, 6, 2.4, 3, CN_W),
+    B(-16, 1.2, -22, 3, 2.4, 6, CN_W), B(16, 1.2, 22, 3, 2.4, 6, CN_W),
+    B(8, 1.5, -26, 4, 3, 3, CN_B), B(-8, 1.5, 26, 4, 3, 3, CN_B),
+    B(-30, 0.05, -30, 6, 0.1, 6, TEAM_A, { glow: true }), B(30, 0.05, 30, 6, 0.1, 6, TEAM_B, { glow: true }),
+  ],
+  spawnsA: [{ x: -30, z: -30, ry: -2.36 }, { x: -33, z: -27, ry: -2.5 }],
+  spawnsB: [{ x: 30, z: 30, ry: 0.78 }, { x: 33, z: 27, ry: 0.64 }],
+};
+
+// ---- ONYX: the dark one, lit by its own edges ----
+const OX_D = '#22262e', OX_D2 = '#2c313b', OX_D3 = '#3a414f', OX_N = '#57e0ff', OX_N2 = '#c17bff';
+export const ONYX = {
+  id: 'onyx', name: 'Onyx',
+  sky: '#0d1016', sky2: ['#0a0d13', '#141924', '#232a38'], fog: 0.012,
+  ground: { color: '#1b1f26', sizeX: 60, sizeZ: 76, thick: 3, tex: ['#1e222a', 'rgba(0,0,0,0.5)', 'rgba(90,200,255,0.10)'] },
+  emblem: '#57e0ff',
+  boxes: [
+    B(0, 7, -38, 60, 14, 1.2, OX_D), B(0, 7, 38, 60, 14, 1.2, OX_D),
+    B(-30, 7, 0, 1.2, 14, 76, OX_D), B(30, 7, 0, 1.2, 14, 76, OX_D),
+    // centre dais with neon rim
+    ...table(0, 0, 9, 7, 3.6, OX_D2, OX_D),
+    B(0, 3.72, 0, 9.4, 0.12, 7.4, OX_N, { glow: true }),
+    // monolith cover, mirrored
+    B(-8, 2.4, -8, 3, 4.8, 3, OX_D2), B(8, 2.4, 8, 3, 4.8, 3, OX_D2),
+    B(-13, 1.8, 4, 5, 3.6, 2.4, OX_D2, { ry: 0.5 }), B(13, 1.8, -4, 5, 3.6, 2.4, OX_D2, { ry: 0.5 }),
+    B(-20, 3.0, -14, 3, 6, 3, OX_D2), B(20, 3.0, 14, 3, 6, 3, OX_D2),
+    B(-6, 1.6, 18, 6, 3.2, 3, OX_D2), B(6, 1.6, -18, 6, 3.2, 3, OX_D2),
+    B(18, 2.0, -24, 4, 4, 4, OX_D2), B(-18, 2.0, 24, 4, 4, 4, OX_D2),
+    // neon floor strips marking the lanes
+    B(-14, 0.05, 0, 0.4, 0.1, 60, OX_N2, { glow: true }), B(14, 0.05, 0, 0.4, 0.1, 60, OX_N2, { glow: true }),
+    slope(-22, 0, 20, 'z', 12, 4, 5, -1, OX_D2), slope(22, 0, -20, 'z', 12, 4, 5, 1, OX_D2),
+    B(-22, 0.05, -30, 6, 0.1, 6, TEAM_A, { glow: true }), B(22, 0.05, 30, 6, 0.1, 6, TEAM_B, { glow: true }),
+  ],
+  spawnsA: [{ x: -22, z: -30, ry: -2.5 }, { x: -18, z: -32, ry: -2.36 }],
+  spawnsB: [{ x: 22, z: 30, ry: 0.64 }, { x: 18, z: 32, ry: 0.78 }],
+};
+
+export const MAPS = { arena: ARENA, battleground: BATTLEGROUND, backrooms: BACKROOMS, crossroads: CROSSROADS, docks: DOCKS, station: STATION, construction: CONSTRUCTION, onyx: ONYX, frontier: FRONTIER, colossus: COLOSSUS };
 export const WAVE_MAPS = ['frontier', 'colossus'];
-export const VOTE_OPTIONS = ['random', 'arena', 'battleground'];
+export const VOTE_OPTIONS = ['random', 'arena', 'backrooms', 'crossroads', 'docks', 'station', 'construction', 'onyx'];

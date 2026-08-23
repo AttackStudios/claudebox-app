@@ -134,6 +134,10 @@ window.__rivals = {
     scytheBoost: () => triggerScytheBoost(), quickUse: (c) => quickUse(c),
     tryAirJump: () => tryAirJump(),   // double-jump probe (daggers / fists)
     tryFire: () => tryFire(), gunshot: (id, v) => gunshot(id, v),   // shooting-feel probes
+    // load any map straight into the current scene — for previewing arenas
+    previewMap: (id) => { const d = MAPS[id]; if (!d) return null; game.mapId = id; buildMap(d);
+      const sp = (d.spawnsA || [{ x: 0, z: 0, ry: 0 }])[0];
+      me.pos.x = sp.x; me.pos.z = sp.z; me.pos.y = 6; me.ry = sp.ry || 0; return d.name; },
     spawnDummy: (g, w, ry, dx, dz) => { const fid = 'dummy_' + g + '_' + (w || 'ar') + '_' + (ry || 0); addOther({ id: fid, name: 'Dummy', avatar: { body: g }, team: 'B', pos: { x: me.pos.x + (dx || 0), y: 0, z: me.pos.z + (dz || 6) }, ry: ry || 0, anim: 'idle', weapon: w || 'ar', hp: 100 }); return fid; },
   },
 };
@@ -433,6 +437,15 @@ function buildMap(def) {
   const g = new THREE.Mesh(new THREE.BoxGeometry(gW, gThick, gL), gmat);
   g.position.y = -gThick / 2;
   mapGroup.add(g);
+  // Indoor maps get a lid. Backrooms and Station are interiors — without one
+  // you look up out of a corridor into open sky, which reads as a hole.
+  if (def.ceiling) {
+    const cm = new THREE.Mesh(
+      new THREE.BoxGeometry(gW, 1, gL),
+      new THREE.MeshLambertMaterial({ color: def.ceiling.color, map: panelTex(gW, gL) }));
+    cm.position.y = def.ceiling.y;
+    mapGroup.add(cm);
+  }
   // centre emblem decal (match maps) — a subtle painted ring on the floor
   if (def.emblem) {
     const c = document.createElement('canvas'); c.width = c.height = 256;
@@ -2071,6 +2084,7 @@ const VM_HIPS = {
 };
 const VM_ADS = { x: 0, y: -0.166, z: -0.38 };
 let vmBob = 0, vmKick = 0;
+let vmKickRoll = 0;   // per-shot roll direction, re-rolled on each trigger pull
 
 // ---- swingy animation state (springs + one-shot clips) ----
 const vmAnim = {
@@ -3150,6 +3164,7 @@ function tryFire() {
     recoil += F.shake + up * 0.35;                 // the short visual punch
   }
   vmKick = F.kick;
+  vmKickRoll = (Math.random() - 0.5) * 2;
   if (me.weapon === 'sniper') vmAnim.boltT = 0;   // cycle the bolt after the shot
   // AR fires a continuous loop (handled in the frame); other guns are one-shots.
   gunshot(me.weapon, me.ads > 0.5 ? 0.92 : 1);   // every weapon has its own voice now
@@ -4863,7 +4878,7 @@ function frame() {
   const moving = speed2d > 0.5 && me.grounded;
   const sprinting2 = moving && speed2d > MOVE.walk * 1.1 && !me.sliding;
   vmBob += dt * (moving ? (sprinting2 ? 10 : 7.2) : 1.6);   // steadier cadence
-  vmKick = Math.max(0, vmKick - dt * 8);
+  vmKick = Math.max(0, vmKick - dt * 9.5);   // recovers crisply, so fast weapons stay readable
 
   // springs: look-lag sway (weapon trails your mouse), strafe roll, poses
   {
@@ -4924,11 +4939,16 @@ function frame() {
     const HIP = VM_HIPS[vmKey] || VM_HIP;
     let px = HIP.x + (VM_ADS.x - HIP.x) * k + bobX + vmAnim.swayYaw * 0.16 * loose;
     let py = HIP.y + (VM_ADS.y - HIP.y) * k + bobY + vmAnim.swayPitch * 0.14 * loose
-           + vmKick * 0.02 - vmAnim.landK * 0.11 + vmAnim.airK * 0.024 * loose;
-    let pz = HIP.z + (VM_ADS.z - HIP.z) * k + vmKick * 0.07;
-    let rx = vmKick * 0.12 + vmAnim.swayPitch * 1.5 * loose + vmAnim.landK * 0.24 - vmAnim.airK * 0.07 * loose;
+           + vmKick * 0.034 - vmAnim.landK * 0.11 + vmAnim.airK * 0.024 * loose;
+    // A firmer buck. The old values were honest but polite — the reference's
+    // guns visibly jump back and rotate up on every shot, and that punch is
+    // most of what makes firing feel like it connects. Kept on the viewmodel,
+    // not the camera, so it never fights your aim.
+    let pz = HIP.z + (VM_ADS.z - HIP.z) * k + vmKick * 0.115;
+    let rx = vmKick * 0.205 + vmAnim.swayPitch * 1.5 * loose + vmAnim.landK * 0.24 - vmAnim.airK * 0.07 * loose;
     let ry2 = vmAnim.swayYaw * 1.7 * loose;
-    let rz = vmAnim.roll * 1.5 * loose + vmAnim.swayYaw * 0.7 * loose - vmAnim.slideK * 0.38;
+    let rz = vmAnim.roll * 1.5 * loose + vmAnim.swayYaw * 0.7 * loose - vmAnim.slideK * 0.38
+              + vmKick * vmKickRoll * 0.09;   // a little twist so repeat shots never look stamped
 
     // sprint: cant the weapon in and down (with a bit of run sway)
     rx += vmAnim.sprintK * (0.26 + Math.sin(vmBob * 0.5) * 0.02);   // gun carried lower/angled at a sprint

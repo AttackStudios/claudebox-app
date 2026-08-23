@@ -867,11 +867,61 @@ BUILD.warper = () => {
 export const GUN_IDS = Object.keys(BUILD);
 export const hasGun = (id) => !!BUILD[id];
 
+// ---- per-weapon body colour ----
+// The arsenal used to be one near-monochrome family, which read as a pile of
+// grey props against a near-white arena. The series gives each weapon its own
+// saturated body with black furniture, so you can name the gun in someone's
+// hands from across the map — and so a skin has something to replace.
+//
+// This recolours the receiver material only. Barrels, grips, magazines and
+// optics stay dark on purpose: the contrast is what makes the silhouette read.
+const BODY_TINT = {
+  ar:        '#e8913a',   // orange service rifle
+  carbine:   '#d2762c',
+  battle:    '#b8622a',
+  burst:     '#31363f',   // the black one
+  smg:       '#4a5568',
+  uzi:       '#6b7280',
+  minigun:   '#3f4652',
+  shotgun:   '#8c4a2f',
+  shorty:    '#a0552f',
+  handgun:   '#4d5563',
+  deagle:    '#c9a227',
+  revolver:  '#7a4a2c',
+  sniper:    '#4f8f42',   // green marksman rifle
+  autosniper:'#3f7a52',
+  dmr:       '#5a8f4a',
+  launcher:  '#e06a2a',   // orange tube
+  rpg:       '#e06a2a',
+};
+const tintCache = new Map();
+function tintedBody(hex, src) {
+  const key = hex + '|' + src.uuid;
+  if (!tintCache.has(key)) {
+    const m = src.clone();
+    m.color = new THREE.Color(hex);
+    tintCache.set(key, m);
+  }
+  return tintCache.get(key);
+}
+/** Recolour a built weapon's receiver parts in place. */
+function applyBodyTint(out, id) {
+  const hex = BODY_TINT[id];
+  if (!hex) return;
+  const swap = new Set([MAT.gunmetal, MAT.polyLite]);
+  const walk = (o) => {
+    if (o.isMesh && swap.has(o.material)) o.material = tintedBody(hex, o.material);
+    if (o.children) for (const c of o.children) walk(c);
+  };
+  for (const p of out.parts) if (p) walk(p);
+}
+
 // Build one weapon. Records the rest positions the animation code reads.
 export function buildGun(id) {
   const b = BUILD[id];
   if (!b) return null;
   const out = b();
+  applyBodyTint(out, id);
   if (out.fx?.bolt && out.fx.bolt.userData.z0 === undefined) {
     out.fx.bolt.userData.z0 = out.fx.bolt.position.z;
     out.fx.bolt.userData.y0 = out.fx.bolt.position.y;
