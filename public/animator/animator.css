@@ -279,3 +279,53 @@ body.scrubbing #tl-ruler, body.scrubbing .ph-grab { cursor: ew-resize; }
 .earn td { padding: 3px 0; border-top: 1px solid var(--line); }
 .close { width: 32px; height: 32px; border-radius: 9px; background: var(--panel2);
   border: 1px solid var(--line); color: var(--dim); cursor: pointer; font-size: 14px; }
+
+/* ---- easing picker ---- */
+.ease-menu {
+  position: fixed; z-index: 90; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 11px; padding: 6px; box-shadow: 0 18px 50px rgba(0,0,0,.6);
+  max-height: 70vh; overflow: auto; min-width: 196px;
+}
+.ease-head { font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--dim); padding: 5px 8px 7px; }
+.ease-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 5px 8px;
+  background: none; border: 0; border-radius: 7px; color: var(--ink);
+  font: inherit; font-size: 12.5px; cursor: pointer; text-align: left;
+}
+.ease-row:hover { background: var(--panel2); }
+.ease-row.on { background: rgba(110,231,255,.14); color: var(--accent); }
+.ease-ico { color: var(--accent); display: grid; place-items: center; flex: none;
+  background: #0e1219; border: 1px solid var(--line); border-radius: 5px; }
+.kf.inQuad, .kf.inCubic, .kf.inExpo, .kf.inBack { transform: rotate(45deg) skewX(-14deg); }
+.kf.outQuad, .kf.outCubic, .kf.outExpo, .kf.outBack, .kf.outElastic, .kf.outBounce { transform: rotate(45deg) skewX(14deg); }
+
+/* ---- scene props ---- */
+.addrow, .dummy-row { display: flex; gap: 6px; margin-bottom: 7px; }
+.dummy-row input {
+  flex: 1; min-width: 0; padding: 5px 8px; border-radius: 7px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
+  font: inherit; font-size: 12px;
+}
+.dummy-row input:focus { outline: none; border-color: var(--accent); }
+.prop-item {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px; margin-bottom: 4px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer; font-size: 12.5px;
+}
+.prop-item.on { border-color: var(--accent); color: var(--accent); }
+.prop-item .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.prop-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prop-item .del { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: 12px; padding: 0 2px; }
+.prop-item .del:hover { color: var(--danger); }
+#prop-edit { margin-top: 9px; padding: 9px; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 9px; }
+#prop-edit label { display: block; font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim); margin: 7px 0 4px; }
+#prop-edit input, #prop-edit select {
+  width: 100%; padding: 5px 7px; border-radius: 6px; background: var(--panel);
+  border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 12px;
+}
+#prop-edit .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.lane-sep { background: rgba(110,231,255,.07); }
+.lane-sep .lane-name { color: var(--accent); font-weight: 700; }

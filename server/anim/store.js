@@ -25,6 +25,12 @@ export const CHANNELS = [
 export const CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'sit', 'swim', 'tread', 'climb', 'dance', 'death'];
 export const MODELS = ['any', 'boy', 'girl', 'r6', 'steven'];
 
+// Props are scene objects an animation can carry: blocking cubes, spheres, and
+// dummies (a fully rigged stand-in wearing someone's actual avatar). They get
+// their own channels because a prop moves in space, where a limb only rotates.
+export const PROP_KINDS = ['box', 'sphere', 'dummy'];
+export const PROP_CHANNELS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'sc'];
+
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const str = (v, max = 60) => String(v ?? '').slice(0, max);
@@ -60,19 +66,62 @@ export function sanitizeSet(raw = {}, owner = '') {
         .map((k) => ({
           t: clamp(num(k.t), 0, 1),
           v: clamp(num(k.v), -6.5, 6.5),
-          e: k.e === 'linear' || k.e === 'step' ? k.e : 'smooth',
+          e: isEase(k.e) ? k.e : 'smooth',
         }))
         .sort((a, b) => a.t - b.t)
         .slice(0, 64);
       if (clean.length) tracks[ch] = clean;
     }
-    if (!Object.keys(tracks).length) continue;
+    // prop tracks live beside the body's, keyed by prop id
+    const pTracks = {};
+    for (const [pid, pt] of Object.entries(c.props || {})) {
+      if (!propIds.has(pid)) continue;          // drop tracks for deleted props
+      const t = {};
+      for (const ch of PROP_CHANNELS) {
+        const keys = Array.isArray(pt?.tracks?.[ch]) ? pt.tracks[ch] : null;
+        if (!keys || !keys.length) continue;
+        const clean = keys
+          .map((k) => ({
+            t: clamp(num(k.t), 0, 1),
+            // props travel, so the range is world units rather than radians
+            v: clamp(num(k.v), -60, 60),
+            e: isEase(k.e) ? k.e : 'smooth',
+          }))
+          .sort((a, b) => a.t - b.t)
+          .slice(0, 64);
+        if (clean.length) t[ch] = clean;
+      }
+      if (Object.keys(t).length) pTracks[pid] = { tracks: t };
+    }
+    if (!Object.keys(tracks).length && !Object.keys(pTracks).length) continue;
     clips[name] = {
       duration: clamp(num(c.duration, 1), 0.05, 20),
       loop: c.loop !== false,
       tracks,
+      props: pTracks,
     };
   }
+  // ---- scene props ----
+  const props = (Array.isArray(raw.props) ? raw.props : []).slice(0, 16).map((p, i) => ({
+    id: str(p?.id, 24) || `prop${i}`,
+    kind: PROP_KINDS.includes(p?.kind) ? p.kind : 'box',
+    name: str(p?.name, 28) || 'Prop',
+    color: /^#[0-9a-fA-F]{6}$/.test(String(p?.color || '')) ? p.color : '#6ee7ff',
+    size: clamp(num(p?.size, 1), 0.05, 20),
+    // a dummy carries a body type and, optionally, whose outfit it is wearing
+    model: MODELS.includes(p?.model) ? p.model : 'boy',
+    who: str(p?.who, 24),
+    clip: CLIPS.includes(p?.clip) ? p.clip : 'idle',
+    // resting transform, before any keyframes
+    at: {
+      x: clamp(num(p?.at?.x, 0), -60, 60),
+      y: clamp(num(p?.at?.y, 0), -60, 60),
+      z: clamp(num(p?.at?.z, 0), -60, 60),
+      ry: clamp(num(p?.at?.ry, 0), -Math.PI * 4, Math.PI * 4),
+    },
+  }));
+  const propIds = new Set(props.map((p) => p.id));
+
   const scope = Array.isArray(raw.scope)
     ? raw.scope.map((g) => str(g, 24)).filter(Boolean).slice(0, 24)
     : 'global';
@@ -104,6 +153,7 @@ export function sanitizeSet(raw = {}, owner = '') {
     scope,
     published: !!raw.published,
     owner: str(owner, 24),
+    props,
     market,
     updated: new Date().toISOString(),
     camera: {

@@ -29,6 +29,22 @@
 <main id="app">
   <!-- ---------- left: sets, model, scope, camera ---------- -->
   <aside id="left">
+    <section id="scene-sec">
+      <h2>Scene</h2>
+      <div class="addrow">
+        <button id="add-box" class="mini">＋ Cube</button>
+        <button id="add-sphere" class="mini">＋ Sphere</button>
+      </div>
+      <div class="dummy-row">
+        <input id="dummy-who" maxlength="20" placeholder="username (optional)">
+        <button id="add-dummy" class="mini">＋ Dummy</button>
+      </div>
+      <p class="hint">A dummy is a fully rigged stand-in. Type a username and it
+        wears their outfit — and switches to their body type automatically.</p>
+      <div id="prop-list"></div>
+      <div id="prop-edit" class="hidden"></div>
+    </section>
+
     <section>
       <h2>Sets <button id="new-set" class="mini">+ New</button></h2>
       <div id="set-list"></div>

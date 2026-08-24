@@ -5,8 +5,9 @@
 // set authored once drives every rig: it never mentions a bone.
 
 import { POSES } from './humanoid.js';
+import { ease } from './ease.js';
 
-const smooth = (t) => t * t * (3 - 2 * t);
+
 
 /**
  * Sample one track at phase p (0..1), honouring each key's easing.
@@ -27,8 +28,7 @@ function sampleTrack(keys, p, loop = true) {
     if (span <= 1e-6) return first.v;
     if (last.e === 'step') return last.v;
     const raw = (p >= last.t ? p - last.t : p + 1 - last.t) / span;
-    const k = last.e === 'linear' ? raw : smooth(raw);
-    return last.v + (first.v - last.v) * k;
+    return last.v + (first.v - last.v) * ease(last.e, raw);
   }
   let i = 0;
   while (i < keys.length - 1 && keys[i + 1].t <= p) i++;
@@ -37,8 +37,7 @@ function sampleTrack(keys, p, loop = true) {
   if (span <= 0) return b.v;
   const raw = (p - a.t) / span;
   if (a.e === 'step') return a.v;
-  const k = a.e === 'linear' ? raw : smooth(raw);
-  return a.v + (b.v - a.v) * k;
+  return a.v + (b.v - a.v) * ease(a.e, raw);
 }
 
 /**

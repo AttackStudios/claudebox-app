@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { preloadAvatars, makeAvatar } from '/shared/avatar3d.js';
 import { POSES, RIGS } from '/shared/anim/humanoid.js';
 import { packFromSet } from '/shared/anim/custom.js';
+import { ease, EASE_ORDER, EASE_LABEL } from '/shared/anim/ease.js';
 import { makeGizmo, jointsFor, AXIS_COLOR } from '/animator/gizmo.js';
 
 const $ = (id) => document.getElementById(id);
@@ -239,11 +240,27 @@ const modelScale = () => {
 };
 
 function jointObject(canon) {
+  if (canon && canon.startsWith('prop:')) return propObjs.get(canon.slice(5))?.group || null;
   if (!ctrl) return null;
   if (canon === 'root') return ctrl.group;
   const name = joints[canon]?.bone;
   return name ? ctrl.bones?.[name] || null : null;
 }
+
+/** A prop presents the same shape as a joint, so one gizmo serves both. */
+function propJoint(id) {
+  const def = (set.props || []).find((p) => p.id === id);
+  if (!def) return null;
+  return {
+    label: def.name,
+    bone: null,
+    rot: [{ channel: 'rx', axis: 'x', sign: 1 },
+          { channel: 'ry', axis: 'y', sign: 1 },
+          { channel: 'rz', axis: 'z', sign: 1 }],
+    move: [{ channel: 'px', axis: 'x' }, { channel: 'py', axis: 'y' }, { channel: 'pz', axis: 'z' }],
+  };
+}
+const isPropChannel = (ch) => PROP_CH.includes(ch);
 
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion();
 function syncProxies() {
@@ -278,6 +295,17 @@ function syncProxies() {
 }
 
 function refreshGizmo() {
+  if (selProp) {
+    const pj = propJoint(selProp);
+    if (pj) {
+      const usable = mode === 'move' ? pj.move : pj.rot;
+      giz.build(pj, mode, modelScale() * 0.17);
+      giz.group.visible = true;
+      $('sel-label').innerHTML = `<b>${pj.label}</b> · ${usable.map((r) =>
+        `<i style="color:#${AXIS_COLOR[r.axis].toString(16).padStart(6, '0')}">${r.channel}</i>`).join(' ')}`;
+      return;
+    }
+  }
   const j = selJoint && joints[selJoint];
   if (!j || !ctrl) { giz.group.visible = false; $('sel-label').textContent = 'nothing selected'; return; }
   const usable = mode === 'move' ? (j.move || []) : j.rot;
@@ -289,11 +317,12 @@ function refreshGizmo() {
 }
 
 function syncGizmo() {
-  if (!giz.group.visible || !selJoint) return;
-  const o = jointObject(selJoint);
+  const key = selProp ? `prop:${selProp}` : selJoint;
+  if (!giz.group.visible || !key) return;
+  const o = jointObject(key);
   if (!o) return;
   o.getWorldPosition(_p);
-  if (selJoint === 'root') _p.y += modelScale() * 0.5;
+  if (selJoint === 'root' && !selProp) _p.y += modelScale() * 0.5;
   giz.group.position.copy(_p);
   // rings must sit in the joint's LOCAL frame, since that is the frame the
   // channels rotate in; the move gizmo works in the model's frame instead
@@ -333,11 +362,12 @@ $('view').addEventListener('pointerdown', (e) => {
   const ph = r.intersectObjects(proxies.filter((p) => p.visible), false)[0];
   if (ph) {
     selJoint = ph.object.userData.joint;
+    selProp = null; paintProps();
     refreshGizmo();
     return;
   }
   // nothing hit: deselect, and fall through to orbiting
-  if (!e.shiftKey) { selJoint = null; refreshGizmo(); }
+  if (!e.shiftKey) { selJoint = null; selProp = null; paintProps(); refreshGizmo(); }
   orbit.drag = { x: e.clientX, y: e.clientY, yaw: orbit.yaw, pitch: orbit.pitch };
 });
 $('view').addEventListener('pointermove', (e) => {
@@ -369,7 +399,7 @@ function axisVec(axis) {
 function startDrag(data, e) {
   if (playing) { playing = false; $('play').textContent = '▶'; }
   openChange(mode === 'move' ? 'move' : 'rotate');
-  const o = jointObject(selJoint);
+  const o = jointObject(selProp ? `prop:${selProp}` : selJoint);
   if (!o) return;
   const centre = giz.group.position.clone();
   if (data.kind === 'rotate') {
@@ -380,12 +410,12 @@ function startDrag(data, e) {
     // a stable basis in the drag plane, so the swept angle is unambiguous
     basisU.copy(hitPt).sub(centre).normalize();
     basisV.copy(axisWorld).cross(basisU).normalize();
-    drag = { ...data, centre, start: valueAt(data.channel, time), angle0: 0 };
+    drag = { ...data, centre, start: curValue(data.channel), angle0: 0 };
   } else {
     axisWorld.copy(axisVec(data.axis)).applyQuaternion(ctrl.group.quaternion).normalize();
     const t = closestOnAxis(pointerNDC(e).ray, centre, axisWorld);
     if (t === null) return;
-    drag = { ...data, centre, start: valueAt(data.channel, time), t0: t };
+    drag = { ...data, centre, start: curValue(data.channel), t0: t };
   }
   $('view').setPointerCapture?.(e.pointerId);
 }
@@ -400,6 +430,16 @@ function closestOnAxis(r, centre, dir) {
   return (b * eD - c * d) / den;
 }
 
+/** Read the value a drag starts from — prop channels live in their own tracks. */
+function curValue(ch) {
+  return selProp && isPropChannel(ch) ? propValueAt(selProp, ch, time) : valueAt(ch, time);
+}
+/** Write a dragged value back to whichever track owns it. */
+function writeValue(ch, v) {
+  if (selProp && isPropChannel(ch)) setPropKey(selProp, ch, time, v);
+  else setKey(ch, time, v);
+}
+
 function moveDrag(e) {
   if (!drag) return;
   const r = pointerNDC(e).ray;
@@ -409,11 +449,11 @@ function moveDrag(e) {
     const ang = Math.atan2(rel.dot(basisV), rel.dot(basisU));
     // the bone is rotated by (channel * sign), so undo the sign to keep the
     // model following the pointer rather than mirroring it
-    setKey(drag.channel, time, drag.start + ang * (drag.sign || 1));
+    writeValue(drag.channel, drag.start + ang * (drag.sign || 1));
   } else {
     const t = closestOnAxis(r, drag.centre, axisWorld);
     if (t === null) return;
-    setKey(drag.channel, time, drag.start + (t - drag.t0));
+    writeValue(drag.channel, drag.start + (t - drag.t0));
   }
 }
 function endDrag() { closeChange(); if (drag) { drag = null; paintChannels(); } }
@@ -445,6 +485,10 @@ function frame(now) {
     ctrl.update(0);
     ctrl.group.updateMatrixWorld(true);
     syncProxies();
+    for (const [id, o] of propObjs) {
+      syncProp(id, time);
+      if (o.ctrl) { o.ctrl.anim?.setPhase?.(time); o.ctrl.update(0); }
+    }
     syncGizmo();
   }
   const w = $('stage').clientWidth, h = $('stage').clientHeight;
@@ -620,16 +664,14 @@ function sample(keys, p, loop = true) {
     if (span <= 1e-6) return first.v;
     if (last.e === 'step') return last.v;
     const raw = (p >= last.t ? p - last.t : p + 1 - last.t) / span;
-    const k = last.e === 'linear' ? raw : raw * raw * (3 - 2 * raw);
-    return last.v + (first.v - last.v) * k;
+    return last.v + (first.v - last.v) * ease(last.e, raw);
   }
   let i = 0; while (i < keys.length - 1 && keys[i + 1].t <= p) i++;
   const a = keys[i], b = keys[i + 1], span = b.t - a.t;
   if (span <= 0) return b.v;
   const raw = (p - a.t) / span;
   if (a.e === 'step') return a.v;
-  const k = a.e === 'linear' ? raw : raw * raw * (3 - 2 * raw);
-  return a.v + (b.v - a.v) * k;
+  return a.v + (b.v - a.v) * ease(a.e, raw);
 }
 function setKey(ch, t, v) {
   if (!changeOpen) pushUndo('key change');
@@ -851,14 +893,86 @@ function paintTimeline() {
       d.addEventListener('dblclick', (e) => { e.stopPropagation(); deleteKey(ch, i); });
       d.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        pushUndo('easing');
-        k.e = k.e === 'smooth' ? 'linear' : k.e === 'linear' ? 'step' : 'smooth';
-        markDirty(); applyPreview(); paintTimeline(); toast(`Easing: ${k.e}`);
+        // With sixteen curves, cycling through them is useless — you need to
+        // see the shape you are choosing. Each row draws its own curve.
+        openEaseMenu(e.clientX, e.clientY, k, () => { applyPreview(); paintTimeline(); });
       });
       track.appendChild(d);
     }
     host.appendChild(lane);
   }
+
+  // The selected prop gets its own lanes underneath. Only the selected one, so
+  // sixteen props cannot bury the body's channels under a hundred rows.
+  if (selProp) {
+    const def = (set.props || []).find((p) => p.id === selProp);
+    const head = document.createElement('div');
+    head.className = 'lane lane-sep';
+    head.innerHTML = `<div class="lane-name">${def ? def.name : 'Prop'}</div><div class="lane-track"></div>`;
+    host.appendChild(head);
+    for (const ch of PROP_CH) {
+      const keys = c.props?.[selProp]?.tracks?.[ch] || [];
+      total += keys.length;
+      const lane = document.createElement('div');
+      lane.className = 'lane' + (keys.length ? ' has' : '');
+      lane.dataset.ch = `prop:${ch}`;
+      lane.innerHTML = `<div class="lane-name">${PROP_LABEL[ch] || ch}</div><div class="lane-track"></div>`;
+      const track = lane.querySelector('.lane-track');
+      track.addEventListener('click', (e) => {
+        if (e.target.classList.contains('kf') || e.shiftKey) return;
+        const r = track.getBoundingClientRect();
+        const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        setPropKey(selProp, ch, p * c.duration, propValueAt(selProp, ch, p * c.duration));
+      });
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const d = document.createElement('div');
+        d.className = `kf ${k.e}` + (sel.has(k) ? ' sel' : '');
+        d.style.left = `${k.t * 100}%`;
+        d.title = `${k.v.toFixed(2)} @ ${(k.t * c.duration).toFixed(2)}s (${k.e})`;
+        d.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          const r = track.getBoundingClientRect();
+          if (e.shiftKey) { sel.has(k) ? sel.delete(k) : sel.set(k, `prop:${selProp}:${ch}`); paintTimeline(); return; }
+          if (!sel.has(k)) sel = new Map([[k, `prop:${selProp}:${ch}`]]);
+          paintTimeline();
+          const start = new Map(); for (const [kk] of sel) start.set(kk, kk.t);
+          const t0 = (e.clientX - r.left) / r.width;
+          let moved = false;
+          const move = (ev) => {
+            if (!(r.width > 0)) return;
+            if (!moved) openChange('move key');
+            moved = true;
+            let dt = (ev.clientX - r.left) / r.width - t0;
+            let lo = 1, hi = 0;
+            for (const [, s0] of start) { lo = Math.min(lo, s0); hi = Math.max(hi, s0); }
+            dt = Math.max(-lo, Math.min(1 - hi, dt));
+            for (const [kk, s0] of start) kk.t = s0 + dt;
+            markDirty(); paintTimelinePositions();
+          };
+          const up = () => {
+            removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+            closeChange();
+            if (moved) { keys.sort((a, b) => a.t - b.t); paintTimeline(); }
+          };
+          addEventListener('pointermove', move); addEventListener('pointerup', up);
+        });
+        d.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          pushUndo('delete key');
+          keys.splice(i, 1);
+          markDirty(); paintTimeline();
+        });
+        d.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          openEaseMenu(e.clientX, e.clientY, k, () => paintTimeline());
+        });
+        track.appendChild(d);
+      }
+      host.appendChild(lane);
+    }
+  }
+
   $('keycount').textContent = sel.size
     ? `${sel.size} selected · ${total} keys in ${clipName}`
     : `${total} keys in ${clipName}`;
@@ -912,7 +1026,7 @@ $('mirror').addEventListener('click', () => {
 $('clear-clip').addEventListener('click', () => {
   if (!confirm(`Delete every key in "${clipName}"?`)) return;
   pushUndo('clear clip');
-  set.clips[clipName] = { duration: clip().duration, loop: clip().loop, tracks: {} };
+  set.clips[clipName] = { duration: clip().duration, loop: clip().loop, tracks: {}, props: {} };
   sel = new Map();
   markDirty(); applyPreview(); paintTimeline(); paintChannels();
   toast(`Cleared ${clipName}`);
@@ -1015,6 +1129,9 @@ function syncAll() {
   $('cam-max').value = set.camera.maxOffset;
   $('cam-max-val').textContent = Number(set.camera.maxOffset).toFixed(2);
   paintModels(); paintScope(); paintSets(); syncClip(); buildAvatar();
+  for (const id of [...propObjs.keys()]) disposeProp(id);
+  selProp = null;
+  (async () => { for (const def of (set.props || [])) await buildProp(def); paintProps(); })();
 }
 function loadSet(s) {
   set = structuredClone(s);
@@ -1070,6 +1187,9 @@ $('new-set').addEventListener('click', () => {
     tracks: () => clip().tracks,
     select(c) { selJoint = c; refreshGizmo(); },
     setMode,
+    props: () => (set.props || []).map((p) => ({ id: p.id, kind: p.kind, name: p.name, model: p.model, who: p.who })),
+    selectProp: (id) => { selProp = id; selJoint = null; paintProps(); refreshGizmo(); },
+    propKeys: (id, ch) => ((clip().props?.[id]?.tracks?.[ch]) || []).map((k) => ({ ...k })),
     undo, redo,
     history: () => ({ undo: undoStack.map((e) => e.label), redo: redoStack.map((e) => e.label) }),
   };
@@ -1217,3 +1337,259 @@ $('pack-close').addEventListener('click', () => $('pack').classList.add('hidden'
 $('pack').addEventListener('click', (e) => { if (e.target === $('pack')) $('pack').classList.add('hidden'); });
 $('pk-list').addEventListener('click', () => listPack(true));
 $('pk-unlist').addEventListener('click', () => listPack(false));
+
+
+// ---------------------------------------------------------------- easing menu
+let easeMenuEl = null;
+function closeEaseMenu() { easeMenuEl?.remove(); easeMenuEl = null; }
+addEventListener('pointerdown', (e) => {
+  if (easeMenuEl && !easeMenuEl.contains(e.target)) closeEaseMenu();
+}, true);
+
+/** A tiny sparkline of a curve, so you pick by shape rather than by name. */
+function easeThumb(name) {
+  const W = 34, H = 22, pad = 3;
+  let d = '';
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    const v = name === 'step' ? (t < 1 ? 0 : 1) : ease(name, t);
+    const x = pad + t * (W - pad * 2);
+    const y = H - pad - v * (H - pad * 2);
+    d += `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+}
+
+function openEaseMenu(x, y, key, after) {
+  closeEaseMenu();
+  const m = document.createElement('div');
+  m.className = 'ease-menu';
+  m.innerHTML = `<div class="ease-head">Easing out of this key</div>` +
+    EASE_ORDER.map((n) => `<button class="ease-row${n === key.e ? ' on' : ''}" data-e="${n}">
+      <span class="ease-ico">${easeThumb(n)}</span><span>${EASE_LABEL[n] || n}</span></button>`).join('');
+  document.body.appendChild(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = `${Math.min(x, innerWidth - r.width - 8)}px`;
+  m.style.top = `${Math.max(8, Math.min(y, innerHeight - r.height - 8))}px`;
+  m.addEventListener('click', (e) => {
+    const b = e.target.closest('.ease-row');
+    if (!b) return;
+    pushUndo('easing');
+    // apply to the whole selection when there is one, so you can shape a run
+    // of keys in a single go
+    const targets = sel.size && [...sel.keys()].includes(key) ? [...sel.keys()] : [key];
+    for (const k of targets) k.e = b.dataset.e;
+    markDirty();
+    closeEaseMenu();
+    after?.();
+    toast(`${EASE_LABEL[b.dataset.e]}${targets.length > 1 ? ` on ${targets.length} keys` : ''}`);
+  });
+  easeMenuEl = m;
+}
+
+// ============================================================================
+// Scene props — cubes, spheres, and rigged dummies.
+//
+// A prop is something the animation carries besides the body: a crate to vault,
+// a marker to reach for, or a second character to play against. They keyframe on
+// their own channels, because a prop travels through space where a limb only
+// rotates about a joint.
+//
+// A dummy is the real avatar system (shared/avatar3d.js), not a stand-in for it,
+// so whatever it wears and however it is rigged matches exactly what a player
+// sees in game.
+// ============================================================================
+import { PROP_CHANNELS as PROP_CH } from '/animator/propmeta.js';
+
+const propObjs = new Map();      // prop id -> { def, group, ctrl? }
+let selProp = null;              // the prop id being edited
+
+const PROP_LABEL = {
+  px: 'X', py: 'Y', pz: 'Z', rx: 'Pitch', ry: 'Turn', rz: 'Roll', sc: 'Scale',
+};
+
+function newPropId() {
+  let n = 1;
+  while (set.props?.some((p) => p.id === `prop${n}`)) n++;
+  return `prop${n}`;
+}
+
+async function addProp(kind, who = '') {
+  set.props = set.props || [];
+  if (set.props.length >= 16) { toast('16 props is the limit'); return; }
+  pushUndo(`add ${kind}`);
+  const id = newPropId();
+  const def = {
+    id, kind,
+    name: kind === 'dummy' ? (who || 'Dummy') : kind === 'box' ? 'Cube' : 'Sphere',
+    color: kind === 'box' ? '#6ee7ff' : kind === 'sphere' ? '#ffc94a' : '#9ad9ff',
+    size: 1, model: 'boy', who: who || '', clip: 'idle',
+    at: { x: kind === 'dummy' ? 1.6 : 1.2, y: kind === 'dummy' ? 0 : 0.6, z: 0, ry: 0 },
+  };
+  set.props.push(def);
+  await buildProp(def);
+  selProp = id; selJoint = null;
+  markDirty(); paintProps(); paintTimeline(); refreshGizmo();
+  if (kind === 'dummy' && who) toast(`Dummy wearing ${who}'s avatar`);
+}
+
+/** Fetch a player's avatar so a dummy can wear it, body type included. */
+async function avatarOf(who) {
+  if (!who) return null;
+  try {
+    const j = await api(`/avatar/${encodeURIComponent(who)}`);
+    return j.avatar || null;
+  } catch { return null; }
+}
+
+async function buildProp(def) {
+  disposeProp(def.id);
+  const group = new THREE.Group();
+  let ctrl = null;
+
+  if (def.kind === 'dummy') {
+    // Copying a username copies the BODY TYPE too — wearing someone's shirt on
+    // the wrong skeleton is not "what they look like".
+    let profile = { body: def.model };
+    if (def.who) {
+      const a = await avatarOf(def.who);
+      if (a) { profile = { ...a }; def.model = a.body || def.model; }
+      else toast(`No player called ${def.who} — using a plain dummy`);
+    }
+    await preloadAvatars(['boy', 'girl', 'r6']).catch(() => {});
+    ctrl = makeAvatar(profile);
+    group.add(ctrl.group);
+    ctrl.setAnim(def.clip || 'idle');
+  } else {
+    const geo = def.kind === 'box'
+      ? new THREE.BoxGeometry(1, 1, 1)
+      : new THREE.SphereGeometry(0.5, 20, 14);
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: def.color }));
+    group.add(m);
+  }
+  scene.add(group);
+  propObjs.set(def.id, { def, group, ctrl });
+  syncProp(def.id, 0);
+  return group;
+}
+
+function disposeProp(id) {
+  const o = propObjs.get(id);
+  if (!o) return;
+  scene.remove(o.group);
+  o.ctrl?.dispose?.();
+  o.group.traverse?.((c) => { if (c.isMesh) { c.geometry?.dispose?.(); } });
+  propObjs.delete(id);
+}
+
+function removeProp(id) {
+  pushUndo('delete prop');
+  set.props = (set.props || []).filter((p) => p.id !== id);
+  for (const c of Object.values(set.clips || {})) if (c.props) delete c.props[id];
+  disposeProp(id);
+  if (selProp === id) selProp = null;
+  markDirty(); paintProps(); paintTimeline(); refreshGizmo();
+}
+
+/** A prop's animated channel value at a time, falling back to its rest pose. */
+function propValueAt(id, ch, t) {
+  const c = clip();
+  const keys = c.props?.[id]?.tracks?.[ch];
+  if (keys?.length) return sample(keys, (t % c.duration) / c.duration, c.loop !== false);
+  const def = (set.props || []).find((p) => p.id === id);
+  if (!def) return 0;
+  return ch === 'px' ? def.at.x : ch === 'py' ? def.at.y : ch === 'pz' ? def.at.z
+       : ch === 'ry' ? def.at.ry : ch === 'sc' ? 1 : 0;
+}
+
+function syncProp(id, t) {
+  const o = propObjs.get(id);
+  if (!o) return;
+  const g = o.group;
+  g.position.set(propValueAt(id, 'px', t), propValueAt(id, 'py', t), propValueAt(id, 'pz', t));
+  g.rotation.set(propValueAt(id, 'rx', t), propValueAt(id, 'ry', t), propValueAt(id, 'rz', t));
+  const s = propValueAt(id, 'sc', t) * (o.def.size || 1);
+  g.scale.setScalar(Math.max(0.02, s));
+}
+
+function setPropKey(id, ch, t, v) {
+  if (!changeOpen) pushUndo('prop key');
+  const c = clip();
+  c.props = c.props || {};
+  c.props[id] = c.props[id] || { tracks: {} };
+  const keys = (c.props[id].tracks[ch] ||= []);
+  const p = +(((t % c.duration) / c.duration).toFixed(4));
+  const at = keys.find((k) => Math.abs(k.t - p) < 0.004);
+  if (at) at.v = v; else keys.push({ t: p, v, e: 'smooth' });
+  keys.sort((a, b) => a.t - b.t);
+  markDirty(); paintTimeline();
+}
+
+function paintProps() {
+  const host = $('prop-list');
+  host.innerHTML = '';
+  for (const p of (set.props || [])) {
+    const el = document.createElement('div');
+    el.className = 'prop-item' + (selProp === p.id ? ' on' : '');
+    el.innerHTML = `<i class="sw" style="background:${p.color}"></i>
+      <span>${p.name}${p.kind === 'dummy' ? ` · ${p.model}` : ''}</span>
+      <button class="del" title="Remove">✕</button>`;
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('del')) return;
+      selProp = selProp === p.id ? null : p.id;
+      selJoint = null;
+      paintProps(); refreshGizmo(); paintPropEdit();
+    });
+    el.querySelector('.del').addEventListener('click', (e) => { e.stopPropagation(); removeProp(p.id); });
+    host.appendChild(el);
+  }
+  paintPropEdit();
+}
+
+function paintPropEdit() {
+  const host = $('prop-edit');
+  const def = (set.props || []).find((p) => p.id === selProp);
+  if (!def) { host.classList.add('hidden'); return; }
+  host.classList.remove('hidden');
+  host.innerHTML = `
+    <label>Name</label><input id="pe-name" value="${def.name}" maxlength="28">
+    <div class="row2">
+      <div><label>Colour</label><input id="pe-color" type="color" value="${def.color}"></div>
+      <div><label>Size</label><input id="pe-size" type="number" min="0.05" max="20" step="0.1" value="${def.size}"></div>
+    </div>
+    ${def.kind === 'dummy' ? `
+      <label>Body</label>
+      <select id="pe-model">${['boy', 'girl', 'r6', 'steven'].map((m) =>
+        `<option value="${m}"${def.model === m ? ' selected' : ''}>${m === 'r6' ? 'R6' : m[0].toUpperCase() + m.slice(1)}</option>`).join('')}</select>
+      <label>Wear someone's avatar</label>
+      <input id="pe-who" value="${def.who || ''}" maxlength="20" placeholder="username">
+      <label>Plays</label>
+      <select id="pe-clip">${META.clips.map((c) =>
+        `<option value="${c}"${def.clip === c ? ' selected' : ''}>${c}</option>`).join('')}</select>` : ''}`;
+
+  const rebuild = async () => { await buildProp(def); paintProps(); refreshGizmo(); };
+  $('pe-name').addEventListener('input', (e) => { def.name = e.target.value; markDirty(); paintProps(); });
+  $('pe-color').addEventListener('input', (e) => {
+    def.color = e.target.value; markDirty();
+    const o = propObjs.get(def.id);
+    o?.group.traverse((c) => { if (c.isMesh && c.material?.color) c.material.color.set(def.color); });
+  });
+  $('pe-size').addEventListener('input', (e) => { def.size = Math.max(0.05, +e.target.value || 1); markDirty(); syncProp(def.id, time); });
+  if (def.kind === 'dummy') {
+    $('pe-model').addEventListener('change', async (e) => { def.model = e.target.value; def.who = ''; markDirty(); await rebuild(); });
+    $('pe-who').addEventListener('change', async (e) => { def.who = e.target.value.trim(); markDirty(); await rebuild(); });
+    $('pe-clip').addEventListener('change', (e) => {
+      def.clip = e.target.value; markDirty();
+      propObjs.get(def.id)?.ctrl?.setAnim(def.clip);
+    });
+  }
+}
+
+$('add-box').addEventListener('click', () => addProp('box'));
+$('add-sphere').addEventListener('click', () => addProp('sphere'));
+$('add-dummy').addEventListener('click', () => {
+  const who = $('dummy-who').value.trim();
+  addProp('dummy', who);
+  $('dummy-who').value = '';
+});
