@@ -1910,8 +1910,9 @@ async function mkOpenDetail(it) {
   buy.disabled = owned && mkEquipped(it);
   buy.onclick = () => (owned ? mkWear(it) : mkBuy(it));
   $('mk-d-cart').onclick = () => {
+    if (mkIsOwned(it)) { toast(`You already own ${it.label}`, '🛍️'); return; }
     if (!mkState.cart.includes(it.id)) mkState.cart.push(it.id);
-    $('mk-cart-n').textContent = String(mkState.cart.length);
+    cartPaint();
     sfx.tap(); toast(`${it.label} added to cart`, '🛒');
   };
   $('mk-d-meta').innerHTML = `
@@ -1932,27 +1933,94 @@ async function mkOpenDetail(it) {
   d.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
+// ---------------------------------------------------------------- cart
+// The cart button counted items and did nothing else — there was no way to see
+// what was in it or buy any of it. This gives it a panel, a total, removal, and
+// a checkout that buys everything affordable in one go.
+function cartItems() {
+  const all = mkAll();
+  return mkState.cart.map((id) => all.find((x) => x.id === id)).filter(Boolean);
+}
+function cartTotal() {
+  return cartItems().filter((it) => !mkIsOwned(it)).reduce((n, it) => n + (it.price || 0), 0);
+}
+function cartPaint() {
+  const n = $('mk-cart-n');
+  if (n) n.textContent = String(mkState.cart.length);
+  const panel = $('mk-cart-panel');
+  if (!panel || panel.classList.contains('hidden')) return;
+  const items = cartItems();
+  const total = cartTotal();
+  const bits = wallet().cubes ?? 0;
+  $('mk-cart-list').innerHTML = items.length
+    ? items.map((it) => `<div class="cart-row" data-id="${it.id}">
+        <span class="ci">${it.emoji || '🎁'}</span>
+        <span class="cn">${it.label}<small>${it.slotLabel}</small></span>
+        <span class="cp">${mkIsOwned(it) ? 'Owned'
+          : it.price === 0 ? 'Free'
+          : `<img class="cur-ico" src="/icons/claudebux.svg" alt="">${it.price}`}</span>
+        <button class="cx" title="Remove">✕</button></div>`).join('')
+    : '<p class="cart-empty">Your cart is empty. Open an item and press “Add to cart”.</p>';
+  $('mk-cart-total').innerHTML = items.length
+    ? `<span>Total</span><b><img class="cur-ico" src="/icons/claudebux.svg" alt="">${total}</b>`
+    : '';
+  const buy = $('mk-cart-buy');
+  buy.classList.toggle('hidden', !items.length);
+  buy.disabled = total > bits;
+  buy.textContent = total > bits ? `Need ${total - bits} more` : `Buy ${items.length} item${items.length > 1 ? 's' : ''}`;
+  $('mk-cart-list').querySelectorAll('.cx').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      const id = e.target.closest('.cart-row').dataset.id;
+      mkState.cart = mkState.cart.filter((x) => x !== id);
+      sfx.tap(); cartPaint();
+    });
+  });
+}
+function cartOpen(show) {
+  const panel = $('mk-cart-panel');
+  if (!panel) return;
+  panel.classList.toggle('hidden', show === false ? true : !panel.classList.contains('hidden') ? true : false);
+  cartPaint();
+}
+async function cartCheckout() {
+  const items = cartItems().filter((it) => !mkIsOwned(it));
+  if (!items.length) { toast('Nothing left to buy', '🛒'); return; }
+  let bought = 0, failed = 0;
+  for (const it of items) {
+    // buy sequentially: each purchase moves the wallet, and the next needs to
+    // see that rather than all of them racing off one stale balance
+    await mkBuy(it, true);
+    if (mkIsOwned(it)) { bought++; mkState.cart = mkState.cart.filter((x) => x !== it.id); }
+    else failed++;
+  }
+  cartPaint(); renderMarket();
+  sfx.success();
+  toast(failed ? `Bought ${bought}, ${failed} could not be bought` : `Bought ${bought} item${bought > 1 ? 's' : ''}!`, '🎉');
+}
+
 async function mkWear(it, tryOnly) {
   const data = await storePost('/avatarshop/equip', { name: stateHub.me.name, slot: it.slot, value: it.value });
   if (data?.ok) { sfx.tap(); toast(`${tryOnly ? 'Trying on' : 'Wearing'} ${it.label}`, '✨'); mkOpenDetail(it); }
   else if (data?.error) toast(data.error, '⚠️');
 }
-async function mkBuy(it) {
+async function mkBuy(it, quiet) {
   if (it.community) {
     const data = await storePost('/anim/buy', { name: stateHub.me.name, id: it.packId });
     if (data?.ok) {
       it.owned = true;
       sfx.success();
-      toast(data.already ? `You already own ${it.label}` :
-        `Bought ${it.label} — ${data.paid} Bits went to ${data.author || 'its creator'}`, '🎉');
-      mkOpenDetail(it);
+      if (!quiet) {
+        toast(data.already ? `You already own ${it.label}` :
+          `Bought ${it.label} — ${data.paid} Bits went to ${data.author || 'its creator'}`, '🎉');
+        mkOpenDetail(it);
+      }
     } else if (data?.error) { sfx.deny?.(); toast(data.error, '⚠️'); }
     return;
   }
   if (!it.shopId) return mkWear(it);
   const data = await storePost('/avatarshop/buy', { name: stateHub.me.name, item: it.shopId });
-  if (data?.ok) { sfx.success(); toast(`Bought ${it.label}!`, '🎉'); mkOpenDetail(it); }
-  else if (data?.error) { sfx.deny?.(); toast(data.error, '⚠️'); }
+  if (data?.ok) { if (!quiet) { sfx.success(); toast(`Bought ${it.label}!`, '🎉'); mkOpenDetail(it); } }
+  else if (data?.error && !quiet) { sfx.deny?.(); toast(data.error, '⚠️'); }
 }
 
 async function storePost(path, body) {
@@ -1970,6 +2038,9 @@ async function storePost(path, body) {
 
 function initStoreTab() {
   const q = $('mk-q');
+  $('mk-cart')?.addEventListener('click', () => { sfx.tap(); cartOpen(); });
+  $('mk-cart-close')?.addEventListener('click', () => { $('mk-cart-panel').classList.add('hidden'); });
+  $('mk-cart-buy')?.addEventListener('click', () => cartCheckout());
   if (q) q.addEventListener('input', () => { mkState.q = q.value; renderMarket(); });
   const kind = $('mk-kind');
   if (kind) {

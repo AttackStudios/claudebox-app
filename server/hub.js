@@ -972,7 +972,14 @@ export function hubRouter() {
     const name = clean(req.body?.name);
     const slot = String(req.body?.slot ?? '');
     const value = String(req.body?.value ?? 'none');
-    if (!name || !['hat', 'back', 'face2', 'suit'].includes(slot)) return res.status(400).json({ ok: false, error: 'bad request' });
+    // Every slot the Store can actually sell. This list predated bodies and
+    // animation packs being sellable, so equipping either came back as a flat
+    // "bad request" — including wearing a pack you had just bought. Ownership
+    // is still enforced below; this only decides what is a real slot.
+    const EQUIPPABLE = ['hat', 'back', 'face2', 'suit', 'body', 'animPack'];
+    if (!name || !EQUIPPABLE.includes(slot)) {
+      return res.status(400).json({ ok: false, error: `not an equippable slot: ${slot || '(none)'}` });
+    }
     const u = ensureUser(name);
     if (!ownedAvatarValues(u, slot).has(value)) return res.status(400).json({ ok: false, error: 'not owned' });
     u.avatar = sanitizeAvatar({ ...u.avatar, [slot]: value });
