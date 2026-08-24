@@ -425,7 +425,11 @@ function sanitizeAvatar(a = {}) {
     suitColor: cleanColor(a.suitColor, DEFAULT_AVATAR.suitColor),
     face: pick(a.face, ['happy', 'cool', 'surprised', 'sleepy'], 'happy'),
     // which animation pack drives the character
-    animPack: pick(a.animPack, ['none', 'girljump', 'steven'], 'none'),
+    // Built-ins by name, community packs as `pack:<setId>`. Validated by shape
+    // here; whether the wearer actually owns it is enforced at equip time.
+    animPack: /^pack:[A-Za-z0-9_-]{1,40}$/.test(String(a.animPack || ''))
+      ? String(a.animPack)
+      : pick(a.animPack, ['none', 'girljump', 'steven'], 'none'),
     // the Alex build: 3-pixel arms instead of 4. Strict rather than truthy, so a
     // stray string cannot switch a client's body geometry.
     slimArms: a.slimArms === true,
@@ -583,6 +587,14 @@ function ownedAvatarValues(u, slot) {
     const it = AVATAR_SHOP_BY_ID[id];
     if (it && it.slot === slot) vals.add(it.value);
   }
+  // community animation packs the player has bought — plus anything they wrote
+  // themselves, so an author can always wear their own work
+  if (slot === 'animPack') {
+    for (const id of (u.ownedPacks || [])) vals.add(`pack:${id}`);
+    for (const set of anim.allSets()) {
+      if (set.owner && set.owner === String(u.name || '').toLowerCase()) vals.add(`pack:${set.id}`);
+    }
+  }
   return vals;
 }
 
@@ -703,6 +715,7 @@ export function hubRouter() {
     if (OPEN.has(req.path) || (req.method === 'GET' && req.path.startsWith('/level/'))) return next();
     // every player's game client fetches its animation sets on load
     if (req.method === 'GET' && req.path.startsWith('/anim/for/')) return next();
+    if (req.method === 'GET' && req.path.startsWith('/anim/pack/')) return next();
     const code = req.get('x-cbx-code') || req.body?.code;
     if (checkAccess(code)) return next();
     res.status(403).json({ error: 'This ClaudeBox is locked — enter the invite code.' });
@@ -715,6 +728,15 @@ export function hubRouter() {
   // game should play is open (every player needs it); writing is not.
   r.get('/anim/sets', (req, res) => res.json({ sets: anim.allSets() }));
   r.get('/anim/for/:game', (req, res) => res.json({ sets: anim.setsForGame(String(req.params.game || '')) }));
+  // One pack's playable data. Open like /anim/for/: every client that has to
+  // draw a player wearing it needs this, including other people in the match.
+  r.get('/anim/pack/:id', (req, res) => {
+    const s = anim.getSet(String(req.params.id || ''));
+    if (!s) return res.status(404).json({ error: 'no such pack' });
+    res.json({ pack: { id: s.id, model: s.model, clips: s.clips, camera: s.camera,
+                       title: s.market?.title || s.name, author: s.owner } });
+  });
+
   r.get('/anim/meta', (req, res) => res.json({
     channels: anim.CHANNELS, clips: anim.CLIPS, models: anim.MODELS,
     games: GAMES.map((g) => ({ id: g.id, name: g.title })),
@@ -731,6 +753,66 @@ export function hubRouter() {
     anim.putSet(set);
     res.json({ ok: true, set });
   });
+  // ---------------- animation-pack marketplace ----------------
+  // Listing turns a set into something other players can buy. The money moves
+  // straight from buyer to author — the platform takes nothing — which is the
+  // same shape as visit crediting: you are paid for what people choose.
+  r.get('/anim/market', (req, res) => {
+    const me = clean(req.query.name).toLowerCase();
+    const u = me ? getUser(me) : null;
+    const owned = new Set(u?.ownedPacks || []);
+    res.json({
+      packs: anim.listedSets().map((s) => ({
+        id: s.id, title: s.market.title, blurb: s.market.blurb, icon: s.market.icon,
+        price: s.market.price, tags: s.market.tags, model: s.model,
+        author: s.owner, clips: Object.keys(s.clips || {}),
+        sales: s.market.sales || 0, listedAt: s.market.listedAt,
+        owned: owned.has(s.id) || (!!s.owner && s.owner === me),
+        mine: !!s.owner && s.owner === me,
+      })),
+    });
+  });
+
+  r.post('/anim/buy', (req, res) => {
+    const name = clean(req.body?.name);
+    if (!name) return res.status(400).json({ ok: false, error: 'name required' });
+    const set = anim.getSet(String(req.body?.id || ''));
+    if (!set || !set.market?.listed) return res.status(404).json({ ok: false, error: 'that pack is not for sale' });
+    const u = ensureUser(name);
+    const meLower = name.toLowerCase();
+    if (set.owner === meLower) return res.json({ ok: true, already: true, note: 'you wrote this one' });
+    if (!u.ownedPacks) u.ownedPacks = [];
+    if (u.ownedPacks.includes(set.id)) return res.json({ ok: true, already: true, wallet: walletOf(u) });
+
+    const price = Math.max(0, Math.round(set.market.price || 0));
+    if (u.cubes < price) return res.status(400).json({ ok: false, error: `not enough ${CURRENCY.name}`, wallet: walletOf(u) });
+    u.cubes -= price;
+    u.ownedPacks.push(set.id);
+
+    // pay the author — this is the whole point of the crediting system
+    if (price > 0 && set.owner) {
+      const author = ensureUser(set.owner);
+      ensureWallet(author);
+      author.cubes += price;
+      author.packEarnings = (author.packEarnings || 0) + price;
+    }
+    anim.recordSale(set.id, price);
+    save();
+    res.json({ ok: true, bought: set.id, paid: price, author: set.owner, wallet: walletOf(u) });
+  });
+
+  /** What a creator has made from their packs. */
+  r.get('/anim/earnings/:name', (req, res) => {
+    const me = clean(req.params.name).toLowerCase();
+    const u = getUser(me);
+    const mine = anim.allSets().filter((s) => s.owner === me && s.market?.listed);
+    res.json({
+      total: u?.packEarnings || 0,
+      packs: mine.map((s) => ({ id: s.id, title: s.market.title, price: s.market.price,
+                                sales: s.market.sales || 0, earned: s.market.earned || 0 })),
+    });
+  });
+
   r.post('/anim/delete', (req, res) => {
     const name = clean(req.body?.name);
     const set = anim.getSet(String(req.body?.id || ''));

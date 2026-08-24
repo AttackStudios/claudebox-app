@@ -102,5 +102,26 @@ export async function loadGameAnimations(game, model = 'any') {
   }
 }
 
+/**
+ * Load one community animation pack by id and build a playable pack from it.
+ * This is what a bought-and-equipped pack runs through — the same sampling as
+ * a game-wide set, just addressed by id instead of by scope.
+ */
+const packCache = new Map();
+export async function loadPack(id) {
+  if (!id) return null;
+  if (packCache.has(id)) return packCache.get(id);
+  const p = (async () => {
+    try {
+      const r = await fetch(`/api/anim/pack/${encodeURIComponent(id)}`);
+      const j = await r.json();
+      if (!j.pack) return null;
+      return { pack: packFromSet(j.pack), meta: j.pack };
+    } catch { return null; }
+  })();
+  packCache.set(id, p);
+  return p;
+}
+
 /** The default poses, exposed so the editor can start from them. */
 export const DEFAULT_POSES = POSES;

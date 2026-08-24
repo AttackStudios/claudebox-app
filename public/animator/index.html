@@ -7,6 +7,8 @@
 <script type="importmap">
   { "imports": { "three": "/vendor/three.module.js" } }
 </script>
+<!-- the Store's own stylesheet, so the publish preview is not a lookalike -->
+<link rel="stylesheet" href="/hub/rbx.css">
 <link rel="stylesheet" href="/animator/animator.css">
 </head>
 <body>
@@ -19,6 +21,7 @@
   <button id="undo" class="icon" title="Undo">↶</button>
   <button id="redo" class="icon" title="Redo">↷</button>
   <span id="who"></span>
+  <button id="btn-pack" class="btn" title="Turn this set into an animation pack other players can buy">🏷️ Publish pack</button>
   <button id="save" class="btn">Save</button>
   <button id="publish" class="btn primary">Publish</button>
 </header>
@@ -125,6 +128,48 @@
     <div id="playhead"><div class="ph-grab"></div></div>
   </div>
 </footer>
+
+<!-- ---------- publish as an animation pack ---------- -->
+<div id="pack" class="sheet hidden">
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <h2>Publish as an animation pack</h2>
+      <button class="close" id="pack-close">✕</button>
+    </div>
+    <div class="pack-wrap">
+      <form id="pack-form" autocomplete="off">
+        <label class="f"><span>Pack name</span>
+          <input id="pk-title" maxlength="42" placeholder="Smooth Walk Pack"></label>
+        <label class="f"><span>Description</span>
+          <textarea id="pk-blurb" maxlength="160" rows="3" placeholder="What does moving with this on feel like?"></textarea>
+          <small id="pk-count">0 / 160</small></label>
+        <div class="frow">
+          <label class="f"><span>Icon</span>
+            <input id="pk-icon" maxlength="4" placeholder="🎬"></label>
+          <label class="f"><span>Price in Bits</span>
+            <input id="pk-price" type="number" min="0" max="100000" step="5" value="50"></label>
+        </div>
+        <label class="f"><span>Tags <i>— up to 4, comma separated</i></span>
+          <input id="pk-tags" maxlength="70" placeholder="walk, smooth, casual"></label>
+        <div class="f"><span>What's in it</span><div id="pk-clips" class="chips"></div></div>
+        <p class="hint">You keep every Bit anyone spends on this — the platform takes nothing.</p>
+        <div class="pack-actions">
+          <button type="button" id="pk-list" class="big">List it in the Store</button>
+          <button type="button" id="pk-unlist" class="alt hidden">Remove from Store</button>
+        </div>
+        <div id="pk-earn" class="earn hidden"></div>
+      </form>
+
+      <div class="pack-preview">
+        <h3>Exactly how it appears in the Store</h3>
+        <div class="prev-label">Store tile</div>
+        <div id="pk-card"></div>
+        <div class="prev-label">Item page</div>
+        <div id="pk-page"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 <script type="module" src="/animator/animator.js"></script>

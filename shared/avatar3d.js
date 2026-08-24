@@ -10,7 +10,7 @@ import { clone as cloneSkinned } from '/vendor/SkeletonUtils.js';
 import { mergeGeometries } from '/vendor/BufferGeometryUtils.js';
 import { makeAnimator } from '/shared/anim/humanoid.js';
 import { buildSteven, skinFromProfile, textureFromImage, STEVEN_HEIGHT } from '/shared/avatar/steven.js';
-import { loadGameAnimations } from '/shared/anim/custom.js';
+import { loadGameAnimations, loadPack } from '/shared/anim/custom.js';
 
 const loader = new GLTFLoader();
 const glbCache = new Map();
@@ -55,6 +55,17 @@ export const animationCameraRule = () => gameCameraRule;
 // the head's displacement from where it rests, clamped to the rule's limit;
 // the game adds it to its own camera target, so zoom and orbit still belong to
 // the player.
+// A community animation pack the player bought and equipped. It layers over the
+// game's own sets, because what you chose to wear should beat a global default.
+function wearPack(ctrl, profile) {
+  const ap = profile?.animPack || '';
+  if (!/^pack:/.test(ap)) return;
+  loadPack(ap.slice(5)).then((res) => {
+    if (!res?.pack) return;
+    ctrl.setCustomPack({ ...(gamePack || {}), ...res.pack });
+  }).catch(() => {});
+}
+
 function attachHeadRule(ctrl, THREE) {
   // Measure against the BIND pose, not against the head's local position:
   // animations rotate the spine, hips and head, and a rotation never changes a
@@ -583,6 +594,7 @@ export function makeAvatar(profile = {}) {
   if (gamePack) ctrl.setCustomPack(gamePack);
   attachHeadRule(ctrl, THREE);
   liveCtrls.add(ctrl);
+  wearPack(ctrl, profile);
   return ctrl;
 }
 
@@ -643,6 +655,7 @@ function makeStevenAvatar(profile = {}) {
   if (gamePack) ctrl.setCustomPack(gamePack);
   attachHeadRule(ctrl, THREE);
   liveCtrls.add(ctrl);
+  wearPack(ctrl, profile);
   return ctrl;
 }
 

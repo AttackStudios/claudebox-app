@@ -1075,3 +1075,145 @@ $('new-set').addEventListener('click', () => {
   };
   requestAnimationFrame(frame);
 })();
+
+// ============================================================================
+// Publishing a set as an animation pack.
+//
+// The preview below is not a mock-up of the Store: it loads the Store's own
+// stylesheet and builds the Store's own markup (.mk-item, .mk-detail), so what
+// you see while typing is the component that will actually render. A lookalike
+// would drift the first time the Store changed.
+// ============================================================================
+const PK = {
+  title: '', blurb: '', icon: '🎬', price: 50, tags: [], listed: false,
+};
+const money = (n) => (n === 0
+  ? 'Free'
+  : `<img class="cur-ico" src="/icons/claudebux.svg" alt="">${n}`);
+
+function pkFromSet() {
+  const m = set.market || {};
+  PK.title = m.title || set.name || '';
+  PK.blurb = m.blurb || '';
+  PK.icon = m.icon || '🎬';
+  PK.price = typeof m.price === 'number' ? m.price : 50;
+  PK.tags = Array.isArray(m.tags) ? m.tags.slice() : [];
+  PK.listed = !!m.listed;
+  $('pk-title').value = PK.title;
+  $('pk-blurb').value = PK.blurb;
+  $('pk-icon').value = PK.icon;
+  $('pk-price').value = PK.price;
+  $('pk-tags').value = PK.tags.join(', ');
+  $('pk-unlist').classList.toggle('hidden', !PK.listed);
+  $('pk-list').textContent = PK.listed ? 'Update the listing' : 'List it in the Store';
+  paintPack();
+}
+
+function readPack() {
+  PK.title = $('pk-title').value.trim();
+  PK.blurb = $('pk-blurb').value.trim();
+  PK.icon = $('pk-icon').value.trim() || '🎬';
+  PK.price = Math.max(0, Math.min(100000, Math.round(+$('pk-price').value || 0)));
+  PK.tags = $('pk-tags').value.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 4);
+  $('pk-count').textContent = `${PK.blurb.length} / 160`;
+  paintPack();
+}
+
+/** Which clips this pack actually carries — the thing a buyer is paying for. */
+function pkClips() {
+  return Object.entries(set.clips || {})
+    .filter(([, c]) => Object.keys(c.tracks || {}).length)
+    .map(([n]) => n);
+}
+
+function paintPack() {
+  const clips = pkClips();
+  const title = PK.title || 'Untitled pack';
+  const author = me || 'you';
+
+  $('pk-clips').innerHTML = clips.length
+    ? clips.map((c) => `<span class="chip">${c}</span>`).join('')
+    : '<span class="chip warn">no animated clips yet</span>';
+
+  // ---- the Store tile, exactly as mkItemCard builds it ----
+  $('pk-card').innerHTML = `<div class="rbx"><div class="mk-grid-one">
+    <button class="mk-item">
+      <div class="shot"><span class="emoji">${PK.icon}</span></div>
+      <h4>${esc(title)}</h4>
+      <div class="cost">${money(PK.price)}</div>
+    </button></div></div>`;
+
+  // ---- the item page, exactly as mk-detail is laid out ----
+  $('pk-page').innerHTML = `<div class="rbx"><div class="mk-detail">
+    <button class="mk-back">‹ Back to Marketplace</button>
+    <div class="mk-detail-body">
+      <div class="mk-detail-stage">
+        <div class="pk-stage-emoji">${PK.icon}</div>
+        <div class="mk-detail-actions"><button>Try On</button></div>
+      </div>
+      <div class="mk-detail-info">
+        <h2>${esc(title)}</h2>
+        <p class="mk-by">By <span>${esc(author)}</span></p>
+        <hr>
+        <div class="mk-price-row"><span>Price</span><b>${money(PK.price)}</b></div>
+        <button class="mk-primary">Buy</button>
+        <button class="mk-secondary">Add to cart</button>
+        <dl class="mk-meta">
+          <dt>Type</dt><dd>Animation pack</dd>
+          <dt>Placement</dt><dd>Animation</dd>
+          <dt>Creator</dt><dd>${esc(author)}</dd>
+          <dt>Body</dt><dd>${set.model === 'any' ? 'Every body type' : set.model}</dd>
+          <dt>Clips</dt><dd>${clips.length ? clips.join(', ') : '—'}</dd>
+          <dt>Status</dt><dd>${PK.listed ? 'Listed in the Store' : 'Draft — not listed yet'}</dd>
+        </dl>
+        ${PK.blurb ? `<p class="mk-blurb">${esc(PK.blurb)}</p>` : ''}
+        ${PK.tags.length ? `<div class="mk-tagrow">${PK.tags.map((t) => `<span class="mk-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      </div>
+    </div>
+  </div></div>`;
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function listPack(listed) {
+  if (!me) { toast('Sign in on ClaudeBox first'); return; }
+  if (listed && !pkClips().length) { toast('Animate at least one clip before listing'); return; }
+  if (listed && !PK.title) { toast('Give the pack a name'); return; }
+  set.market = { ...(set.market || {}), listed, title: PK.title, blurb: PK.blurb,
+                 icon: PK.icon, price: PK.price, tags: PK.tags };
+  try {
+    const j = await api('/anim/save', { name: me, set });
+    set = j.set;
+    const i = sets.findIndex((s) => s.id === set.id);
+    if (i >= 0) sets[i] = j.set; else sets.push(j.set);
+    markDirty(false); paintSets(); pkFromSet();
+    toast(listed ? 'Listed — it is in the Store now' : 'Removed from the Store');
+    loadEarnings();
+  } catch (e) { toast(e.message); }
+}
+
+async function loadEarnings() {
+  if (!me) return;
+  try {
+    const j = await api(`/anim/earnings/${encodeURIComponent(me)}`);
+    const host = $('pk-earn');
+    if (!j.packs?.length) { host.classList.add('hidden'); return; }
+    host.classList.remove('hidden');
+    host.innerHTML = `<h4>Your packs</h4>
+      <p class="earn-total">${j.total} Bits earned in total</p>
+      <table><tr><th>Pack</th><th>Price</th><th>Sales</th><th>Earned</th></tr>
+      ${j.packs.map((p) => `<tr><td>${esc(p.title)}</td><td>${p.price}</td><td>${p.sales}</td><td>${p.earned}</td></tr>`).join('')}
+      </table>`;
+  } catch {}
+}
+
+for (const id of ['pk-title', 'pk-blurb', 'pk-icon', 'pk-price', 'pk-tags']) {
+  $(id).addEventListener('input', readPack);
+}
+$('btn-pack').addEventListener('click', () => {
+  pkFromSet(); loadEarnings();
+  $('pack').classList.remove('hidden');
+});
+$('pack-close').addEventListener('click', () => $('pack').classList.add('hidden'));
+$('pack').addEventListener('click', (e) => { if (e.target === $('pack')) $('pack').classList.add('hidden'); });
+$('pk-list').addEventListener('click', () => listPack(true));
+$('pk-unlist').addEventListener('click', () => listPack(false));

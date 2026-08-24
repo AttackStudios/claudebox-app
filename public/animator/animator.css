@@ -220,3 +220,62 @@ body.scrubbing #tl-ruler, body.scrubbing .ph-grab { cursor: ew-resize; }
 .ch input.ch-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .ch input.ch-val:hover { border-color: var(--line); }
 .ch input.ch-val:focus { outline: none; border-color: var(--accent); background: rgba(110, 231, 255, .1); }
+
+/* ---- publish-as-pack sheet ---- */
+.sheet { position: fixed; inset: 0; z-index: 60; background: rgba(6,9,14,.72);
+  backdrop-filter: blur(6px); display: grid; place-items: center; padding: 4vh 3vw; }
+.sheet-card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+  width: min(1120px, 96vw); max-height: 92vh; overflow: auto; box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+.sheet-head { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.sheet-head h2 { margin: 0; font-size: 19px; flex: 1; }
+.pack-wrap { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 24px; padding: 20px; align-items: start; }
+@media (max-width: 900px) { .pack-wrap { grid-template-columns: 1fr; } }
+.f { display: block; margin-bottom: 14px; }
+.f > span { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.f > span i { text-transform: none; letter-spacing: 0; font-style: normal; opacity: .7; }
+.f input, .f textarea { width: 100%; padding: 9px 11px; border-radius: 9px; background: var(--panel2);
+  border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 13.5px; }
+.f input:focus, .f textarea:focus { outline: none; border-color: var(--accent); }
+.f small { display: block; margin-top: 5px; color: var(--dim); font-size: 11px; }
+.frow { display: grid; grid-template-columns: 90px 1fr; gap: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 3px 9px; border-radius: 7px; background: var(--panel2); border: 1px solid var(--line); font-size: 11.5px; }
+.chip.warn { color: var(--danger); border-color: var(--danger); }
+.pack-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.pack-actions .big { padding: 11px 20px; font: 700 14px/1 ui-rounded, system-ui; border: 0;
+  border-radius: 11px; cursor: pointer; background: linear-gradient(180deg, #56c8ff, #2b8de0); color: #04121d; }
+.pack-actions .alt { padding: 11px 16px; font: 600 13px/1 ui-rounded, system-ui; cursor: pointer;
+  background: transparent; border: 1px solid var(--line); color: var(--dim); border-radius: 11px; }
+.pack-actions .alt:hover { color: var(--danger); border-color: var(--danger); }
+.pack-preview h3 { margin: 0 0 14px; font-size: 13px; color: var(--dim); font-weight: 600; }
+.prev-label { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 16px 0 8px; }
+/* The Store renders on a light surface, so give the preview the same ground —
+   and undo this editor's own global typography inside it. The animator styles
+   bare h2/h3 for its panel headers (small, uppercase, dim); inherited into the
+   preview that turned an item title into shouting grey caps and left the tile's
+   name white-on-white. The preview has to be governed by rbx.css alone. */
+#pk-card .rbx, #pk-page .rbx {
+  background: #fff; border-radius: 14px; padding: 16px;
+  color: var(--rbx-ink, #1b1f24);
+}
+#pk-card .rbx h1, #pk-card .rbx h2, #pk-card .rbx h3, #pk-card .rbx h4,
+#pk-page .rbx h1, #pk-page .rbx h2, #pk-page .rbx h3, #pk-page .rbx h4 {
+  color: var(--rbx-ink, #1b1f24);
+  text-transform: none;
+  letter-spacing: normal;
+  display: block;
+}
+#pk-page .rbx .mk-detail-info h2 { letter-spacing: -.5px; }   /* as the Store has it */
+#pk-card .rbx .cost, #pk-page .rbx .mk-price-row { color: var(--rbx-ink, #1b1f24); }
+.mk-grid-one { display: grid; grid-template-columns: 190px; }
+.pk-stage-emoji { display: grid; place-items: center; font-size: 84px; min-height: 210px; }
+.mk-blurb { margin-top: 14px; font-size: 14px; line-height: 1.5; }
+.mk-tagrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.earn { margin-top: 18px; padding: 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; }
+.earn h4 { margin: 0 0 4px; font-size: 13px; }
+.earn-total { margin: 0 0 10px; color: var(--accent); font-weight: 700; }
+.earn table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.earn th { text-align: left; color: var(--dim); font-weight: 600; padding-bottom: 6px; }
+.earn td { padding: 3px 0; border-top: 1px solid var(--line); }
+.close { width: 32px; height: 32px; border-radius: 9px; background: var(--panel2);
+  border: 1px solid var(--line); color: var(--dim); cursor: pointer; font-size: 14px; }

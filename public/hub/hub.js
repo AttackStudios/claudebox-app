@@ -1703,11 +1703,30 @@ function mkCatalogue() {
   }
   return out;
 }
+// Packs written by players, fetched once and folded into the same catalogue as
+// everything else so they sort, filter, preview and buy identically.
+let MK_PACKS = [];
+async function loadCommunityPacks() {
+  try {
+    const j = await api(`/anim/market?name=${encodeURIComponent(stateHub.me?.name || '')}`);
+    MK_PACKS = (j.packs || []).map((p) => ({
+      id: `pack-${p.id}`, packId: p.id, slot: 'animPack', value: `pack:${p.id}`,
+      label: p.title, kind: 'Animations', frame: 'full', pose: 'walk',
+      slotLabel: 'Animation', price: p.price, featured: false,
+      shopId: null, community: true, owned: p.owned, mine: p.mine,
+      creator: p.author || 'a player', emoji: p.icon, blurb: p.blurb,
+      tags: p.tags || [], clips: p.clips || [], sales: p.sales || 0,
+    }));
+    MK_ALL = null;             // rebuild so the new rows appear
+  } catch (e) { console.error('[packs] load failed', e.message); MK_PACKS = []; }
+  return MK_PACKS;
+}
+
 let MK_ALL = null;
-const mkAll = () => (MK_ALL ||= mkCatalogue());
+const mkAll = () => (MK_ALL ||= [...mkCatalogue(), ...MK_PACKS]);
 
 const mkOwned = () => new Set(wallet().ownedAvatar || []);
-const mkIsOwned = (it) => !it.shopId || mkOwned().has(it.shopId);
+const mkIsOwned = (it) => (it.community ? !!it.owned : (!it.shopId || mkOwned().has(it.shopId)));
 const mkEquipped = (it) => (stateHub.me?.avatar?.[it.slot] || 'none') === it.value;
 
 function mkTags() {
@@ -1856,8 +1875,15 @@ function mkItemCard(it, small) {
   return b;
 }
 
+let packsLoaded = false;
 function renderMarket() {
   if (!$('mk-grid')) return;
+  // Pull the player-made packs the first time the Store is opened, then repaint.
+  // Fetching on every keystroke of the search box would hammer the endpoint.
+  if (!packsLoaded) {
+    packsLoaded = true;
+    loadCommunityPacks().then(() => renderMarket()).catch(() => {});
+  }
   renderFilters(); renderTags();
   $('mk-detail').classList.add('hidden');
   $('mk-grid').classList.remove('hidden');
@@ -1892,7 +1918,11 @@ async function mkOpenDetail(it) {
     <dt>Type</dt><dd>${it.kind}</dd>
     <dt>Placement</dt><dd>${it.slotLabel}</dd>
     <dt>Creator</dt><dd>${it.creator}</dd>
+    ${it.community ? `<dt>Clips</dt><dd>${(it.clips || []).join(', ') || '—'}</dd>
+                      <dt>Sold</dt><dd>${it.sales} time${it.sales === 1 ? '' : 's'}</dd>` : ''}
     <dt>Status</dt><dd>${owned ? 'In your inventory' : it.price === 0 ? 'Free to wear' : 'Available'}</dd>`;
+  const blurbEl = $('mk-d-meta');
+  if (it.blurb) blurbEl.insertAdjacentHTML('afterend', `<p class="mk-blurb">${String(it.blurb).replace(/[<>&]/g, '')}</p>`);
   const stage = $('mk-detail-thumb'); stage.innerHTML = '';
   lazyThumb(stage, `mkbig:${it.slot}:${it.value}`, mkPreviewProfile(it), it.frame, it.pose);
   $('mk-tryon').onclick = () => mkWear(it, true);
@@ -1908,6 +1938,17 @@ async function mkWear(it, tryOnly) {
   else if (data?.error) toast(data.error, '⚠️');
 }
 async function mkBuy(it) {
+  if (it.community) {
+    const data = await storePost('/anim/buy', { name: stateHub.me.name, id: it.packId });
+    if (data?.ok) {
+      it.owned = true;
+      sfx.success();
+      toast(data.already ? `You already own ${it.label}` :
+        `Bought ${it.label} — ${data.paid} Bits went to ${data.author || 'its creator'}`, '🎉');
+      mkOpenDetail(it);
+    } else if (data?.error) { sfx.deny?.(); toast(data.error, '⚠️'); }
+    return;
+  }
   if (!it.shopId) return mkWear(it);
   const data = await storePost('/avatarshop/buy', { name: stateHub.me.name, item: it.shopId });
   if (data?.ok) { sfx.success(); toast(`Bought ${it.label}!`, '🎉'); mkOpenDetail(it); }
