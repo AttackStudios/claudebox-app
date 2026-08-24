@@ -329,3 +329,12 @@ body.scrubbing #tl-ruler, body.scrubbing .ph-grab { cursor: ew-resize; }
 #prop-edit .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .lane-sep { background: rgba(110,231,255,.07); }
 .lane-sep .lane-name { color: var(--accent); font-weight: 700; }
+
+/* which object the sliders and lanes are describing */
+.ch-target {
+  display: flex; flex-direction: column; gap: 2px; margin-bottom: 9px;
+  padding: 7px 9px; background: rgba(110,231,255,.09);
+  border: 1px solid rgba(110,231,255,.3); border-radius: 8px;
+}
+.ch-target b { font-size: 13px; color: var(--accent); }
+.ch-target small { font-size: 10.5px; color: var(--dim); }

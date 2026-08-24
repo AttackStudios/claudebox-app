@@ -77,14 +77,20 @@ export function sanitizeSet(raw = {}, owner = '') {
     for (const [pid, pt] of Object.entries(c.props || {})) {
       if (!propIds.has(pid)) continue;          // drop tracks for deleted props
       const t = {};
-      for (const ch of PROP_CHANNELS) {
+      // A dummy is a character, not a crate: besides moving through space it
+      // poses on the same canonical channels as the model being edited, so the
+      // allowed set is the union for dummies and just the transform for solids.
+      const isDummy = props.find((p) => p.id === pid)?.kind === 'dummy';
+      const allowed = isDummy ? [...PROP_CHANNELS, ...CHANNELS] : PROP_CHANNELS;
+      for (const ch of allowed) {
         const keys = Array.isArray(pt?.tracks?.[ch]) ? pt.tracks[ch] : null;
         if (!keys || !keys.length) continue;
         const clean = keys
           .map((k) => ({
             t: clamp(num(k.t), 0, 1),
-            // props travel, so the range is world units rather than radians
-            v: clamp(num(k.v), -60, 60),
+            // transform channels travel in world units; pose channels are
+            // radians and share the body's tighter clamp
+            v: PROP_CHANNELS.includes(ch) ? clamp(num(k.v), -60, 60) : clamp(num(k.v), -6.5, 6.5),
             e: isEase(k.e) ? k.e : 'smooth',
           }))
           .sort((a, b) => a.t - b.t)

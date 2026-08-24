@@ -240,7 +240,19 @@ const modelScale = () => {
 };
 
 function jointObject(canon) {
-  if (canon && canon.startsWith('prop:')) return propObjs.get(canon.slice(5))?.group || null;
+  if (canon && canon.startsWith('prop:')) {
+    const o = propObjs.get(canon.slice(5));
+    if (!o) return null;
+    // a selected limb resolves to that dummy's bone; otherwise its whole group
+    if (selJoint && o.ctrl) {
+      if (selJoint === 'root') return o.group;
+      const rig = jointsFor(o.def.model || 'boy');
+      const bn = rig[selJoint]?.bone;
+      const b = bn ? o.ctrl.bones?.[bn] : null;
+      if (b) return b;
+    }
+    return o.group;
+  }
   if (!ctrl) return null;
   if (canon === 'root') return ctrl.group;
   const name = joints[canon]?.bone;
@@ -295,6 +307,20 @@ function syncProxies() {
 }
 
 function refreshGizmo() {
+  if (selProp && selJoint) {
+    // a limb on a dummy — same rig table as the main model
+    const o = propObjs.get(selProp);
+    const rig = o ? jointsFor(o.def.model || 'boy') : null;
+    const j = rig?.[selJoint];
+    if (j) {
+      const usable = mode === 'move' ? (j.move || []) : j.rot;
+      giz.build(usable.length ? j : null, mode, modelScale() * 0.17);
+      giz.group.visible = usable.length > 0;
+      $('sel-label').innerHTML = `<b>${o.def.name} · ${j.label}</b> · ${usable.map((r) =>
+        `<i style="color:#${AXIS_COLOR[r.axis].toString(16).padStart(6, '0')}">${r.channel}</i>`).join(' ')}`;
+      return;
+    }
+  }
   if (selProp) {
     const pj = propJoint(selProp);
     if (pj) {
@@ -322,7 +348,7 @@ function syncGizmo() {
   const o = jointObject(key);
   if (!o) return;
   o.getWorldPosition(_p);
-  if (selJoint === 'root' && !selProp) _p.y += modelScale() * 0.5;
+  if (selJoint === 'root') _p.y += modelScale() * 0.5;
   giz.group.position.copy(_p);
   // rings must sit in the joint's LOCAL frame, since that is the frame the
   // channels rotate in; the move gizmo works in the model's frame instead
@@ -359,15 +385,23 @@ $('view').addEventListener('pointerdown', (e) => {
   // gizmo first — it sits on top of everything and must win the click
   const gh = giz.group.visible ? r.intersectObjects(giz.handles, false)[0] : null;
   if (gh) { startDrag(gh.object.userData, e); return; }
-  const ph = r.intersectObjects(proxies.filter((p) => p.visible), false)[0];
-  if (ph) {
-    selJoint = ph.object.userData.joint;
+  // props first: a dummy standing in front of the model should win the click
+  const pp = r.intersectObjects(propProxies.filter((p) => p.visible), false)[0];
+  const bh = r.intersectObjects(proxies.filter((p) => p.visible), false)[0];
+  if (pp && (!bh || pp.distance <= bh.distance)) {
+    selProp = pp.object.userData.prop;
+    selJoint = pp.object.userData.joint || null;
+    paintProps(); refreshGizmo(); paintChannels(); paintTimeline();
+    return;
+  }
+  if (bh) {
+    selJoint = bh.object.userData.joint;
     selProp = null; paintProps();
-    refreshGizmo();
+    refreshGizmo(); paintChannels(); paintTimeline();
     return;
   }
   // nothing hit: deselect, and fall through to orbiting
-  if (!e.shiftKey) { selJoint = null; selProp = null; paintProps(); refreshGizmo(); }
+  if (!e.shiftKey) { selJoint = null; selProp = null; paintProps(); refreshGizmo(); paintChannels(); paintTimeline(); }
   orbit.drag = { x: e.clientX, y: e.clientY, yaw: orbit.yaw, pitch: orbit.pitch };
 });
 $('view').addEventListener('pointermove', (e) => {
@@ -430,15 +464,11 @@ function closestOnAxis(r, centre, dir) {
   return (b * eD - c * d) / den;
 }
 
-/** Read the value a drag starts from — prop channels live in their own tracks. */
-function curValue(ch) {
-  return selProp && isPropChannel(ch) ? propValueAt(selProp, ch, time) : valueAt(ch, time);
-}
-/** Write a dragged value back to whichever track owns it. */
-function writeValue(ch, v) {
-  if (selProp && isPropChannel(ch)) setPropKey(selProp, ch, time, v);
-  else setKey(ch, time, v);
-}
+// Route by WHAT IS SELECTED, not by which channel it is. Routing on channel
+// type meant posing a dummy's arm wrote armLS onto the main model — the dummy
+// never moved, and the character you were not looking at did.
+const curValue = (ch) => targetValue(ch, time);
+const writeValue = (ch, v) => targetSetKey(ch, time, v);
 
 function moveDrag(e) {
   if (!drag) return;
@@ -485,9 +515,17 @@ function frame(now) {
     ctrl.update(0);
     ctrl.group.updateMatrixWorld(true);
     syncProxies();
+    syncPropProxies();
     for (const [id, o] of propObjs) {
       syncProp(id, time);
-      if (o.ctrl) { o.ctrl.anim?.setPhase?.(time); o.ctrl.update(0); }
+      if (o.ctrl) {
+        // Same rig, same channels, same sampling as the model you are editing —
+        // a dummy is a second character, not a puppet with its own rules.
+        o.ctrl.setCustomPack?.(dummyPack(id));
+        o.ctrl.setAnim(o.def.clip || clipName);
+        o.ctrl.anim?.setPhase?.(time);
+        o.ctrl.update(0);
+      }
     }
     syncGizmo();
   }
@@ -527,6 +565,32 @@ const CH_LABEL = {
   spine: 'Spine', head: 'Head', bob: 'Body up/down', rootPitch: 'Body pitch',
   rootX: 'Body sideways', rootZ: 'Body forward',
 };
+
+// ---------------------------------------------------------------- selection
+// The right-hand sliders and the timeline lanes both describe ONE target. A
+// cube has seven transform channels; the body has eighteen pose channels; a
+// dummy is a character that also travels, so it has both.
+function selTarget() {
+  if (!selProp) return { kind: 'body', channels: META.channels, label: 'Character' };
+  const def = (set.props || []).find((p) => p.id === selProp);
+  if (!def) return { kind: 'body', channels: META.channels, label: 'Character' };
+  return def.kind === 'dummy'
+    ? { kind: 'dummy', propId: selProp, def, channels: [...PROP_CH, ...META.channels], label: def.name }
+    : { kind: 'prop', propId: selProp, def, channels: [...PROP_CH], label: def.name };
+}
+/** Read a channel for whatever is selected. */
+function targetValue(ch, t) {
+  const tg = selTarget();
+  if (tg.kind === 'body') return valueAt(ch, t);
+  return propValueAt(tg.propId, ch, t);
+}
+/** Write a channel for whatever is selected. */
+function targetSetKey(ch, t, v) {
+  const tg = selTarget();
+  if (tg.kind === 'body') setKey(ch, t, v);
+  else setPropKey(tg.propId, ch, t, v);
+}
+
 function paintChannels() {
   const host = $('channels');
   // Never rebuild under a field being typed into: the 300ms repaint would drop
@@ -534,24 +598,35 @@ function paintChannels() {
   if (host.contains(document.activeElement) && document.activeElement !== document.body) return;
   host.innerHTML = '';
   const c = clip();
-  for (const ch of META.channels) {
-    const has = !!c.tracks[ch]?.length;
+  const tg = selTarget();
+  const banner = document.createElement('div');
+  banner.className = 'ch-target';
+  banner.innerHTML = `<b>${tg.label}</b><small>${
+    tg.kind === 'body' ? 'the model you are animating'
+      : tg.kind === 'dummy' ? 'dummy — moves and poses' : 'prop — moves only'}</small>`;
+  host.appendChild(banner);
+  for (const ch of tg.channels) {
+    const has = tg.kind === 'body'
+      ? !!c.tracks[ch]?.length
+      : !!c.props?.[tg.propId]?.tracks?.[ch]?.length;
     const el = document.createElement('div');
     el.className = 'ch' + (has ? ' active' : '');
-    const v = valueAt(ch, time);
+    const v = targetValue(ch, time);
+    const isXf = PROP_CH.includes(ch) && tg.kind !== 'body';
+    const lo = isXf ? -30 : -3.2, hi = isXf ? 30 : 3.2;
     el.innerHTML = `<div class="ch-top"><b>${CH_LABEL[ch] || ch}</b>
         <input class="ch-val" type="number" step="0.01" min="${-CH_LIMIT}" max="${CH_LIMIT}"
                value="${v.toFixed(2)}" title="Type an exact value"></div>
-      <input class="ch-slider" type="range" min="-3.2" max="3.2" step="0.01" value="${v}">
-      <div class="n">${ch}${has ? ` · ${c.tracks[ch].length} keys` : ''}
-        ${has ? '<button class="ch-clear" title="Delete this channel’s keys">clear</button>' : ''}</div>`;
+      <input class="ch-slider" type="range" min="${lo}" max="${hi}" step="0.01" value="${v}">
+      <div class="n">${ch}${has ? ' · keyed' : ''}
+        ${has && tg.kind === 'body' ? '<button class="ch-clear" title="Delete this channel’s keys">clear</button>' : ''}</div>`;
     const inp = el.querySelector('.ch-slider');
     const box = el.querySelector('.ch-val');
     inp.addEventListener('pointerdown', () => openChange('slider'));
     inp.addEventListener('keydown', () => openChange('slider'));
     inp.addEventListener('change', closeChange);
     inp.addEventListener('input', () => {
-      setKey(ch, time, +inp.value);
+      targetSetKey(ch, time, +inp.value);
       box.value = (+inp.value).toFixed(2);
     });
 
@@ -561,17 +636,18 @@ function paintChannels() {
     // it just pins at its end rather than rewriting what you typed.
     const commit = () => {
       const n = parseFloat(box.value);
-      if (!isFinite(n)) { box.value = valueAt(ch, time).toFixed(2); return; }
-      const clamped = Math.max(-CH_LIMIT, Math.min(CH_LIMIT, n));
+      if (!isFinite(n)) { box.value = targetValue(ch, time).toFixed(2); return; }
+      const cap = isXf ? 60 : CH_LIMIT;
+      const clamped = Math.max(-cap, Math.min(cap, n));
       box.value = clamped.toFixed(2);
       inp.value = String(clamped);
-      setKey(ch, time, clamped);
+      targetSetKey(ch, time, clamped);
     };
     box.addEventListener('focus', () => box.select());
     box.addEventListener('change', commit);
     box.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); commit(); box.blur(); }
-      else if (e.key === 'Escape') { e.preventDefault(); box.value = valueAt(ch, time).toFixed(2); box.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); box.value = targetValue(ch, time).toFixed(2); box.blur(); }
       // Let Delete and space edit the text rather than the timeline, but leave
       // the shortcuts alone so Cmd+Z still undoes the edit, not the typing.
       if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
@@ -821,21 +897,38 @@ function paintTimelinePositions() {
 function paintTimeline() {
   const host = $('tl-lanes'); host.innerHTML = '';
   const c = clip();
+  const tg = selTarget();
   let total = 0;
-  for (const ch of META.channels) {
-    const keys = c.tracks[ch] || [];
+
+  // Lanes describe whatever is selected. Showing the body's channels while a
+  // cube is selected was the reason the panels felt disconnected from the
+  // viewport — you were editing one thing and looking at another.
+  const readKeys = (ch) => (tg.kind === 'body'
+    ? (c.tracks[ch] || [])
+    : (c.props?.[tg.propId]?.tracks?.[ch] || []));
+  const ensure = (ch) => {
+    if (tg.kind === 'body') return (c.tracks[ch] ||= []);
+    c.props = c.props || {};
+    c.props[tg.propId] = c.props[tg.propId] || { tracks: {} };
+    return (c.props[tg.propId].tracks[ch] ||= []);
+  };
+  const label = (ch) => (PROP_CH.includes(ch) && tg.kind !== 'body'
+    ? (PROP_LABEL[ch] || ch)
+    : (CH_LABEL[ch] || ch));
+
+  for (const ch of tg.channels) {
+    const keys = readKeys(ch);
     total += keys.length;
     const lane = document.createElement('div');
     lane.className = 'lane' + (keys.length ? ' has' : '');
     lane.dataset.ch = ch;
-    lane.innerHTML = `<div class="lane-name">${CH_LABEL[ch] || ch}</div><div class="lane-track"></div>`;
+    lane.innerHTML = `<div class="lane-name">${label(ch)}</div><div class="lane-track"></div>`;
     const track = lane.querySelector('.lane-track');
     track.addEventListener('click', (e) => {
-      if (e.target.classList.contains('kf')) return;
-      if (e.shiftKey) return;               // shift on empty space is not a new key
+      if (e.target.classList.contains('kf') || e.shiftKey) return;
       const r = track.getBoundingClientRect();
       const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-      setKey(ch, p * c.duration, valueAt(ch, p * c.duration));
+      targetSetKey(ch, p * c.duration, targetValue(ch, p * c.duration));
     });
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
@@ -846,55 +939,42 @@ function paintTimeline() {
         + 'shift-click to add to the selection · drag to move every selected key · double-click to delete';
       d.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        if (e.shiftKey) {
-          // extend or trim the selection, and do not start a drag
-          if (sel.has(k)) sel.delete(k); else sel.set(k, ch);
-          paintTimeline();
-          return;
-        }
-        // Measure BEFORE repainting. paintTimeline() rebuilds these elements, and
-        // a detached node reports a 0x0 rect — which made the drag divide by
-        // zero and set every key's time to NaN.
         const r = track.getBoundingClientRect();
-
-        // clicking an unselected key selects just it; clicking one already in
-        // the selection keeps the group, so you can drag the whole set
+        if (e.shiftKey) { sel.has(k) ? sel.delete(k) : sel.set(k, ch); paintTimeline(); return; }
         if (!sel.has(k)) sel = new Map([[k, ch]]);
         paintTimeline();
-
-        const start = new Map();
-        for (const [kk] of sel) start.set(kk, kk.t);
+        const start = new Map(); for (const [kk] of sel) start.set(kk, kk.t);
         const t0 = (e.clientX - r.left) / r.width;
         let moved = false;
         const move = (ev) => {
           if (!(r.width > 0)) return;
           if (!moved) openChange(sel.size > 1 ? `move ${sel.size} keys` : 'move key');
           moved = true;
-          // shift everything by the same amount, and stop the whole group at
-          // the ends rather than letting keys pile up on the boundary
           let dt = (ev.clientX - r.left) / r.width - t0;
           let lo = 1, hi = 0;
           for (const [, s0] of start) { lo = Math.min(lo, s0); hi = Math.max(hi, s0); }
           dt = Math.max(-lo, Math.min(1 - hi, dt));
           for (const [kk, s0] of start) kk.t = s0 + dt;
-          markDirty();
-          paintTimelinePositions();
+          markDirty(); paintTimelinePositions();
         };
         const up = () => {
           removeEventListener('pointermove', move); removeEventListener('pointerup', up);
           closeChange();
-          if (moved) {
-            for (const [, chName] of sel) (c.tracks[chName] || []).sort((a, b) => a.t - b.t);
-            applyPreview(); paintTimeline();
-          }
+          if (moved) { keys.sort((a, b) => a.t - b.t); applyPreview(); paintTimeline(); }
         };
         addEventListener('pointermove', move); addEventListener('pointerup', up);
       });
-      d.addEventListener('dblclick', (e) => { e.stopPropagation(); deleteKey(ch, i); });
+      d.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        pushUndo('delete key');
+        const arr = ensure(ch);
+        const j = arr.indexOf(k);
+        if (j >= 0) arr.splice(j, 1);
+        sel.delete(k);
+        markDirty(); applyPreview(); paintTimeline(); paintChannels();
+      });
       d.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        // With sixteen curves, cycling through them is useless — you need to
-        // see the shape you are choosing. Each row draws its own curve.
         openEaseMenu(e.clientX, e.clientY, k, () => { applyPreview(); paintTimeline(); });
       });
       track.appendChild(d);
@@ -902,80 +982,9 @@ function paintTimeline() {
     host.appendChild(lane);
   }
 
-  // The selected prop gets its own lanes underneath. Only the selected one, so
-  // sixteen props cannot bury the body's channels under a hundred rows.
-  if (selProp) {
-    const def = (set.props || []).find((p) => p.id === selProp);
-    const head = document.createElement('div');
-    head.className = 'lane lane-sep';
-    head.innerHTML = `<div class="lane-name">${def ? def.name : 'Prop'}</div><div class="lane-track"></div>`;
-    host.appendChild(head);
-    for (const ch of PROP_CH) {
-      const keys = c.props?.[selProp]?.tracks?.[ch] || [];
-      total += keys.length;
-      const lane = document.createElement('div');
-      lane.className = 'lane' + (keys.length ? ' has' : '');
-      lane.dataset.ch = `prop:${ch}`;
-      lane.innerHTML = `<div class="lane-name">${PROP_LABEL[ch] || ch}</div><div class="lane-track"></div>`;
-      const track = lane.querySelector('.lane-track');
-      track.addEventListener('click', (e) => {
-        if (e.target.classList.contains('kf') || e.shiftKey) return;
-        const r = track.getBoundingClientRect();
-        const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        setPropKey(selProp, ch, p * c.duration, propValueAt(selProp, ch, p * c.duration));
-      });
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-        const d = document.createElement('div');
-        d.className = `kf ${k.e}` + (sel.has(k) ? ' sel' : '');
-        d.style.left = `${k.t * 100}%`;
-        d.title = `${k.v.toFixed(2)} @ ${(k.t * c.duration).toFixed(2)}s (${k.e})`;
-        d.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-          const r = track.getBoundingClientRect();
-          if (e.shiftKey) { sel.has(k) ? sel.delete(k) : sel.set(k, `prop:${selProp}:${ch}`); paintTimeline(); return; }
-          if (!sel.has(k)) sel = new Map([[k, `prop:${selProp}:${ch}`]]);
-          paintTimeline();
-          const start = new Map(); for (const [kk] of sel) start.set(kk, kk.t);
-          const t0 = (e.clientX - r.left) / r.width;
-          let moved = false;
-          const move = (ev) => {
-            if (!(r.width > 0)) return;
-            if (!moved) openChange('move key');
-            moved = true;
-            let dt = (ev.clientX - r.left) / r.width - t0;
-            let lo = 1, hi = 0;
-            for (const [, s0] of start) { lo = Math.min(lo, s0); hi = Math.max(hi, s0); }
-            dt = Math.max(-lo, Math.min(1 - hi, dt));
-            for (const [kk, s0] of start) kk.t = s0 + dt;
-            markDirty(); paintTimelinePositions();
-          };
-          const up = () => {
-            removeEventListener('pointermove', move); removeEventListener('pointerup', up);
-            closeChange();
-            if (moved) { keys.sort((a, b) => a.t - b.t); paintTimeline(); }
-          };
-          addEventListener('pointermove', move); addEventListener('pointerup', up);
-        });
-        d.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          pushUndo('delete key');
-          keys.splice(i, 1);
-          markDirty(); paintTimeline();
-        });
-        d.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          openEaseMenu(e.clientX, e.clientY, k, () => paintTimeline());
-        });
-        track.appendChild(d);
-      }
-      host.appendChild(lane);
-    }
-  }
-
   $('keycount').textContent = sel.size
-    ? `${sel.size} selected · ${total} keys in ${clipName}`
-    : `${total} keys in ${clipName}`;
+    ? `${sel.size} selected · ${total} keys on ${tg.label}`
+    : `${total} keys on ${tg.label} · ${clipName}`;
 }
 
 // ---------------------------------------------------------------- transport
@@ -1164,7 +1173,7 @@ $('new-set').addEventListener('click', () => {
   // Debug handle, in the same spirit as rivals' window.__momentum: lets the
   // viewport be driven and inspected from the console (and from tests).
   window.__anim = {
-    get state() { return { clipName, mode, selJoint, selected: sel.size, time, playing }; },
+    get state() { return { clipName, mode, selJoint, selProp, selected: sel.size, time, playing }; },
     selectedTimes: () => [...sel.keys()].map((k) => +k.t.toFixed(4)).sort((a, b) => a - b),
     setTime(t) { time = t; },
     screenOf(canon) {
@@ -1189,6 +1198,24 @@ $('new-set').addEventListener('click', () => {
     setMode,
     props: () => (set.props || []).map((p) => ({ id: p.id, kind: p.kind, name: p.name, model: p.model, who: p.who })),
     selectProp: (id) => { selProp = id; selJoint = null; paintProps(); refreshGizmo(); },
+    screenOfProp(id, joint) {
+      const o = propObjs.get(id); if (!o) return null;
+      let node = o.group;
+      if (joint && o.ctrl) { const rig = jointsFor(o.def.model || 'boy'); const bn = rig[joint]?.bone; node = (bn && o.ctrl.bones?.[bn]) || o.group; }
+      const v = new THREE.Vector3(); node.getWorldPosition(v); v.project(cam);
+      const r = $('view').getBoundingClientRect();
+      return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (-v.y + 1) / 2 * r.height };
+    },
+    // world-space tip of a dummy's limb, for tests: a bone's own origin does
+    // not move when it rotates, so probe a point down the limb
+    boneTip(id, joint) {
+      const o = propObjs.get(id); if (!o?.ctrl) return null;
+      const rig = jointsFor(o.def.model || 'boy');
+      const bn = rig[joint]?.bone; const b = bn ? o.ctrl.bones?.[bn] : null;
+      if (!b) return null;
+      const v = new THREE.Vector3(0, -1, 0); b.localToWorld(v);
+      return { x: +v.x.toFixed(4), y: +v.y.toFixed(4), z: +v.z.toFixed(4) };
+    },
     propKeys: (id, ch) => ((clip().props?.[id]?.tracks?.[ch]) || []).map((k) => ({ ...k })),
     undo, redo,
     history: () => ({ undo: undoStack.map((e) => e.label), redo: redoStack.map((e) => e.label) }),
@@ -1471,6 +1498,7 @@ async function buildProp(def) {
   scene.add(group);
   propObjs.set(def.id, { def, group, ctrl });
   syncProp(def.id, 0);
+  rebuildPropProxies();
   return group;
 }
 
@@ -1488,6 +1516,7 @@ function removeProp(id) {
   set.props = (set.props || []).filter((p) => p.id !== id);
   for (const c of Object.values(set.clips || {})) if (c.props) delete c.props[id];
   disposeProp(id);
+  rebuildPropProxies();
   if (selProp === id) selProp = null;
   markDirty(); paintProps(); paintTimeline(); refreshGizmo();
 }
@@ -1524,6 +1553,30 @@ function setPropKey(id, ch, t, v) {
   if (at) at.v = v; else keys.push({ t: p, v, e: 'smooth' });
   keys.sort((a, b) => a.t - b.t);
   markDirty(); paintTimeline();
+}
+
+/**
+ * Compile a dummy's authored body channels into a pack the avatar controller
+ * runs. Built per frame from the same clip data the timeline edits, so posing a
+ * dummy's arm shows up immediately.
+ */
+const _dummyProbe = {};
+function dummyPack(id) {
+  const c = clip();
+  const tracks = c.props?.[id]?.tracks;
+  if (!tracks) return null;
+  const body = META.channels.filter((ch) => tracks[ch]?.length);
+  if (!body.length) return null;
+  const o = propObjs.get(id);
+  const poseName = o?.def.clip || clipName;
+  const dur = c.duration || 1;
+  const loop = c.loop !== false;
+  return {
+    [poseName]: (ch, t) => {
+      const p = (t % dur) / dur;
+      for (const name of body) ch[name] = sample(tracks[name], p, loop);
+    },
+  };
 }
 
 function paintProps() {
@@ -1583,6 +1636,60 @@ function paintPropEdit() {
       def.clip = e.target.value; markDirty();
       propObjs.get(def.id)?.ctrl?.setAnim(def.clip);
     });
+  }
+}
+
+// ---- picking props in the viewport ----
+// Selecting only from the side list meant you could see a dummy and not click
+// it. Solids get one proxy; a dummy gets the same per-joint proxies the main
+// model has, so you can grab its arm directly.
+const propProxies = [];      // meshes raycast for prop selection
+
+function rebuildPropProxies() {
+  for (const m of propProxies) { m.geometry.dispose(); m.material.dispose(); proxyGroup.remove(m); }
+  propProxies.length = 0;
+  const hidden = () => new THREE.MeshBasicMaterial({ color: 0x6ee7ff, transparent: true, opacity: 0, depthTest: false });
+  for (const [id, o] of propObjs) {
+    if (o.def.kind === 'dummy' && o.ctrl) {
+      const rig = jointsFor(o.def.model || 'boy');
+      for (const [canon, j] of Object.entries(rig)) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), hidden());
+        m.userData = { prop: id, joint: canon, bone: j.bone, r: 0.09 };
+        m.renderOrder = 998;
+        proxyGroup.add(m); propProxies.push(m);
+      }
+    } else {
+      const m = new THREE.Mesh(
+        o.def.kind === 'sphere' ? new THREE.SphereGeometry(0.55, 14, 10) : new THREE.BoxGeometry(1.08, 1.08, 1.08),
+        hidden());
+      m.userData = { prop: id, joint: null };
+      m.renderOrder = 998;
+      proxyGroup.add(m); propProxies.push(m);
+    }
+  }
+}
+
+const _pp = new THREE.Vector3();
+function syncPropProxies() {
+  for (const m of propProxies) {
+    const o = propObjs.get(m.userData.prop);
+    if (!o) { m.visible = false; continue; }
+    m.visible = true;
+    if (m.userData.joint) {
+      const bone = m.userData.bone ? o.ctrl?.bones?.[m.userData.bone] : null;
+      const node = m.userData.joint === 'root' ? o.group : bone;
+      if (!node) { m.visible = false; continue; }
+      node.getWorldPosition(_pp);
+      m.position.copy(_pp);
+      m.scale.setScalar(m.userData.r * (o.def.size || 1) * 2.2);
+    } else {
+      m.position.copy(o.group.position);
+      m.quaternion.copy(o.group.quaternion);
+      m.scale.setScalar(o.def.size || 1);
+    }
+    const lit = selProp === m.userData.prop
+      && (m.userData.joint || null) === (selJoint || null) ? 0.2 : 0;
+    m.material.opacity = lit;
   }
 }
 
