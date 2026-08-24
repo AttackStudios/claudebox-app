@@ -403,6 +403,8 @@ const orbit = { yaw: 0.5, pitch: 0.22, dist: 4.6, drag: null };
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 let hoverJoint = null;
+// repeated clicks in one spot step through whatever is stacked there
+const pick = { x: -999, y: -999, i: 0, t: 0 };
 let showProxies = false;   // debug: reveal the pick volumes
 let drag = null;   // active gizmo drag
 
@@ -415,22 +417,46 @@ function pointerNDC(e) {
 
 $('view').addEventListener('pointerdown', (e) => {
   const r = pointerNDC(e);
-  // gizmo first — it sits on top of everything and must win the click
-  const gh = giz.group.visible ? r.intersectObjects(giz.handles, false)[0] : null;
+  // Alt-click steps through whatever is stacked under the cursor. It is tested
+  // BEFORE the gizmo, because the gizmo appears on whatever you just selected
+  // and would otherwise swallow every follow-up click — which is exactly what
+  // made a limb inside a big prop unreachable.
+  const cycling = e.altKey;
+  const gh = (!cycling && giz.group.visible) ? r.intersectObjects(giz.handles, false)[0] : null;
   if (gh) { startDrag(gh.object.userData, e); return; }
-  // props first: a dummy standing in front of the model should win the click
-  const pp = r.intersectObjects(propProxies.filter((p) => p.visible), false)[0];
-  const bh = r.intersectObjects(proxies.filter((p) => p.visible), false)[0];
-  if (pp && (!bh || pp.distance <= bh.distance)) {
-    selProp = pp.object.userData.prop;
-    selJoint = pp.object.userData.joint || null;
+  // Everything under the cursor, nearest first — props and limbs together.
+  // Nearest alone is not enough: a big prop can physically enclose a limb, and
+  // then that limb is unreachable no matter where you click. Clicking the same
+  // spot again steps to the next thing behind, which is how you reach it.
+  const hits = [
+    ...r.intersectObjects(propProxies.filter((p) => p.visible), false)
+      .map((h) => ({ d: h.distance, prop: h.object.userData.prop, joint: h.object.userData.joint || null })),
+    ...r.intersectObjects(proxies.filter((p) => p.visible), false)
+      .map((h) => ({ d: h.distance, prop: null, joint: h.object.userData.joint })),
+  ].sort((a, b) => a.d - b.d);
+
+  // one entry per distinct target, keeping the nearest of each
+  const seenKeys = new Set();
+  const cands = hits.filter((h) => {
+    const k = `${h.prop || ''}|${h.joint || ''}`;
+    if (seenKeys.has(k)) return false;
+    seenKeys.add(k); return true;
+  });
+
+  if (cands.length) {
+    const near = Math.abs(e.clientX - pick.x) < 8 && Math.abs(e.clientY - pick.y) < 8
+      && performance.now() - pick.t < 2500;
+    pick.i = (cycling && near) ? (pick.i + 1) % cands.length : 0;
+    pick.x = e.clientX; pick.y = e.clientY; pick.t = performance.now();
+    const c = cands[pick.i];
+    selProp = c.prop;
+    selJoint = c.joint;
     paintProps(); refreshGizmo(); paintChannels(); paintTimeline();
-    return;
-  }
-  if (bh) {
-    selJoint = bh.object.userData.joint;
-    selProp = null; paintProps();
-    refreshGizmo(); paintChannels(); paintTimeline();
+    if (cands.length > 1) {
+      toast(cycling
+        ? `${pick.i + 1} of ${cands.length} under the cursor`
+        : `${cands.length} things here — alt-click to step through them`);
+    }
     return;
   }
   // nothing hit: deselect, and fall through to orbiting
@@ -1342,6 +1368,23 @@ $('new-set').addEventListener('click', () => {
       return { x: +v.x.toFixed(4), y: +v.y.toFixed(4), z: +v.z.toFixed(4) };
     },
     propGroup: (id) => propObjs.get(id)?.group,
+    candidatesAt(x, y) {
+      const r = $('view').getBoundingClientRect();
+      ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, cam);
+      const a = ray.intersectObjects(propProxies.filter((p) => p.visible), false)
+        .map((h) => ({ d: +h.distance.toFixed(2), what: 'prop:' + h.object.userData.prop + (h.object.userData.joint ? '/' + h.object.userData.joint : '') }));
+      const b = ray.intersectObjects(proxies.filter((p) => p.visible), false)
+        .map((h) => ({ d: +h.distance.toFixed(2), what: 'joint:' + h.object.userData.joint }));
+      return [...a, ...b].sort((p, q) => p.d - q.d);
+    },
+    propDef: (id) => (set.props || []).find((p) => p.id === id),
+    rebuildProps: async () => { for (const d of (set.props||[])) await buildProp(d); paintProps(); },
+    proxyInfo: () => propProxies.map((m) => ({
+      prop: m.userData.prop, joint: m.userData.joint || null,
+      pos: [+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)],
+      scale: +m.scale.x.toFixed(2), visible: m.visible,
+    })),
     propKeys: (id, ch) => ((clip().props?.[id]?.tracks?.[ch]) || []).map((k) => ({ ...k })),
     undo, redo,
     history: () => ({ undo: undoStack.map((e) => e.label), redo: redoStack.map((e) => e.label) }),
@@ -1821,8 +1864,11 @@ function rebuildPropProxies() {
         proxyGroup.add(m); propProxies.push(m);
       }
     } else {
+      // Exactly the drawn size. A padded hit volume meant clicking NEAR a
+      // sphere selected it — including through the character standing behind
+      // it, which is how selecting the legs started selecting a sphere.
       const m = new THREE.Mesh(
-        o.def.kind === 'sphere' ? new THREE.SphereGeometry(0.55, 14, 10) : new THREE.BoxGeometry(1.08, 1.08, 1.08),
+        o.def.kind === 'sphere' ? new THREE.SphereGeometry(0.5, 16, 12) : new THREE.BoxGeometry(1, 1, 1),
         hidden());
       m.userData = { prop: id, joint: null };
       m.renderOrder = 998;
@@ -1847,7 +1893,8 @@ function syncPropProxies() {
     } else {
       m.position.copy(o.group.position);
       m.quaternion.copy(o.group.quaternion);
-      m.scale.setScalar(o.def.size || 1);
+      // the group's scale already folds in the animated `sc` channel
+      m.scale.copy(o.group.scale);
     }
     const lit = selProp === m.userData.prop
       && (m.userData.joint || null) === (selJoint || null) ? 0.2 : 0;
