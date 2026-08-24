@@ -286,8 +286,16 @@ export function makeAvatar(profile = {}) {
         }
         if (geo.attributes.color?.array === arr) geo.attributes.color.needsUpdate = true;
         else geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-        o.material.vertexColors = true;
-        o.material.color.set('#ffffff');
+        // A mesh can carry an ARRAY of materials (multi-material export), and a
+        // material need not have a colour at all. Assuming a single coloured
+        // material here threw during avatar construction, which killed the whole
+        // game boot — the loading screen simply never went away.
+        for (const mat of (Array.isArray(o.material) ? o.material : [o.material])) {
+          if (!mat) continue;
+          mat.vertexColors = true;
+          mat.color?.set('#ffffff');
+          mat.needsUpdate = true;
+        }
       }
     };
   }
