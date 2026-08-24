@@ -103,9 +103,16 @@ export function sanitizeSet(raw = {}, owner = '') {
       if (Object.keys(t).length) pTracks[pid] = { tracks: t };
     }
     if (!Object.keys(tracks).length && !Object.keys(pTracks).length) continue;
+    // Trim points, normalised 0..1 through the clip. Non-destructive: they say
+    // which slice plays, so you can cut a fumbled start off without throwing the
+    // keys away until you decide to.
+    let tIn = clamp(num(c.trim?.in, 0), 0, 1);
+    let tOut = clamp(num(c.trim?.out, 1), 0, 1);
+    if (tOut - tIn < 0.02) { tIn = 0; tOut = 1; }      // a zero-width clip plays nothing
     clips[name] = {
       duration: clamp(num(c.duration, 1), 0.05, 20),
       loop: c.loop !== false,
+      trim: { in: tIn, out: tOut },
       tracks,
       props: pTracks,
     };

@@ -540,8 +540,14 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const c = clip();
   if (playing) {
+    // Play only the kept slice, so the trim is something you hear and see
+    // rather than a promise about what will happen later.
+    const tr = c.trim || { in: 0, out: 1 };
+    const lo = tr.in * c.duration, hi = tr.out * c.duration;
     time += dt * speed;
-    if (c.loop) time %= c.duration; else time = Math.min(time, c.duration);
+    if (time < lo) time = lo;
+    if (c.loop) { if (time > hi) time = lo + ((time - lo) % Math.max(0.001, hi - lo)); }
+    else time = Math.min(time, hi);
   }
   if (ctrl) {
     ctrl.anim?.setAnim?.(clipName);
@@ -734,7 +740,10 @@ addEventListener('pointerup', endScrub);
 
 // Ruler ticks, spaced so the labels stay readable whatever the clip length.
 function paintRuler() {
-  const host = document.querySelector('.ruler-track');
+  // Ticks render into their own layer. Writing them straight into .ruler-track
+  // wiped the trim handles that live there — they vanished the moment the clip
+  // length changed.
+  const host = document.querySelector('.ruler-ticks');
   if (!host) return;
   const dur = clip().duration;
   const steps = [0.05, 0.1, 0.25, 0.5, 1, 2, 5];
@@ -1017,6 +1026,7 @@ function paintTimeline() {
     host.appendChild(lane);
   }
 
+  paintTrim();
   $('keycount').textContent = sel.size
     ? `${sel.size} selected · ${total} keys on ${tg.label}`
     : `${total} keys on ${tg.label} · ${clipName}`;
@@ -1164,7 +1174,7 @@ function syncClip() {
   $('dur').value = c.duration;
   $('loop').checked = c.loop !== false;
   time = 0; sel = new Map();
-  applyPreview(); paintTimeline(); paintChannels(); paintRuler();
+  applyPreview(); paintTimeline(); paintChannels(); paintRuler(); paintTrim();
 }
 function syncAll() {
   $('set-name').value = set.name;
@@ -1231,6 +1241,8 @@ $('new-set').addEventListener('click', () => {
     tracks: () => clip().tracks,
     select(c) { selJoint = c; refreshGizmo(); },
     setMode,
+    trim: () => ({ ...(clip().trim || { in: 0, out: 1 }) }),
+    duration: () => clip().duration,
     gizmoVisible: () => giz.group.visible,
     gizmoHandles: () => giz.handles.map((h) => h.userData.channel + ':' + h.userData.kind),
     props: () => (set.props || []).map((p) => ({ id: p.id, kind: p.kind, name: p.name, model: p.model, who: p.who })),
@@ -1736,4 +1748,119 @@ $('add-dummy').addEventListener('click', () => {
   const who = $('dummy-who').value.trim();
   addProp('dummy', who);
   $('dummy-who').value = '';
+});
+
+// ============================================================================
+// Trim — cut the start and end off a clip.
+//
+// Non-destructive by default: the handles say which slice plays, so a fumbled
+// run-up or a stray frame at the end simply stops being visited. The keys stay
+// put until you press Crop, which bakes the slice down and remaps what is left
+// to fill the whole clip.
+// ============================================================================
+const trimOf = () => {
+  const c = clip();
+  c.trim = c.trim || { in: 0, out: 1 };
+  return c.trim;
+};
+
+function paintTrim() {
+  const t = trimOf();
+  const inEl = $('trim-in'), outEl = $('trim-out');
+  if (!inEl) return;
+  inEl.style.left = `${t.in * 100}%`;
+  outEl.style.left = `${t.out * 100}%`;
+  $('trim-before').style.left = '0%';
+  $('trim-before').style.width = `${t.in * 100}%`;
+  $('trim-after').style.left = `${t.out * 100}%`;
+  $('trim-after').style.width = `${(1 - t.out) * 100}%`;
+  const trimmed = t.in > 0.001 || t.out < 0.999;
+  $('trim-apply').classList.toggle('hidden', !trimmed);
+  $('trim-reset').classList.toggle('hidden', !trimmed);
+  // shade the cut regions on every lane as well
+  for (const lane of $('tl-lanes').children) {
+    lane.querySelectorAll('.cut').forEach((n) => n.remove());
+    const track = lane.querySelector('.lane-track');
+    if (!track || !trimmed) continue;
+    if (t.in > 0.001) {
+      const a = document.createElement('i');
+      a.className = 'cut'; a.style.left = '0'; a.style.width = `${t.in * 100}%`;
+      track.appendChild(a);
+    }
+    if (t.out < 0.999) {
+      const b = document.createElement('i');
+      b.className = 'cut'; b.style.left = `${t.out * 100}%`; b.style.width = `${(1 - t.out) * 100}%`;
+      track.appendChild(b);
+    }
+  }
+}
+
+function dragTrim(which, e) {
+  e.preventDefault(); e.stopPropagation();
+  pushUndo('trim');
+  const move = (ev) => {
+    const tr = trackRect();
+    const p = Math.max(0, Math.min(1, (ev.clientX - tr.pageLeft) / tr.width));
+    const t = trimOf();
+    // keep at least a sliver between them, or the clip would play nothing
+    if (which === 'in') t.in = Math.min(p, t.out - 0.02);
+    else t.out = Math.max(p, t.in + 0.02);
+    t.in = Math.max(0, t.in); t.out = Math.min(1, t.out);
+    // follow the handle so you can see the frame you are cutting to
+    time = (which === 'in' ? t.in : t.out) * clip().duration;
+    markDirty(); paintTrim(); paintChannels();
+  };
+  const up = () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+    applyPreview();
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', up);
+}
+$('trim-in').addEventListener('pointerdown', (e) => dragTrim('in', e));
+$('trim-out').addEventListener('pointerdown', (e) => dragTrim('out', e));
+
+$('trim-reset').addEventListener('click', () => {
+  pushUndo('reset trim');
+  const c = clip();
+  c.trim = { in: 0, out: 1 };
+  markDirty(); paintTrim(); applyPreview(); paintTimeline();
+  toast('Trim reset — the whole clip plays again');
+});
+
+/** Bake the trim: drop keys outside it and stretch what is left to fill. */
+$('trim-apply').addEventListener('click', () => {
+  const c = clip();
+  const t = trimOf();
+  const span = t.out - t.in;
+  if (span >= 0.999) { toast('Nothing trimmed yet — drag the handles on the ruler'); return; }
+  if (!confirm(`Crop "${clipName}" to the kept slice? Keys outside it are deleted.`)) return;
+  pushUndo('crop');
+
+  let dropped = 0;
+  const remap = (tracks) => {
+    for (const ch of Object.keys(tracks)) {
+      const kept = [];
+      for (const k of tracks[ch]) {
+        if (k.t < t.in - 1e-6 || k.t > t.out + 1e-6) { dropped++; continue; }
+        kept.push({ ...k, t: +Math.max(0, Math.min(1, (k.t - t.in) / span)).toFixed(4) });
+      }
+      // A channel whose keys were all outside the slice still needs a value, or
+      // it would silently snap back to the built-in pose. Pin the value it held
+      // at the cut instead.
+      if (!kept.length) {
+        const held = sample(tracks[ch], t.in, false);
+        kept.push({ t: 0, v: +held.toFixed(4), e: 'smooth' });
+      }
+      kept.sort((a, b) => a.t - b.t);
+      tracks[ch] = kept;
+    }
+  };
+  remap(c.tracks || {});
+  for (const p of Object.values(c.props || {})) remap(p.tracks || {});
+
+  c.duration = Math.max(0.05, +(c.duration * span).toFixed(3));
+  c.trim = { in: 0, out: 1 };
+  sel = new Map();
+  markDirty(); syncClip(); paintTrim();
+  toast(`Cropped to ${c.duration.toFixed(2)}s${dropped ? ` · ${dropped} key${dropped > 1 ? 's' : ''} outside removed` : ''}`);
 });

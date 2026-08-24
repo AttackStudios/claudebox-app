@@ -116,6 +116,8 @@
       <div class="grow"></div>
       <button id="seed" class="btn">Start from built-in</button>
       <button id="mirror" class="btn">Mirror L/R</button>
+      <button id="trim-apply" class="btn">✂ Crop to trim</button>
+      <button id="trim-reset" class="btn">Reset trim</button>
       <button id="clear-clip" class="btn danger">Clear clip</button>
     </div>
   </section>
@@ -139,7 +141,13 @@
     <span id="keycount"></span>
   </div>
   <div id="tl-area">
-    <div id="tl-ruler"><div class="ruler-track"></div></div>
+    <div id="tl-ruler"><div class="ruler-track">
+      <div class="ruler-ticks"></div>
+      <div id="trim-before" class="trim-shade"></div>
+      <div id="trim-after" class="trim-shade"></div>
+      <div id="trim-in" class="trim-grip" title="Drag to cut the start"></div>
+      <div id="trim-out" class="trim-grip out" title="Drag to cut the end"></div>
+    </div></div>
     <div id="tl-body"><div id="tl-lanes"></div></div>
     <div id="playhead"><div class="ph-grab"></div></div>
   </div>

@@ -51,11 +51,19 @@ export function packFromSet(set) {
     if (!tracks.length) continue;
     const dur = clip.duration || 1;
     const loop = clip.loop !== false;
+    // A trimmed clip plays only its kept slice, and loops within it. The phase
+    // still runs 0..1 over the WHOLE clip so the keys need no remapping — the
+    // trim just decides which part of that the runtime ever visits.
+    const tIn = clip.trim?.in ?? 0;
+    const tOut = clip.trim?.out ?? 1;
+    const span = Math.max(0.02, tOut - tIn);
     pack[poseName] = (c, t) => {
       // `t` is the animator's running phase; a clip decides how that maps onto
       // its own timeline, so a two-second clip is not forced into one cycle
-      let p = (t % dur) / dur;
-      if (!loop) p = Math.min(1, t / dur);
+      const scaled = dur * span;
+      let k = (t % scaled) / scaled;
+      if (!loop) k = Math.min(1, t / scaled);
+      const p = tIn + k * span;
       for (const [ch, keys] of tracks) c[ch] = sampleTrack(keys, p, loop);
     };
   }
