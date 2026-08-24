@@ -88,6 +88,9 @@ function restore(entry) {
   const c = clip();
   $('dur').value = c.duration;
   $('loop').checked = c.loop !== false;
+  speed = c.speed || 1;
+  $('speed').value = speed;
+  $('speed-val').textContent = `${speed.toFixed(2)}×`;
   $('clip-label').textContent = clipName;
   paintModels(); paintScope();
   markDirty();
@@ -1044,7 +1047,18 @@ $('mode-rotate').addEventListener('click', () => setMode('rotate'));
 $('mode-move').addEventListener('click', () => setMode('move'));
 $('play').addEventListener('click', togglePlay);
 $('stop').addEventListener('click', () => { playing = false; time = 0; $('play').textContent = '▶'; });
-$('speed').addEventListener('input', (e) => { speed = +e.target.value; });
+// The transport speed is the clip's own speed, not a preview rate — it saves
+// with the set and games play it back at exactly this tempo.
+$('speed').addEventListener('input', (e) => {
+  const v = Math.max(0.1, Math.min(4, +e.target.value || 1));
+  if (!changeOpen) pushUndo('clip speed');
+  clip().speed = v;
+  speed = v;
+  $('speed-val').textContent = `${v.toFixed(2)}×`;
+  markDirty(); applyPreview();
+});
+$('speed').addEventListener('pointerdown', () => openChange('clip speed'));
+$('speed').addEventListener('change', closeChange);
 $('loop').addEventListener('change', (e) => { pushUndo('loop'); clip().loop = e.target.checked; markDirty(); });
 $('dur').addEventListener('change', (e) => { pushUndo('clip length'); clip().duration = Math.max(0.05, +e.target.value || 1); markDirty(); applyPreview(); paintTimeline(); paintRuler(); });
 $('clip').addEventListener('change', (e) => { clipName = e.target.value; syncClip(); });
@@ -1230,6 +1244,9 @@ function syncClip() {
   $('clip-label').textContent = clipName;
   $('dur').value = c.duration;
   $('loop').checked = c.loop !== false;
+  speed = c.speed || 1;
+  $('speed').value = speed;
+  $('speed-val').textContent = `${speed.toFixed(2)}×`;
   time = 0; sel = new Map();
   applyPreview(); paintTimeline(); paintChannels(); paintRuler(); paintTrim();
 }
@@ -1299,6 +1316,7 @@ $('new-set').addEventListener('click', () => {
     select(c) { selJoint = c; refreshGizmo(); },
     setMode,
     trim: () => ({ ...(clip().trim || { in: 0, out: 1 }) }),
+    clipSpeed: () => clip().speed || 1,
     duration: () => clip().duration,
     gizmoVisible: () => giz.group.visible,
     gizmoHandles: () => giz.handles.map((h) => h.userData.channel + ':' + h.userData.kind),

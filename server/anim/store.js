@@ -111,6 +111,10 @@ export function sanitizeSet(raw = {}, owner = '') {
     if (tOut - tIn < 0.02) { tIn = 0; tOut = 1; }      // a zero-width clip plays nothing
     clips[name] = {
       duration: clamp(num(c.duration, 1), 0.05, 20),
+      // How fast this clip runs, per clip: a walk and an emote rarely want the
+      // same tempo. Travels with the set, so a game plays it at the speed it
+      // was authored at rather than the editor's preview rate.
+      speed: clamp(num(c.speed, 1), 0.1, 4),
       loop: c.loop !== false,
       trim: { in: tIn, out: tOut },
       tracks,

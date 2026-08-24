@@ -57,10 +57,13 @@ export function packFromSet(set) {
     const tIn = clip.trim?.in ?? 0;
     const tOut = clip.trim?.out ?? 1;
     const span = Math.max(0.02, tOut - tIn);
+    // Speed shortens the wall-clock time a cycle takes. Dividing here rather
+    // than scaling the phase keeps trim and looping working unchanged.
+    const spd = Math.max(0.1, Math.min(4, clip.speed || 1));
     pack[poseName] = (c, t) => {
       // `t` is the animator's running phase; a clip decides how that maps onto
       // its own timeline, so a two-second clip is not forced into one cycle
-      const scaled = dur * span;
+      const scaled = (dur * span) / spd;
       let k = (t % scaled) / scaled;
       if (!loop) k = Math.min(1, t / scaled);
       const p = tIn + k * span;
