@@ -1103,10 +1103,16 @@ function paintSets() {
   for (const s of sets) {
     const el = document.createElement('div');
     el.className = 'set-item' + (s.id === set.id ? ' on' : '');
-    el.innerHTML = `<span>${s.name}</span>
+    el.innerHTML = `<span class="nm">${esc(s.name)}</span>
       <span class="tag ${s.published ? 'pub' : ''}">${s.published ? 'live' : 'draft'}</span>
+      <button class="ren" title="Rename (or double-click the name)">✎</button>
       <button class="del" title="Delete this set">✕</button>`;
-    el.addEventListener('click', (e) => { if (e.target.classList.contains('del')) return; loadSet(s); });
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.del, .ren') || e.target.tagName === 'INPUT') return;
+      loadSet(s);
+    });
+    el.querySelector('.ren').addEventListener('click', (e) => { e.stopPropagation(); beginRename(el, s); });
+    el.querySelector('.nm').addEventListener('dblclick', (e) => { e.stopPropagation(); beginRename(el, s); });
     el.querySelector('.del').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!confirm(`Delete the set "${s.name}"? This cannot be undone.`)) return;
@@ -1119,6 +1125,57 @@ function paintSets() {
     host.appendChild(el);
   }
 }
+/**
+ * Rename a set in place. Renaming works on any set in the list, loaded or not —
+ * having to open something first just to retitle it is the kind of small tax
+ * that stops you tidying up. Commits straight to the server, so there is no
+ * separate save step for a rename.
+ */
+function beginRename(row, s) {
+  const nm = row.querySelector('.nm');
+  if (!nm || row.querySelector('input')) return;
+  const input = document.createElement('input');
+  input.className = 'nm-edit';
+  input.value = s.name;
+  input.maxLength = 48;
+  nm.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = async (commit) => {
+    if (done) return;
+    done = true;
+    const next = input.value.trim().slice(0, 48);
+    if (!commit || !next || next === s.name) { paintSets(); return; }
+    const before = s.name;
+    s.name = next;
+    // the loaded copy is a clone, so keep it and the header in step
+    if (set.id === s.id) { set.name = next; $('set-name').value = next; }
+    paintSets();
+    try {
+      const j = await api('/anim/save', { name: me, set: set.id === s.id ? set : { ...s, name: next } });
+      const i = sets.findIndex((x) => x.id === j.set.id);
+      if (i >= 0) sets[i] = j.set;
+      if (set.id === j.set.id) markDirty(false);
+      paintSets();
+      toast(`Renamed to “${next}”`);
+    } catch (err) {
+      s.name = before;                       // put it back if the server said no
+      if (set.id === s.id) { set.name = before; $('set-name').value = before; }
+      paintSets();
+      toast(err.message);
+    }
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();                     // Delete/space belong to the field
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (e) => e.stopPropagation());
+}
+
 function paintModels() {
   const host = $('model-row'); host.innerHTML = '';
   for (const m of META.models) {

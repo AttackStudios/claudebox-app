@@ -365,3 +365,17 @@ body.scrubbing #tl-ruler, body.scrubbing .ph-grab { cursor: ew-resize; }
 /* lanes dim outside the kept slice too, so the cut reads at a glance */
 .lane-track .cut { position: absolute; top: 0; bottom: 0; background: rgba(6,9,14,.55); pointer-events: none; }
 .ruler-ticks { position: absolute; inset: 0; pointer-events: none; }
+
+/* ---- renaming a set ---- */
+.set-item .ren {
+  background: none; border: 0; color: var(--dim); cursor: pointer;
+  font-size: 12px; padding: 0 3px; line-height: 1;
+}
+.set-item .ren:hover { color: var(--accent); }
+.set-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-item .nm-edit {
+  flex: 1; min-width: 0; padding: 2px 6px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--accent); color: var(--ink);
+  font: inherit; font-size: 12.5px;
+}
+.set-item .nm-edit:focus { outline: none; }
