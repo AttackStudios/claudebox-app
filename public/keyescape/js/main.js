@@ -12,6 +12,8 @@ import { TRAILS, AURAS, MAX_REBIRTHS, rebirthReq, blankSave, trailOf, auraOf,
          rebirthMult, totalMult, actualSpeed, fmt, fmtMult } from '/keyescape/js/progress.js';
 
 useGameAnimations('keyescape').catch(() => {});
+// The emote wheel (hold Left Alt) drives this game's local avatar.
+window.addEventListener('load', () => window.CBXEmotes?.bind(() => avatar));
 
 const $ = (id) => document.getElementById(id);
 const name = localStorage.getItem('claudebox.user') || '';

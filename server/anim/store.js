@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isEase } from '../../shared/anim/ease.js';
 
 const DATA_DIR = process.env.CLAUDEBOX_DATA_DIR
   || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
@@ -22,7 +23,9 @@ export const CHANNELS = [
   'spine', 'head', 'bob', 'rootPitch', 'rootX', 'rootZ',
 ];
 // Poses a set may replace. These are the names the games ask for by state.
-export const CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'sit', 'swim', 'tread', 'climb', 'dance', 'death'];
+export const CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'sit', 'swim', 'tread', 'climb', 'dance', 'death',
+  // the four an animation pack supplies to the emote wheel
+  'emote1', 'emote2', 'emote3', 'emote4'];
 export const MODELS = ['any', 'boy', 'girl', 'r6', 'steven'];
 
 // Props are scene objects an animation can carry: blocking cubes, spheres, and

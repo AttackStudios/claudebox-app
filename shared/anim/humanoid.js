@@ -187,6 +187,38 @@ export const POSES = {
     c.armLS = -0.5; c.armRS = -0.5; c.armLL = 0.8; c.armRL = 0.8;
     c.legLS = -0.15; c.legRS = 0.15;
   },
+
+  // ---- emotes ----
+  // The four an animation pack can replace. These defaults exist so the wheel
+  // is never empty: a player with no pack still has something to press.
+  emote1(c, t) {                                   // wave
+    const w = Math.sin(t * TAU * 1.6);
+    c.armRS = -0.4; c.armRL = 2.0 + w * 0.28;
+    c.foreR = -0.5 + w * 0.35;
+    c.armLL = 0.12; c.head = 0.06;
+    c.spine = w * 0.03;
+  },
+  emote2(c, t) {                                   // clap
+    const k = Math.abs(Math.sin(t * TAU * 2.2));
+    c.armLS = 1.0; c.armRS = 1.0;
+    c.armLL = 0.55 - k * 0.42; c.armRL = -0.55 + k * 0.42;
+    c.foreL = -0.7; c.foreR = -0.7;
+    c.spine = 0.05 + k * 0.03;
+    c.bob = k * 0.02;
+  },
+  emote3(c, t) {                                   // point ahead
+    const b = Math.sin(t * TAU * 0.8);
+    c.armRS = 1.55 + b * 0.05; c.armRL = 0.1;
+    c.foreR = 0.05;
+    c.armLL = 0.1; c.spine = 0.08; c.head = -0.05;
+  },
+  emote4(c, t) {                                   // cheer — both arms up, bounce
+    const b = Math.abs(Math.sin(t * TAU * 1.4));
+    c.armLS = 2.5; c.armRS = 2.5;
+    c.armLL = 0.35 + b * 0.14; c.armRL = -0.35 - b * 0.14;
+    c.legLS = b * 0.12; c.legRS = -b * 0.12;
+    c.bob = b * 0.07; c.head = -0.12;
+  },
 };
 
 // ---- animation packs ----

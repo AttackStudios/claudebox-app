@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { WORLD, DISASTERS, MAPS } from '/shared/nds/config.js';
 import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// The emote wheel (hold Left Alt) drives this game's local avatar.
+window.addEventListener('load', () => window.CBXEmotes?.bind(() => myAvatar));
 // Animation sets published from /animator. Fire and forget: sets that arrive
 // late are still applied to avatars that already exist.
 useGameAnimations('nds').catch(() => {});

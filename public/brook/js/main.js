@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import { loadIdentity } from '/backpacking/js/player/avatar.js';
 import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// The emote wheel (hold Left Alt) drives this game's local avatar.
+window.addEventListener('load', () => window.CBXEmotes?.bind(() => myAvatar.ctrl));
 // Animation sets published from /animator. Fire and forget: sets that arrive
 // late are still applied to avatars that already exist.
 useGameAnimations('brook').catch(() => {});

@@ -1,6 +1,8 @@
 // Web Rush — Spider-style web-swinging across a city, with crime-scene combat.
 import * as THREE from 'three';
 import { preloadAvatars, makeAvatar, useGameAnimations } from '/shared/avatar3d.js';
+// The emote wheel (hold Left Alt) drives this game's local avatar.
+window.addEventListener('load', () => window.CBXEmotes?.bind(() => myAvatar));
 // Animation sets published from /animator. Fire and forget: sets that arrive
 // late are still applied to avatars that already exist.
 useGameAnimations('webrush').catch(() => {});
