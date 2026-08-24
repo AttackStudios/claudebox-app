@@ -16,6 +16,7 @@ import { POSES, RIGS } from '/shared/anim/humanoid.js';
 import { packFromSet } from '/shared/anim/custom.js';
 import { ease, EASE_ORDER, EASE_LABEL } from '/shared/anim/ease.js';
 import { makeGizmo, jointsFor, AXIS_COLOR } from '/animator/gizmo.js';
+import { addOutline, removeOutline, setOutlineStyle, setCelShaded } from '/shared/outline.js';
 
 const $ = (id) => document.getElementById(id);
 const api = async (path, body) => {
@@ -1340,6 +1341,7 @@ $('new-set').addEventListener('click', () => {
       const v = new THREE.Vector3(0, -1, 0); b.localToWorld(v);
       return { x: +v.x.toFixed(4), y: +v.y.toFixed(4), z: +v.z.toFixed(4) };
     },
+    propGroup: (id) => propObjs.get(id)?.group,
     propKeys: (id, ch) => ((clip().props?.[id]?.tracks?.[ch]) || []).map((k) => ({ ...k })),
     undo, redo,
     history: () => ({ undo: undoStack.map((e) => e.label), redo: redoStack.map((e) => e.label) }),
@@ -1576,6 +1578,7 @@ async function addProp(kind, who = '') {
     name: kind === 'dummy' ? (who || 'Dummy') : kind === 'box' ? 'Cube' : 'Sphere',
     color: kind === 'box' ? '#6ee7ff' : kind === 'sphere' ? '#ffc94a' : '#9ad9ff',
     size: 1, model: 'boy', who: who || '', clip: 'idle',
+    outline: { on: false, color: '#12141a', size: 0.03, toon: false },
     at: { x: kind === 'dummy' ? 1.6 : 1.2, y: kind === 'dummy' ? 0 : 0.6, z: 0, ry: 0 },
   };
   set.props.push(def);
@@ -1620,6 +1623,7 @@ async function buildProp(def) {
     group.add(m);
   }
   scene.add(group);
+  applyOutline(def, group);
   propObjs.set(def.id, { def, group, ctrl });
   syncProp(def.id, 0);
   rebuildPropProxies();
@@ -1703,6 +1707,14 @@ function dummyPack(id) {
   };
 }
 
+/** Put the object's outline / cel-shading into the state its settings describe. */
+function applyOutline(def, group) {
+  const o = def.outline || (def.outline = { on: false, color: '#12141a', size: 0.02, toon: false });
+  setCelShaded(group, !!o.toon);
+  if (o.on) addOutline(group, { color: o.color, thickness: o.size });
+  else removeOutline(group);
+}
+
 function paintProps() {
   const host = $('prop-list');
   host.innerHTML = '';
@@ -1735,6 +1747,14 @@ function paintPropEdit() {
       <div><label>Colour</label><input id="pe-color" type="color" value="${def.color}"></div>
       <div><label>Size</label><input id="pe-size" type="number" min="0.05" max="20" step="0.1" value="${def.size}"></div>
     </div>
+    <div class="ol-block">
+      <label class="chk"><input type="checkbox" id="pe-ol" ${def.outline?.on ? 'checked' : ''}> Outline</label>
+      <div class="row2">
+        <div><label>Ink</label><input id="pe-ol-col" type="color" value="${def.outline?.color || '#12141a'}"></div>
+        <div><label>Weight</label><input id="pe-ol-size" type="number" min="0.002" max="0.5" step="0.005" value="${def.outline?.size ?? 0.02}"></div>
+      </div>
+      <label class="chk"><input type="checkbox" id="pe-toon" ${def.outline?.toon ? 'checked' : ''}> Cel shading</label>
+    </div>
     ${def.kind === 'dummy' ? `
       <label>Body</label>
       <select id="pe-model">${['boy', 'girl', 'r6', 'steven'].map((m) =>
@@ -1746,6 +1766,24 @@ function paintPropEdit() {
         `<option value="${c}"${def.clip === c ? ' selected' : ''}>${c}</option>`).join('')}</select>` : ''}`;
 
   const rebuild = async () => { await buildProp(def); paintProps(); refreshGizmo(); };
+  const reOutline = () => {
+    const g = propObjs.get(def.id)?.group;
+    if (g) applyOutline(def, g);
+    markDirty();
+  };
+  $('pe-ol').addEventListener('change', (e) => { def.outline.on = e.target.checked; reOutline(); });
+  $('pe-toon').addEventListener('change', (e) => { def.outline.toon = e.target.checked; reOutline(); });
+  $('pe-ol-size').addEventListener('change', (e) => {
+    def.outline.size = Math.max(0.002, Math.min(0.5, +e.target.value || 0.02));
+    reOutline();                       // thickness is baked in, so rebuild the shell
+  });
+  $('pe-ol-col').addEventListener('input', (e) => {
+    def.outline.color = e.target.value;
+    // restyling does not need the geometry rebuilt
+    const g = propObjs.get(def.id)?.group;
+    if (!g || !setOutlineStyle(g, { color: def.outline.color })) reOutline();
+    markDirty();
+  });
   $('pe-name').addEventListener('input', (e) => { def.name = e.target.value; markDirty(); paintProps(); });
   $('pe-color').addEventListener('input', (e) => {
     def.color = e.target.value; markDirty();

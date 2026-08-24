@@ -132,6 +132,13 @@ export function sanitizeSet(raw = {}, owner = '') {
     model: MODELS.includes(p?.model) ? p.model : 'boy',
     who: str(p?.who, 24),
     clip: CLIPS.includes(p?.clip) ? p.clip : 'idle',
+    // a drawn outline, and whether the object itself is cel-shaded
+    outline: {
+      on: !!p?.outline?.on,
+      color: /^#[0-9a-fA-F]{6}$/.test(String(p?.outline?.color || '')) ? p.outline.color : '#12141a',
+      size: clamp(num(p?.outline?.size, 0.03), 0.002, 0.5),
+      toon: !!p?.outline?.toon,
+    },
     // resting transform, before any keyframes
     at: {
       x: clamp(num(p?.at?.x, 0), -60, 60),
