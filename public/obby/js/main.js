@@ -1325,7 +1325,7 @@ function frame(now) {
   player.pos = { x: START.x, y: START.y, z: START.z };
 
   identity = await loadIdentity();
-  await preloadAvatars(['boy', 'girl']);
+  await preloadAvatars(['boy', 'girl', 'r6']);
   myAvatar.ctrl = makeAvatar(identity.avatar || {});
   myAvatar.group = myAvatar.ctrl.group;
   scene.add(myAvatar.group);

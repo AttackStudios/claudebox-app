@@ -915,7 +915,7 @@ async function boot() {
     localStorage.setItem('claudebox.user', data.name);
   } catch { location.href = '/'; return; }
   $('#load-msg').textContent = 'Loading avatars…';
-  await preloadAvatars(['boy', 'girl']);
+  await preloadAvatars(['boy', 'girl', 'r6']);
   myAvatar = makeAvatar(profile); scene.add(myAvatar.group);
   await loadProgress(localStorage.getItem('claudebox.user')); setCash(cash); buildHotbar();
   // buying works by tapping/clicking the prompt (so phones can buy too) or pressing E

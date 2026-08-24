@@ -729,13 +729,13 @@ const PLAY = { R: 0.4, G: 30, JUMP: 13.2, MOVE: 8, RUN: 12 };
 // lives under /games/…). In the editor (/studio) test-play runs purchases free.
 const IN_GAME = location.pathname.startsWith('/games/');
 let avatarsReady = false;
-preloadAvatars(['boy', 'girl']).then(() => { avatarsReady = true; }).catch(() => {});
+preloadAvatars(['boy', 'girl', 'r6']).then(() => { avatarsReady = true; }).catch(() => {});
 
 $('#btn-play').onclick = () => state.mode === 'play' ? stopPlay() : startPlay();
 
 async function startPlay() {
   state.level = sanitizeLevel(state.level);
-  if (!avatarsReady) { try { await preloadAvatars(['boy', 'girl']); avatarsReady = true; } catch {} }
+  if (!avatarsReady) { try { await preloadAvatars(['boy', 'girl', 'r6']); avatarsReady = true; } catch {} }
   if (!play.identity) { try { play.identity = await loadIdentity(); } catch { play.identity = { name: 'You', avatar: {} }; } }
   if (!play.avatar) { play.avatar = makeAvatar(play.identity.avatar || {}); scene.add(play.avatar.group); }
   state.mode = 'play'; select(null);

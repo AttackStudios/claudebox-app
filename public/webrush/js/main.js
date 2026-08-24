@@ -1037,7 +1037,7 @@ async function boot() {
   bootProfile = profile;
   loadSuitsLocal();
   await loadSuitsServer(localStorage.getItem('claudebox.user'));
-  await preloadAvatars(['boy', 'girl']);
+  await preloadAvatars(['boy', 'girl', 'r6']);
   myAvatar = makeAvatar(suitedProfile()); scene.add(myAvatar.group);
   $('#suit-btn').addEventListener('click', toggleSuits);
   $('#suits-close').addEventListener('click', toggleSuits);

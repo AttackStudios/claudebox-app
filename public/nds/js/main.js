@@ -783,4 +783,4 @@ if (identityName.toLowerCase() === 'attackface15') {
   $('own-clear').onclick = () => { send({ t: 'admin' }); panel.classList.add('hidden'); };
 }
 
-(async () => { try { await preloadAvatars(['boy', 'girl']); } catch {} myAvatar = makeAvatar(myAvatarData || {}); scene.add(myAvatar.group); myHpBar = makeHealthBar(); myAvatar.group.add(myHpBar.sprite); connect(); frame(); })();
+(async () => { try { await preloadAvatars(['boy', 'girl', 'r6']); } catch {} myAvatar = makeAvatar(myAvatarData || {}); scene.add(myAvatar.group); myHpBar = makeHealthBar(); myAvatar.group.add(myHpBar.sprite); connect(); frame(); })();

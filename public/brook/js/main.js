@@ -869,7 +869,7 @@ $('#job-end')?.addEventListener('click', () => endShift(false));
   status('Waking the town…');
   let identity;
   try { identity = await loadIdentity(); } catch { return; }
-  await preloadAvatars(['boy', 'girl']);
+  await preloadAvatars(['boy', 'girl', 'r6']);
   myAvatar.ctrl = makeAvatar(identity.avatar || {});
   myAvatar.group = myAvatar.ctrl.group; scene.add(myAvatar.group);
   camera.position.set(SPAWN.x, 8, SPAWN.z + 12);

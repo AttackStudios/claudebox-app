@@ -221,9 +221,17 @@ function genderOf(profile) {
 
 // AvatarController — the per-character handle games use
 export function makeAvatar(profile = {}) {
-  const gender = genderOf(profile);
+  let gender = genderOf(profile);
   if (gender === 'steven') return makeStevenAvatar(profile);
-  const rec = genders.get(gender) || genders.get('boy') || genders.values().next().value;
+  let rec = genders.get(gender);
+  if (!rec) {
+    // The requested body was never loaded — a game that preloaded only boy and
+    // girl, say. Fall back to a body we HAVE, and fall the gender back with it:
+    // keeping gender = 'r6' while rendering the boy mesh ran the R6 per-vertex
+    // tint over geometry that has no R6 joints, which painted it plain white.
+    rec = genders.get('boy') || genders.values().next().value;
+    gender = rec ? [...genders.entries()].find(([, v]) => v === rec)?.[0] || 'boy' : gender;
+  }
   if (!rec) throw new Error('avatar3d: call preloadAvatars() before makeAvatar()');
 
   const inner = cloneSkinned(rec.template);

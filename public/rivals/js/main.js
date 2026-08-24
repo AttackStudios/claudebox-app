@@ -3311,7 +3311,7 @@ function spawnRangeDummies() {
 
 // ============================ remote fighters ============================
 status('Loading avatars…');
-await preloadAvatars(['boy', 'girl']).catch(() => {});
+await preloadAvatars(['boy', 'girl', 'r6']).catch(() => {});
 const others = new Map(); // id -> { ctrl, plate, target, data }
 
 function plateFor(name, team) {

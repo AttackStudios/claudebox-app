@@ -18,7 +18,7 @@ export async function loadIdentity() {
     const res = await fetch('/api/avatar/' + encodeURIComponent(name), { headers: { 'x-cbx-code': localStorage.getItem('claudebox.code') || '' } });
     if (!res.ok) throw new Error('no profile');
     const data = await res.json();
-    await preloadAvatars(['boy', 'girl']);
+    await preloadAvatars(['boy', 'girl', 'r6']);
     return { name: data.name, avatar: data.avatar };
   } catch {
     location.href = '/';
@@ -26,7 +26,7 @@ export async function loadIdentity() {
   }
 }
 
-export async function ensureAvatars() { await preloadAvatars(['boy', 'girl']); }
+export async function ensureAvatars() { await preloadAvatars(['boy', 'girl', 'r6']); }
 
 // An Object3D fixed to a bone, unscaled so world-unit children (held items)
 // render at the right size and ride the animated hand/head.
