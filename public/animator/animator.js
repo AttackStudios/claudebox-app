@@ -307,13 +307,39 @@ function syncProxies() {
 }
 
 function refreshGizmo() {
+  // Move means "move this object". A limb cannot translate — only rotate — so
+  // in move mode a selected limb falls back to translating the thing it belongs
+  // to: the dummy, or your own body. Showing nothing at all was the old
+  // behaviour and it just looked broken.
+  if (mode === 'move' && selProp) {
+    const pj = propJoint(selProp);
+    if (pj) {
+      const o = propObjs.get(selProp);
+      giz.build(pj, 'move', modelScale() * 0.17);
+      giz.group.visible = true;
+      const limb = selJoint && o ? jointsFor(o.def.model || 'boy')[selJoint] : null;
+      $('sel-label').innerHTML = `<b>${pj.label}${limb ? ` · ${limb.label}` : ''}</b> `
+        + `<em>moving the whole ${o?.def.kind === 'dummy' ? 'dummy' : 'prop'}</em> · `
+        + pj.move.map((r) => `<i style="color:#${AXIS_COLOR[r.axis].toString(16).padStart(6, '0')}">${r.channel}</i>`).join(' ');
+      return;
+    }
+  }
+  if (mode === 'move' && !selProp && selJoint && selJoint !== 'root' && joints.root) {
+    // a limb on your own character: translate the body instead
+    giz.build(joints.root, 'move', modelScale() * 0.17);
+    giz.group.visible = true;
+    $('sel-label').innerHTML = `<b>${joints[selJoint]?.label || 'Limb'}</b> `
+      + `<em>moving the whole body</em> · `
+      + joints.root.move.map((r) => `<i style="color:#${AXIS_COLOR[r.axis].toString(16).padStart(6, '0')}">${r.channel}</i>`).join(' ');
+    return;
+  }
   if (selProp && selJoint) {
     // a limb on a dummy — same rig table as the main model
     const o = propObjs.get(selProp);
     const rig = o ? jointsFor(o.def.model || 'boy') : null;
     const j = rig?.[selJoint];
     if (j) {
-      const usable = mode === 'move' ? (j.move || []) : j.rot;
+      const usable = j.rot;
       giz.build(usable.length ? j : null, mode, modelScale() * 0.17);
       giz.group.visible = usable.length > 0;
       $('sel-label').innerHTML = `<b>${o.def.name} · ${j.label}</b> · ${usable.map((r) =>
@@ -343,12 +369,15 @@ function refreshGizmo() {
 }
 
 function syncGizmo() {
-  const key = selProp ? `prop:${selProp}` : selJoint;
-  if (!giz.group.visible || !key) return;
-  const o = jointObject(key);
+  if (!giz.group.visible) return;
+  let o;
+  if (mode === 'move' && selProp) o = propObjs.get(selProp)?.group;
+  else if (mode === 'move' && selJoint && selJoint !== 'root') o = jointObject('root');
+  else o = jointObject(selProp ? `prop:${selProp}` : selJoint);
+  if (!o) return;
   if (!o) return;
   o.getWorldPosition(_p);
-  if (selJoint === 'root') _p.y += modelScale() * 0.5;
+  if (!selProp && (selJoint === 'root' || mode === 'move')) _p.y += modelScale() * 0.5;
   giz.group.position.copy(_p);
   // rings must sit in the joint's LOCAL frame, since that is the frame the
   // channels rotate in; the move gizmo works in the model's frame instead
@@ -433,7 +462,13 @@ function axisVec(axis) {
 function startDrag(data, e) {
   if (playing) { playing = false; $('play').textContent = '▶'; }
   openChange(mode === 'move' ? 'move' : 'rotate');
-  const o = jointObject(selProp ? `prop:${selProp}` : selJoint);
+  // in move mode we translate the OBJECT, so aim at its group / the body root
+  const target = mode === 'move'
+    ? (selProp ? `prop:${selProp}` : 'root')
+    : (selProp ? `prop:${selProp}` : selJoint);
+  const o = mode === 'move' && selProp
+    ? propObjs.get(selProp)?.group
+    : jointObject(target);
   if (!o) return;
   const centre = giz.group.position.clone();
   if (data.kind === 'rotate') {
@@ -1196,6 +1231,8 @@ $('new-set').addEventListener('click', () => {
     tracks: () => clip().tracks,
     select(c) { selJoint = c; refreshGizmo(); },
     setMode,
+    gizmoVisible: () => giz.group.visible,
+    gizmoHandles: () => giz.handles.map((h) => h.userData.channel + ':' + h.userData.kind),
     props: () => (set.props || []).map((p) => ({ id: p.id, kind: p.kind, name: p.name, model: p.model, who: p.who })),
     selectProp: (id) => { selProp = id; selJoint = null; paintProps(); refreshGizmo(); },
     screenOfProp(id, joint) {

@@ -338,3 +338,4 @@ body.scrubbing #tl-ruler, body.scrubbing .ph-grab { cursor: ew-resize; }
 }
 .ch-target b { font-size: 13px; color: var(--accent); }
 .ch-target small { font-size: 10.5px; color: var(--dim); }
+#sel-label em { font-style: normal; color: var(--dim); font-size: 10.5px; }
