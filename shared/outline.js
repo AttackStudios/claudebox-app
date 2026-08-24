@@ -77,6 +77,12 @@ export function addOutline(target, { color = '#12141a', thickness = 0.03, opacit
   const worldSize = new THREE.Vector3();
   worldBox.getSize(worldSize);
   const worldSpan = Math.max(worldSize.x, worldSize.y, worldSize.z) || 1;
+  // An outline must never swallow the thing it outlines. Past roughly a tenth
+  // of the object's size the shell closes over the front face and you get a
+  // solid blob of ink instead of a drawn edge — which is what a heavy weight on
+  // a small prop produced. The control keeps its range; it just stops growing.
+  const smallest = Math.min(worldSize.x || worldSpan, worldSize.y || worldSpan, worldSize.z || worldSpan);
+  const ink = Math.min(thickness, Math.max(0.001, smallest * 0.1));
 
   target.traverse((o) => {
     if (!o.isMesh || o.userData.__isOutlineShell) return;
@@ -85,7 +91,7 @@ export function addOutline(target, { color = '#12141a', thickness = 0.03, opacit
     o.geometry.boundingBox.getSize(gs);
     const geoSpan = Math.max(gs.x, gs.y, gs.z) || 1;
     // local units per world unit, for this mesh as it is really drawn
-    const amount = thickness * (geoSpan / worldSpan);
+    const amount = ink * (geoSpan / worldSpan);
     const geo = swellGeometry(o.geometry, amount);
     let shell;
     if (o.isSkinnedMesh) {

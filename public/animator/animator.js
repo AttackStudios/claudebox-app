@@ -204,8 +204,12 @@ function buildProxies() {
     const o = jointObject(canon);
     if (!o) continue;
     const isRoot = canon === 'root';
+    // The torso used to get a much fatter ball than other joints. It reached far
+    // enough over the hips to sit in front of the FAR leg, so from the default
+    // camera angle clicking the right thigh selected the spine. The torso is
+    // covered by its own capsule; the ball only needs to catch the joint itself.
     const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), hidden());
-    ball.userData = { joint: canon, kind: 'ball', r: scale * (isRoot ? 0.10 : canon === 'spine' ? 0.13 : 0.062) };
+    ball.userData = { joint: canon, kind: 'ball', r: scale * (isRoot ? 0.055 : canon === 'spine' ? 0.07 : 0.062) };
     ball.renderOrder = 998;
     proxyGroup.add(ball); proxies.push(ball);
     if (isRoot) continue;
@@ -297,9 +301,13 @@ function syncProxies() {
       _dir.copy(_b).sub(_a);
       const len = _dir.length();
       if (len < 1e-4) { m.visible = false; continue; }
-      m.position.copy(_a).addScaledVector(_dir, 0.5);
+      // Stop the limb capsule short of the joint at its far end. Spanning the
+      // full bone meant the elbow and knee always sat inside their parent's
+      // capsule, so clicking an elbow selected the upper arm.
+      const span = len * 0.78;
+      m.position.copy(_a).addScaledVector(_dir, span / (2 * len));
       m.quaternion.setFromUnitVectors(UP, _dir.normalize());
-      m.scale.set(d.r, len, d.r);
+      m.scale.set(d.r, span, d.r);
     } else {
       m.position.copy(o.localToWorld(d.offset.clone()));
       o.getWorldQuaternion(_q); m.quaternion.copy(_q);
@@ -1368,6 +1376,27 @@ $('new-set').addEventListener('click', () => {
       return { x: +v.x.toFixed(4), y: +v.y.toFixed(4), z: +v.z.toFixed(4) };
     },
     propGroup: (id) => propObjs.get(id)?.group,
+    setYaw: (v) => { orbit.yaw = v; },
+    bodyProxyInfo: () => {
+      const byJoint = {};
+      for (const m of proxies) {
+        const j = m.userData.joint;
+        byJoint[j] = byJoint[j] || [];
+        byJoint[j].push(m.userData.kind + (m.visible ? '' : '(hidden)'));
+      }
+      return byJoint;
+    },
+    jointVsProxy(canon) {
+      const o = jointObject(canon);
+      if (!o) return 'no joint object';
+      const w = new THREE.Vector3(); o.getWorldPosition(w);
+      const mine = proxies.filter((m) => m.userData.joint === canon).map((m) => ({
+        kind: m.userData.kind, visible: m.visible,
+        pos: [+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)],
+        scale: [+m.scale.x.toFixed(3), +m.scale.y.toFixed(3), +m.scale.z.toFixed(3)],
+      }));
+      return JSON.stringify({ joint: [+w.x.toFixed(2), +w.y.toFixed(2), +w.z.toFixed(2)], proxies: mine });
+    },
     candidatesAt(x, y) {
       const r = $('view').getBoundingClientRect();
       ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
