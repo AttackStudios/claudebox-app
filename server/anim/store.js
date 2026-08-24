@@ -56,6 +56,37 @@ setInterval(() => {
 
 /** Strip an incoming set down to exactly what the runtime can use. */
 export function sanitizeSet(raw = {}, owner = '') {
+  // Props are read FIRST: the clip loop below validates prop tracks against
+  // this list, and declaring it afterwards meant saving any set that had a
+  // keyframed prop died in the temporal dead zone.
+  // ---- scene props ----
+  const props = (Array.isArray(raw.props) ? raw.props : []).slice(0, 16).map((p, i) => ({
+    id: str(p?.id, 24) || `prop${i}`,
+    kind: PROP_KINDS.includes(p?.kind) ? p.kind : 'box',
+    name: str(p?.name, 28) || 'Prop',
+    color: /^#[0-9a-fA-F]{6}$/.test(String(p?.color || '')) ? p.color : '#6ee7ff',
+    size: clamp(num(p?.size, 1), 0.05, 20),
+    // a dummy carries a body type and, optionally, whose outfit it is wearing
+    model: MODELS.includes(p?.model) ? p.model : 'boy',
+    who: str(p?.who, 24),
+    clip: CLIPS.includes(p?.clip) ? p.clip : 'idle',
+    // a drawn outline, and whether the object itself is cel-shaded
+    outline: {
+      on: !!p?.outline?.on,
+      color: /^#[0-9a-fA-F]{6}$/.test(String(p?.outline?.color || '')) ? p.outline.color : '#12141a',
+      size: clamp(num(p?.outline?.size, 0.03), 0.002, 0.5),
+      toon: !!p?.outline?.toon,
+    },
+    // resting transform, before any keyframes
+    at: {
+      x: clamp(num(p?.at?.x, 0), -60, 60),
+      y: clamp(num(p?.at?.y, 0), -60, 60),
+      z: clamp(num(p?.at?.z, 0), -60, 60),
+      ry: clamp(num(p?.at?.ry, 0), -Math.PI * 4, Math.PI * 4),
+    },
+  }));
+  const propIds = new Set(props.map((p) => p.id));
+
   const clips = {};
   for (const name of CLIPS) {
     const c = raw.clips?.[name];
@@ -121,34 +152,6 @@ export function sanitizeSet(raw = {}, owner = '') {
       props: pTracks,
     };
   }
-  // ---- scene props ----
-  const props = (Array.isArray(raw.props) ? raw.props : []).slice(0, 16).map((p, i) => ({
-    id: str(p?.id, 24) || `prop${i}`,
-    kind: PROP_KINDS.includes(p?.kind) ? p.kind : 'box',
-    name: str(p?.name, 28) || 'Prop',
-    color: /^#[0-9a-fA-F]{6}$/.test(String(p?.color || '')) ? p.color : '#6ee7ff',
-    size: clamp(num(p?.size, 1), 0.05, 20),
-    // a dummy carries a body type and, optionally, whose outfit it is wearing
-    model: MODELS.includes(p?.model) ? p.model : 'boy',
-    who: str(p?.who, 24),
-    clip: CLIPS.includes(p?.clip) ? p.clip : 'idle',
-    // a drawn outline, and whether the object itself is cel-shaded
-    outline: {
-      on: !!p?.outline?.on,
-      color: /^#[0-9a-fA-F]{6}$/.test(String(p?.outline?.color || '')) ? p.outline.color : '#12141a',
-      size: clamp(num(p?.outline?.size, 0.03), 0.002, 0.5),
-      toon: !!p?.outline?.toon,
-    },
-    // resting transform, before any keyframes
-    at: {
-      x: clamp(num(p?.at?.x, 0), -60, 60),
-      y: clamp(num(p?.at?.y, 0), -60, 60),
-      z: clamp(num(p?.at?.z, 0), -60, 60),
-      ry: clamp(num(p?.at?.ry, 0), -Math.PI * 4, Math.PI * 4),
-    },
-  }));
-  const propIds = new Set(props.map((p) => p.id));
-
   const scope = Array.isArray(raw.scope)
     ? raw.scope.map((g) => str(g, 24)).filter(Boolean).slice(0, 24)
     : 'global';
