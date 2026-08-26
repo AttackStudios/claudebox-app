@@ -458,7 +458,7 @@ export function makeAvatar(profile = {}) {
   const attachments = [];
 
   const ctrl = {
-    group, inner, gender, bones, anim,
+    group, inner, gender, bones, anim, headForward: head.forward,
     hitbox: { radius: HITBOX.radius, height: HITBOX.height },
 
     idlePhase: 0,

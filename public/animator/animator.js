@@ -1377,6 +1377,8 @@ $('new-set').addEventListener('click', () => {
     },
     propGroup: (id) => propObjs.get(id)?.group,
     setYaw: (v) => { orbit.yaw = v; },
+    get camera() { return cam; },
+    get avatar() { return ctrl; },
     bodyProxyInfo: () => {
       const byJoint = {};
       for (const m of proxies) {
