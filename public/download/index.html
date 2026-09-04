@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Download ClaudeBox for Mac</title>
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<style>
+  /* Same Foundation-style palette and type as the hub's Roblox-true UI, so the
+     download page and the app it installs look like one product. */
+  @font-face {
+    font-family: 'ClaudeBox Sans';
+    font-style: normal; font-weight: 300 800; font-display: swap;
+    src: url('/fonts/inter-latin.woff2') format('woff2');
+  }
+  :root {
+    --surface-0: #fff;
+    --surface-100: #f7f7f8;
+    --ink: #202227;
+    --ink-2: #494d5a;
+    --ink-3: #6a6f81;
+    --shift-100: rgba(27, 37, 75, .04);
+    --shift-200: rgba(27, 37, 75, .08);
+    --shift-300: rgba(27, 37, 75, .12);
+    --blue: #335fff;
+    --font: 'ClaudeBox Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-0: #121215; --surface-100: #191a1f;
+      --ink: #f7f7f8; --ink-2: #d5d7dd; --ink-3: #bcbec8;
+      --shift-100: rgba(208, 217, 251, .04);
+      --shift-200: rgba(208, 217, 251, .08);
+      --shift-300: rgba(208, 217, 251, .12);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 20px 80px;
+    background: var(--surface-0); color: var(--ink);
+    font: 400 16px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  header.top {
+    display: flex; align-items: center; gap: 10px;
+    height: 40px; margin: 0 -20px 48px; padding: 0 16px;
+    background: var(--surface-100);
+  }
+  header.top img { width: 30px; height: 30px; border-radius: 7px; }
+  header.top b { font-size: 21px; font-weight: 800; letter-spacing: -.5px; }
+  header.top a { margin-left: auto; color: var(--ink-2); text-decoration: none; font-weight: 500; }
+  header.top a:hover { color: var(--ink); }
+
+  .hero { text-align: center; padding: 8px 0 40px; }
+  .hero img.icon {
+    width: 112px; height: 112px; border-radius: 26px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .18);
+  }
+  h1 { margin: 24px 0 8px; font: 800 40px/1.15 var(--font); letter-spacing: -.5px; }
+  .sub { margin: 0 auto; max-width: 520px; color: var(--ink-2); font-size: 18px; }
+
+  .cta { margin: 32px 0 10px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    height: 56px; padding: 0 32px; border: 0; border-radius: 8px;
+    background: var(--blue); color: #fff;
+    font: 600 18px var(--font); text-decoration: none; cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn[disabled] { background: var(--shift-300); color: var(--ink-3); cursor: default; filter: none; }
+  .cta-note { margin-top: 12px; color: var(--ink-3); font-size: 14px; }
+
+  .others { margin: 36px 0 0; }
+  .others summary {
+    cursor: pointer; color: var(--ink-2); font-weight: 500;
+    padding: 8px 0; list-style: none;
+  }
+  .others summary::-webkit-details-marker { display: none; }
+  .others summary::before { content: '▸ '; }
+  .others[open] summary::before { content: '▾ '; }
+  .files { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .file {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border: 1px solid var(--shift-200); border-radius: 8px;
+    background: var(--shift-100); text-decoration: none; color: var(--ink);
+  }
+  .file:hover { background: var(--shift-200); }
+  .file .name { font-weight: 600; }
+  .file .meta { margin-left: auto; color: var(--ink-3); font-size: 14px; }
+
+  h2 { margin: 56px 0 16px; font: 700 24px/1.3 var(--font); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .card {
+    padding: 20px; border: 1px solid var(--shift-200); border-radius: 8px;
+    background: var(--shift-100);
+  }
+  .card h3 { margin: 0 0 6px; font: 700 17px var(--font); }
+  .card p { margin: 0; color: var(--ink-2); font-size: 15px; }
+
+  ol.steps { padding-left: 22px; color: var(--ink-2); }
+  ol.steps li { margin-bottom: 10px; }
+  ol.steps b { color: var(--ink); }
+  code {
+    padding: 2px 6px; border-radius: 4px; background: var(--shift-200);
+    font: 500 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink);
+  }
+  .note {
+    margin-top: 16px; padding: 16px 18px;
+    border: 1px solid var(--shift-200); border-left: 3px solid var(--blue);
+    border-radius: 8px; background: var(--shift-100);
+    color: var(--ink-2); font-size: 15px;
+  }
+  footer {
+    margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--shift-300);
+    color: var(--ink-3); font-size: 13px; text-align: center;
+  }
+  @media (max-width: 600px) {
+    h1 { font-size: 30px; }
+    .hero img.icon { width: 88px; height: 88px; border-radius: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <img src="/icons/icon.svg" alt="">
+  <b>ClaudeBox</b>
+  <a href="/">Open in browser →</a>
+</header>
+
+<div class="wrap">
+  <section class="hero">
+    <img class="icon" src="/icons/icon-512.png" alt="ClaudeBox app icon">
+    <h1>ClaudeBox for Mac</h1>
+    <p class="sub">Every ClaudeBox game in its own app window — no browser tab, no address to remember. Ships with the Roblox-true UI switched on.</p>
+
+    <div class="cta">
+      <a id="primary" class="btn" href="#">Download for Mac</a>
+      <p class="cta-note" id="primary-note">Checking what's available…</p>
+    </div>
+
+    <details class="others" id="others" hidden>
+      <summary>All downloads</summary>
+      <div class="files" id="files"></div>
+    </details>
+  </section>
+
+  <h2>What you get</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>Roblox-true UI, on by default</h3>
+      <p>The app installs with the Roblox-style layout already enabled. Turn it off any time in Settings → Sound &amp; appearance.</p>
+    </div>
+    <div class="card">
+      <h3>All your games</h3>
+      <p>The same platform, avatar, ClaudeBux and friends list as the website — it's the same account.</p>
+    </div>
+    <div class="card">
+      <h3>Cloud or your own server</h3>
+      <p>Points at the ClaudeBox Cloud out of the box. The Server menu switches to a machine on your own WiFi.</p>
+    </div>
+    <div class="card">
+      <h3>Built for playing</h3>
+      <p>Mic access for voice chat, pointer lock and fullscreen for the 3D games, and no throttling when the window is in the background.</p>
+    </div>
+  </div>
+
+  <h2>Installing</h2>
+  <ol class="steps">
+    <li>Open the downloaded <b>.dmg</b> and drag <b>ClaudeBox</b> into <b>Applications</b>.</li>
+    <li>The first launch shows <b>“ClaudeBox can’t be opened because Apple cannot check it for malicious software.”</b> That is expected — the app isn’t signed with a paid Apple Developer certificate.</li>
+    <li>Open <b>System Settings → Privacy &amp; Security</b>, scroll down, and press <b>Open Anyway</b>. Or run <code>xattr -cr /Applications/ClaudeBox.app</code> in Terminal once.</li>
+    <li>Launch it from Applications like any other app.</li>
+  </ol>
+
+  <div class="note">
+    <b>Which one do I want?</b> Macs from 2020 onwards (M1/M2/M3/M4) take the <b>arm64</b> build; older Intel Macs take <b>x64</b>. The button above already picked for you. The <b>.zip</b> holds the same <b>ClaudeBox.app</b> as the <b>.dmg</b> — use it if you'd rather unzip than mount a disk image.
+  </div>
+
+  <footer>
+    ClaudeBox is a private game platform built for friends and family.<br>
+    Not affiliated with, endorsed by, or connected to Roblox Corporation.
+  </footer>
+</div>
+
+<script>
+  const fmt = (n) => (n ? (n / 1048576).toFixed(0) + ' MB' : '');
+  const label = (f) =>
+    (/arm64/.test(f) ? 'Apple Silicon' : /x64/.test(f) ? 'Intel' : 'Mac') +
+    ' · ' + (f.endsWith('.dmg') ? 'Disk image (.dmg)' : 'Zipped app (.zip)');
+
+  // Apple Silicon reports "Intel Mac OS X" in the UA, so sniff the renderer
+  // instead: only Apple GPUs answer to "Apple GPU"/"Apple M".
+  function isAppleSilicon() {
+    try {
+      const gl = document.createElement('canvas').getContext('webgl');
+      const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      const r = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+      if (/apple\s*(gpu|m\d)/i.test(r)) return true;
+    } catch (e) {}
+    return navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform);
+  }
+
+  (async function () {
+    const btn = document.getElementById('primary');
+    const note = document.getElementById('primary-note');
+    let data = { source: 'none', artifacts: [] };
+    try { data = await (await fetch('/api/downloads')).json(); } catch (e) {}
+
+    if (!data.artifacts.length) {
+      btn.textContent = 'Builds coming soon';
+      btn.setAttribute('disabled', '');
+      btn.removeAttribute('href');
+      note.textContent = 'No desktop build has been published for this server yet. You can keep playing in the browser.';
+      return;
+    }
+
+    const arch = isAppleSilicon() ? 'arm64' : 'x64';
+    const pick = data.artifacts.find((a) => a.file.includes(arch) && a.file.endsWith('.dmg'))
+      || data.artifacts.find((a) => a.file.endsWith('.dmg'))
+      || data.artifacts[0];
+
+    btn.href = pick.url;
+    btn.setAttribute('download', '');
+    btn.textContent = 'Download for Mac (' + (arch === 'arm64' ? 'Apple Silicon' : 'Intel') + ')';
+    note.textContent = pick.file + (pick.size ? ' · ' + fmt(pick.size) : '') + ' · macOS 11 or newer';
+
+    const list = document.getElementById('files');
+    for (const a of data.artifacts) {
+      const el = document.createElement('a');
+      el.className = 'file';
+      el.href = a.url;
+      el.setAttribute('download', '');
+      el.innerHTML = '<span class="name">' + label(a.file) + '</span>' +
+        '<span class="meta">' + a.file + (a.size ? ' · ' + fmt(a.size) : '') + '</span>';
+      list.appendChild(el);
+    }
+    document.getElementById('others').hidden = false;
+  })();
+</script>
+</body>
+</html>

@@ -10,6 +10,7 @@ import { sfx } from './sounds.js';
 import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID, AVATAR_CATS } from '/shared/rewards.js';
 import { initVoice } from '/js/voice.js';
 import { startMotion } from './motion.js';
+import { initRbxUi, syncRbxUi, applyRbxUi } from './rbxui.js';
 
 const USER_KEY = 'claudebox.user';
 
@@ -27,7 +28,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------------- per-device settings ----------------
 const settings = (() => {
-  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark', gyro: true, rblxsMaps: false };
+  const d = { accent: '#38b6e8', reduceMotion: false, sound: true, ambient: false, theme: 'dark', gyro: true, rblxsMaps: false, robloxUI: false };
   try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
   catch { return d; }
 })();
@@ -36,6 +37,8 @@ function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(sett
 // derive a readable "ink" colour + glow for any accent
 function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 function applyAccent() {
+  // Roblox mode owns its own palette; the accent would only leak into it.
+  if (settings.robloxUI) return;
   const a = settings.accent;
   const [r, g, b] = hexToRgb(a);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
@@ -81,7 +84,10 @@ const motionCtl = startMotion({
     if (s === 'active' && !tiltToasted) { tiltToasted = true; toast('Tilt effects on — move your phone', '📱'); }
   },
 });
-function applyTheme() { document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark'); }
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
+  applyRbxUi();   // keeps <meta theme-color> and the Roblox token set in step
+}
 applyAccent();
 applyMotion();
 applyTheme();
@@ -195,6 +201,7 @@ function selectTab(name, withSound = true) {
   if (withSound) sfx.select();
   if (name === 'avatar') avatarEditor.start(); else avatarEditor.stop();
   if (name === 'store') renderStore();
+  syncRbxUi();
 }
 for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => selectTab(tab.dataset.tab));
 $('me-chip').addEventListener('click', () => { if (stateHub.me?.name) openProfile(stateHub.me.name); });
@@ -2100,6 +2107,7 @@ function initSettingsTab() {
   $('motion-input').checked = settings.reduceMotion;
   $('gyro-input').checked = settings.gyro;
   $('rblxs-input').checked = !!settings.rblxsMaps;
+  $('rbxui-input').checked = !!settings.robloxUI;
   $('sound-input').checked = settings.sound;
   $('ambient-input').checked = settings.ambient;
   const themeSel = $('theme-input'); if (themeSel) themeSel.value = settings.theme;
@@ -2107,6 +2115,15 @@ function initSettingsTab() {
 
   if (themeSel) themeSel.addEventListener('change', () => { settings.theme = themeSel.value === 'light' ? 'light' : 'dark'; applyTheme(); saveSettings(); sfx.tap && sfx.tap(); });
 
+  $('rbxui-input').addEventListener('change', () => {
+    settings.robloxUI = $('rbxui-input').checked;
+    saveSettings();
+    applyRbxUi();
+    if (!settings.robloxUI) applyAccent();   // restore the accent the Roblox palette suppressed
+    movePill();
+    (settings.robloxUI ? sfx.toggleOn : sfx.toggleOff)();
+    toast(settings.robloxUI ? 'Roblox-true UI on' : 'Roblox-true UI off', '🟦');
+  });
   $('accent-input').addEventListener('input', () => { settings.accent = $('accent-input').value; applyAccent(); saveSettings(); });
   $('motion-input').addEventListener('change', () => { settings.reduceMotion = $('motion-input').checked; applyMotion(); motionCtl.setReduce(settings.reduceMotion); restartHeroTimer(); saveSettings(); (settings.reduceMotion ? sfx.toggleOff : sfx.toggleOn)(); });
   $('rblxs-input').addEventListener('change', async () => {
@@ -2201,6 +2218,7 @@ async function refreshSocial() {
     const grew = data.me.wallet && (data.me.wallet.stars !== prev.stars || data.me.wallet.cubes !== prev.cubes);
     if (data.me.wallet) stateHub.me.wallet = data.me.wallet;
     renderFriends(); renderGames(); renderConnect(); syncRewards(grew);
+    syncRbxUi();
   } catch {}
 }
 
@@ -2215,6 +2233,10 @@ async function refreshSocial() {
   $('me-name').textContent = stateHub.me.name;
   thumbInto($('me-thumb'), stateHub.me.avatar);
   initSettingsTab();
+  initRbxUi({
+    settings, stateHub, selectTab, openProfile, openDMs, launchGame,
+    openGameDetail, thumbInto, fmtNum, api, toast, sfx, wallet,
+  });
   movePill();
   const { games } = await api('/games');
   stateHub.games = games;

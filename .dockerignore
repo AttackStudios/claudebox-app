@@ -8,3 +8,5 @@ npm-debug.log*
 # start the cloud instance with a clean database; a persistent disk (if the
 # host provides one) will hold live data going forward
 data
+desktop/node_modules
+desktop/dist

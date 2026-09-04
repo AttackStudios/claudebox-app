@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClaudeBox</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #f6f7fb; color: #1d2433;
+      -webkit-user-select: none; user-select: none;
+    }
+    .card {
+      width: min(460px, 90vw); padding: 36px 32px; text-align: center;
+      background: #fff; border-radius: 18px; box-shadow: 0 10px 40px rgba(20, 30, 60, .10);
+    }
+    .glyph { width: 72px; height: 72px; margin: 0 auto 18px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { margin: 0 0 10px; line-height: 1.45; color: #4b5565; font-size: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #eef1f6; padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+    .reason { font-size: 12px; color: #8a94a6; }
+    button {
+      margin-top: 18px; padding: 11px 26px; border: 0; border-radius: 999px; cursor: pointer;
+      background: #3b6cff; color: #fff; font-size: 15px; font-weight: 600;
+    }
+    button:hover { background: #2f5be0; }
+    button:active { transform: translateY(1px); }
+    .hint { margin-top: 18px; font-size: 12.5px; color: #6b7382; }
+    kbd { font: inherit; font-weight: 600; color: #1d2433; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <svg class="glyph" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+      <circle cx="36" cy="36" r="34" fill="#eef1f6"/>
+      <path d="M20 40a16 16 0 0 1 32 0" stroke="#3b6cff" stroke-width="4" stroke-linecap="round"/>
+      <path d="M27 46a9 9 0 0 1 18 0" stroke="#3b6cff" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="36" cy="52" r="3" fill="#3b6cff"/>
+      <path d="M18 18l36 36" stroke="#e0475c" stroke-width="4" stroke-linecap="round"/>
+    </svg>
+    <h1>Can't reach ClaudeBox</h1>
+    <p>Could not connect to <code id="server">the server</code>.</p>
+    <p class="reason" id="reason"></p>
+    <button id="retry" type="button">Retry</button>
+    <p class="hint">Offline or the server is down? Pick another server from the <kbd>Server</kbd> menu.</p>
+  </div>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var bridge = window.ClaudeBoxDesktopInternal;
+      var server = q.get('server') || (bridge && bridge.serverUrl) || '';
+      if (server) document.getElementById('server').textContent = server;
+      var reason = q.get('reason') || '';
+      var code = q.get('code') || '';
+      if (reason || code) document.getElementById('reason').textContent = reason + (code ? ' (' + code + ')' : '');
+      function retry() {
+        if (bridge && typeof bridge.retry === 'function') bridge.retry();
+        else if (server) location.href = server;
+      }
+      document.getElementById('retry').addEventListener('click', retry);
+      document.addEventListener('keydown', function (e) { if (e.key === 'Enter') retry(); });
+    })();
+  </script>
+</body>
+</html>
