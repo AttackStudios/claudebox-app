@@ -11,6 +11,8 @@ import { CHALLENGES, SHOP, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP
 import { initVoice } from '/js/voice.js';
 import { startMotion } from './motion.js';
 import { initRbxUi, syncRbxUi, applyRbxUi } from './rbxui.js';
+import { drawPfp } from './pfp.js';
+import { openPfpEditor } from './pfpedit.js';
 
 const USER_KEY = 'claudebox.user';
 
@@ -215,7 +217,12 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ---------------- thumbnails ----------------
-function thumbInto(canvas, avatar) { drawAvatarHead(canvas.getContext('2d'), avatar, canvas.width); }
+// Accepts either a user record ({ avatar, pfp }) or a bare avatar, so older
+// call sites keep working while profile pictures ride along where we have them.
+function thumbInto(canvas, avatarOrUser, pfp) {
+  const user = (avatarOrUser && avatarOrUser.avatar) ? avatarOrUser : { avatar: avatarOrUser, pfp };
+  drawPfp(canvas, user, drawAvatarHead);
+}
 
 // ---------------- per-game theming (client-side flourish) ----------------
 const GAME_THEME = {
@@ -256,7 +263,7 @@ function renderFriends() {
     const cls = f.status === 'hub' ? 'status-hub' : f.status.startsWith('game') ? 'status-game' : '';
     el.className = 'friend-circle ' + cls;
     const cv = document.createElement('canvas'); cv.width = cv.height = 128;
-    thumbInto(cv, f.avatar);
+    thumbInto(cv, f);
     el.innerHTML = `<span class="fc-ring"></span><span class="fname">${escapeHtml(f.name)}</span><span class="fstatus">${statusText(f.status)}</span>`;
     if (f.nameColor === 'rainbow') el.querySelector('.fname').classList.add('name-rainbow');
     else if (f.nameColor) el.querySelector('.fname').style.color = f.nameColor;
@@ -804,7 +811,7 @@ async function loadDmInbox() {
     if (!data.conversations?.length) { host.innerHTML = '<div class="empty-note">No conversations yet. Message a friend to start one!</div>'; return; }
     for (const c of data.conversations) {
       const row = document.createElement('button'); row.className = 'dm-conv';
-      const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, c.avatar);
+      const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, c);
       const mid = document.createElement('div'); mid.className = 'dm-conv-mid';
       const nm = document.createElement('span'); nm.className = 'dm-conv-name'; nm.textContent = c.name;
       applyNameCosmetic(nm, c.nameColor, '');
@@ -939,7 +946,7 @@ $('dm-overlay').addEventListener('click', (e) => { if (e.target.id === 'dm-overl
 function personRow(person, mode) {
   const row = document.createElement('div');
   row.className = 'person-row';
-  const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, person.avatar);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 84; thumbInto(cv, person);
   const nm = document.createElement('span'); nm.className = 'pname'; nm.textContent = person.name;
   nm.style.cursor = 'pointer'; nm.title = 'View profile';
   nm.addEventListener('click', () => openProfile(person.name));
@@ -1180,7 +1187,7 @@ const avatarEditor = (() => {
   async function save() {
     try {
       const { avatar } = await api('/avatar', { name: stateHub.me.name, avatar: av() });
-      stateHub.me.avatar = avatar; thumbInto($('me-thumb'), avatar);
+      stateHub.me.avatar = avatar; thumbInto($('me-thumb'), stateHub.me);
       markClean(); sfx.success(); toast('Avatar saved!', '✨');
       showPage(page);
     } catch (e) { toast(e.message, '⚠️'); }
@@ -1499,6 +1506,20 @@ const avatarEditor = (() => {
     refresh() { if (ready) { rebuild(); showPage(page); } },
   };
 })();
+
+// ---------------- profile picture ----------------
+function editProfilePicture() {
+  openPfpEditor(stateHub.me, async (pfp) => {
+    const d = await api('/pfp', { name: stateHub.me.name, pfp });
+    if (!d.ok) throw new Error(d.error || 'could not save');
+    stateHub.me.pfp = d.pfp;
+    thumbInto($('me-thumb'), stateHub.me);
+    renderFriends();
+    syncRbxUi();
+    sfx.success();
+    toast('Profile picture updated', '\u{1F5BC}\uFE0F');
+  });
+}
 
 // ---------------- rewards: wallet, challenges, shop ----------------
 const wallet = () => stateHub.me?.wallet || { stars: 0, cubes: 0, challenges: {}, owned: [], title: '', nameColor: '' };
@@ -2038,7 +2059,7 @@ async function storePost(path, body) {
     // guards a null value, not an undeclared identifier, so every buy and
     // try-on threw ReferenceError before it could report its result.
     if (data?.wallet) { stateHub.me.wallet = data.wallet; updateWalletChip(true); }
-    if (data?.avatar) { stateHub.me.avatar = data.avatar; thumbInto($('me-thumb'), stateHub.me.avatar); avatarEditor.refresh?.(); }
+    if (data?.avatar) { stateHub.me.avatar = data.avatar; thumbInto($('me-thumb'), stateHub.me); avatarEditor.refresh?.(); }
     return data;
   } catch (e) { return { error: e.message }; }
 }
@@ -2231,11 +2252,13 @@ async function refreshSocial() {
   } catch {}
   await ensureLogin();
   $('me-name').textContent = stateHub.me.name;
-  thumbInto($('me-thumb'), stateHub.me.avatar);
+  thumbInto($('me-thumb'), stateHub.me);
   initSettingsTab();
+  $('av-pfp')?.addEventListener('click', editProfilePicture);
   initRbxUi({
     settings, stateHub, selectTab, openProfile, openDMs, launchGame,
     openGameDetail, thumbInto, fmtNum, api, toast, sfx, wallet,
+    approvalPct, playerCountFor,
   });
   movePill();
   const { games } = await api('/games');
