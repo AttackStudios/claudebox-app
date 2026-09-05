@@ -23,6 +23,7 @@ import { buildBearMesh, makeBearAnim, animateBear } from './systems/bears.js';
 import {
   buildItemMesh, buildHeldMesh, setMallowRoast, placementValid, catalogEntry,
 } from './systems/items.js';
+import { Fishing } from './systems/fishing.js';
 import { Nametag } from './ui/nametags.js';
 import { Chat, toast } from './ui/chat.js';
 import { Hud } from './ui/hud.js';
@@ -424,6 +425,18 @@ function computeActions() {
     } else if (!fire) {
       list.push({ id: 'needfire', label: 'Find a campfire…', emoji: '🔥', fn: () => {} });
     }
+  } else if (eq?.kind === 'rod') {
+    const st = fishing.state;
+    if (st === 'bite') {
+      list.push({ id: 'reel', label: 'REEL IT IN!', emoji: '🎣', kind: 'urgent', hotkey: 'E', fn: () => fishing.reel() });
+    } else if (st === 'waiting' || st === 'casting') {
+      list.push({ id: 'reelin', label: 'Reel in', emoji: '🎣', hotkey: 'E', fn: () => fishing.cancel() });
+    } else if (fishing.canCast(player)) {
+      list.push({ id: 'cast', label: 'Cast line', emoji: '🎣', kind: 'primary', hotkey: 'E', fn: () => fishing.cast(player) });
+    } else {
+      list.push({ id: 'needwater', label: 'Face the water…', emoji: '🌊', fn: () => {} });
+    }
+    list.push({ id: 'guide', label: 'Fishing guide', emoji: '📖', hotkey: 'G', fn: () => fishing.toggleGuide() });
   } else if (eq?.kind === 'bearspray') {
     list.push({ id: 'spray', label: 'SPRAY!', emoji: '💨', kind: 'urgent', hotkey: 'E', fn: doSpray });
   } else if (entry && !entry.held) {
@@ -516,6 +529,12 @@ net.connect();
 net.join({ name: game.me.name, avatar: game.me.avatar, code: localStorage.getItem('claudebox.code') || '' });
 
 net.on('welcome', (msg) => {
+  // welcome arrives well after module init, so seed fishing straight from it
+  if (msg.profile) {
+    fishing.setWallet(msg.profile.marshmallows || 0);
+    fishing.caught = msg.profile.caught || {};
+    fishing.records = msg.profile.records || {};
+  }
   game.me.id = msg.id;
   game.clock = msg.clock;
   for (const p of msg.players) {
@@ -822,6 +841,38 @@ function currentAnim() {
   return player.anim;
 }
 
+// ---- fishing ----------------------------------------------------------
+const fishing = new Fishing(game, scene, net);
+game.fishing = fishing;
+game.toast = toast;
+
+net.on('fish.cast.ok', (m) => fishing.onCastOk(m));
+net.on('fish.bite', (m) => fishing.onBite(m));
+net.on('fish.caught', (m) => fishing.onCaught(m));
+net.on('fish.miss', (m) => fishing.onMiss(m));
+
+// The rod hangs off the wrist bone, whose local frame runs down the arm — so
+// point it in world space instead: +z along the way the camper is facing,
+// pitched up, then converted back into the bone's frame.
+const _pq = new THREE.Quaternion();
+const _dq = new THREE.Quaternion();
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+function orientRod() {
+  if (!heldMesh || inventory.equipped?.kind !== 'rod' || !heldMesh.parent) return;
+  heldMesh.parent.getWorldQuaternion(_pq).invert();
+  const pitch = fishing && fishing.state !== 'idle' ? -0.30 : -0.55;   // dips once the line is out
+  _euler.set(pitch, player.ry + Math.PI, 0);
+  _dq.setFromEuler(_euler);
+  heldMesh.quaternion.copy(_pq.multiply(_dq));
+}
+
+// the world-space point the line should leave from
+function rodTipWorld() {
+  const tip = heldMesh?.userData?.tip;
+  if (!tip) return null;
+  return tip.getWorldPosition(new THREE.Vector3());
+}
+
 function frame() {
   requestAnimationFrame(frame);
   const now = performance.now();
@@ -841,6 +892,10 @@ function frame() {
   } else {
     game.clock = (game.clock + dt / 480) % 1;
   }
+
+  // ---- fishing ----
+  orientRod();
+  fishing.update(dt, now, rodTipWorld());
 
   // ---- movement / driving ----
   if (game.driving && game.vanSim) {

@@ -17,9 +17,9 @@ export const genId = (p) => `${p}${(nextId++).toString(36)}`;
 function loadSaves() {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return { items: raw.items || {} };
+    return { items: raw.items || {}, profiles: raw.profiles || {} };
   } catch {
-    return { items: {} };
+    return { items: {}, profiles: {} };
   }
 }
 
@@ -33,8 +33,36 @@ export const state = {
     seats: [null, null, null, null, null, null], // seat 0 = driver
     emptySince: Date.now(),
   })),
-  saves: loadSaves(),   // { items: { id: { owner, kind, x, y, z, ry, color } } }
+  saves: loadSaves(),   // { items: { id: {...} }, profiles: { nameLower: {...} } }
 };
+
+// Per-camper progress, keyed by lowercased name so it survives reconnects and
+// follows you between sessions. Marshmallows are Backpacking's own currency —
+// deliberately separate from the platform wallet, like the original game.
+export function profileOf(nameLower) {
+  let pr = state.saves.profiles[nameLower];
+  if (!pr) {
+    pr = { marshmallows: 0, caught: {}, records: {}, owned: [], badges: [], casts: 0 };
+    state.saves.profiles[nameLower] = pr;
+  }
+  pr.marshmallows = Math.max(0, Math.floor(pr.marshmallows || 0));
+  pr.caught = pr.caught || {};      // fishId -> times caught
+  pr.records = pr.records || {};    // fishId -> biggest cm
+  pr.owned = pr.owned || [];        // shop item ids
+  pr.badges = pr.badges || [];
+  pr.casts = pr.casts || 0;
+  return pr;
+}
+
+export function publicProfile(pr) {
+  return {
+    marshmallows: pr.marshmallows,
+    caught: pr.caught,
+    records: pr.records,
+    owned: pr.owned,
+    badges: pr.badges,
+  };
+}
 
 let saveTimer = null;
 export function save() {

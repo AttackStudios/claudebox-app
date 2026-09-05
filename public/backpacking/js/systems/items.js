@@ -47,6 +47,7 @@ export const CATALOG = {
   Gear: [
     { kind: 'torch', label: 'Standing torch', emoji: '🕯️' },
     { kind: 'stringlights', label: 'String lights', emoji: '💡' },
+    { kind: 'rod', label: 'Fishing rod', emoji: '🎣', held: true },
     { kind: 'marshmallow', label: 'Marshmallow stick', emoji: '🍡', held: true },
     { kind: 'bearspray', label: 'Bear spray', emoji: '🧯', held: true },
   ],
@@ -518,6 +519,25 @@ export function buildHeldMesh(kind) {
     mallow.position.z = 1.05;
     g.add(stick, mallow);
     g.userData.mallow = mallow;
+  } else if (kind === 'rod') {
+    // A slim two-tone rod with a reel. The arm hangs at rest, so the whole
+    // assembly is tilted up inside its own pivot — otherwise the rod points at
+    // the floor and the line appears to leave the player's feet.
+    const rod = new THREE.Group();
+    const butt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.28, 6), lambert('#2f3238'));
+    butt.rotation.x = Math.PI / 2; butt.position.z = 0.1;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 1.7, 6), lambert('#5b4632'));
+    shaft.rotation.x = Math.PI / 2; shaft.position.z = 1.05;
+    const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 10), lambert('#b8bcc4'));
+    reel.rotation.z = Math.PI / 2; reel.position.set(0.075, -0.05, 0.3);
+    const tip = new THREE.Object3D();
+    tip.position.set(0, 0, 1.95);
+    rod.add(butt, shaft, reel, tip);
+    // Orientation is driven in world space each frame (see orientRod in
+    // main.js) because the wrist bone's local axes point down the arm, so any
+    // fixed rotation here aims the rod at the floor.
+    g.add(rod);
+    g.userData.tip = tip;
   } else if (kind === 'bearspray') {
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.34, 10), lambert('#c0392b'));
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8), lambert('#2b2b2e'));
