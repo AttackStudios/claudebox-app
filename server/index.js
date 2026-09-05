@@ -98,6 +98,38 @@ app.get('/mod', (req, res) => res.sendFile(path.join(ROOT, 'public', 'mod', 'ind
 app.get('/playtest', (req, res) => res.sendFile(path.join(ROOT, 'public', 'playtest', 'index.html')));
 app.get('/studio', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
 app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public', 'studio', 'index.html')));
+// ---- desktop app downloads -------------------------------------------------
+// `npm run dist` in desktop/ writes the .dmg / .zip into desktop/dist. Those are
+// ~125 MB each, well over GitHub's 100 MB per-file limit, so they are NOT in the
+// repo: a cloud deployment points CLAUDEBOX_DOWNLOAD_BASE at a GitHub Release
+// (or any static host) instead, while a local server just serves them off disk.
+const DESKTOP_DIST = path.join(ROOT, 'desktop', 'dist');
+const DOWNLOAD_BASE = (process.env.CLAUDEBOX_DOWNLOAD_BASE || '').replace(/\/$/, '');
+const ARTIFACT_RE = /^ClaudeBox-.*\.(dmg|zip)$/;
+
+function localArtifacts() {
+  try {
+    return fs.readdirSync(DESKTOP_DIST).filter((f) => ARTIFACT_RE.test(f)).sort().map((f) => ({
+      file: f,
+      size: fs.statSync(path.join(DESKTOP_DIST, f)).size,
+      url: '/downloads/' + encodeURIComponent(f),
+    }));
+  } catch { return []; }
+}
+
+app.get('/download', (req, res) => res.sendFile(path.join(ROOT, 'public', 'download', 'index.html')));
+app.get('/api/downloads', (req, res) => {
+  const local = localArtifacts();
+  if (local.length) return res.json({ source: 'local', artifacts: local });
+  if (DOWNLOAD_BASE) {
+    // mirror the same filenames off the release host
+    const names = ['ClaudeBox-1.0.0-arm64.dmg', 'ClaudeBox-1.0.0-arm64.zip', 'ClaudeBox-1.0.0-x64.dmg', 'ClaudeBox-1.0.0-x64.zip'];
+    return res.json({ source: 'remote', base: DOWNLOAD_BASE, artifacts: names.map((f) => ({ file: f, size: 0, url: DOWNLOAD_BASE + '/' + f })) });
+  }
+  res.json({ source: 'none', artifacts: [] });
+});
+app.use('/downloads', express.static(DESKTOP_DIST, { maxAge: '1h', fallthrough: false }));
+
 app.use('/api', hubRouter());
 
 app.use('/shared', express.static(path.join(ROOT, 'shared')));

@@ -10,8 +10,21 @@
 <meta name="theme-color" content="#0a0b0f">
 <title>ClaudeBox</title>
 <link rel="manifest" href="/manifest.webmanifest">
+<script>
+  /* Apply the saved theme and the "Roblox-true UI" setting BEFORE first paint.
+     hub.js is a module, so it only runs after the page has already been drawn —
+     doing it here is what stops the dark hub flashing in front of the Roblox
+     layout on every load. The desktop app seeds robloxUI:true in its preload. */
+  try {
+    var s = JSON.parse(localStorage.getItem('claudebox.settings') || '{}');
+    var h = document.documentElement;
+    h.setAttribute('data-theme', s.theme === 'light' ? 'light' : 'dark');
+    if (s.robloxUI) h.setAttribute('data-ui', 'roblox');
+  } catch (e) {}
+</script>
 <link rel="stylesheet" href="/hub/hub.css">
   <link rel="stylesheet" href="/hub/rbx.css">
+<link rel="stylesheet" href="/hub/rbxui.css">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <script type="importmap">
@@ -246,6 +259,9 @@
             <option value="dark">🌙 Dark</option>
             <option value="light">☀️ Light</option>
           </select></div>
+        <div class="settings-row"><span>🟦 Roblox-true UI</span>
+          <label class="switch"><input type="checkbox" id="rbxui-input"><span class="track"></span></label></div>
+        <p class="settings-hint">Rebuilds the whole hub as a pixel-faithful copy of the Roblox website — 40px top bar, 289px left rail, flat cards. Dark/light still applies. On in the desktop app by default.</p>
         <div class="settings-row"><span>🔊 Interface sounds</span>
           <label class="switch"><input type="checkbox" id="sound-input"><span class="track"></span></label></div>
         <div class="settings-row"><span>🎵 Ambient music</span>

@@ -1,0 +1,92 @@
+{
+  "name": "claudebox-desktop",
+  "productName": "ClaudeBox",
+  "version": "1.0.0",
+  "description": "ClaudeBox desktop app for macOS - a native window around the ClaudeBox multiplayer game platform",
+  "author": "AttackStudio",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:local": "CLAUDEBOX_SERVER=http://localhost:8787 electron .",
+    "pack": "NODE_OPTIONS=--experimental-require-module CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir",
+    "dist": "NODE_OPTIONS=--experimental-require-module CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --x64",
+    "dist:arm64": "NODE_OPTIONS=--experimental-require-module CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64",
+    "dist:x64": "NODE_OPTIONS=--experimental-require-module CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64"
+  },
+  "devDependencies": {
+    "electron": "44.1.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.attackstudio.claudebox",
+    "productName": "ClaudeBox",
+    "copyright": "Copyright \u00a9 2026 AttackStudio",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "menu.js",
+      "config.js",
+      "offline.html",
+      "server-prompt.html",
+      "package.json"
+    ],
+    "afterPack": "build/afterPack.js",
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "ClaudeBox-${version}-${arch}.${ext}",
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "ClaudeBox uses your microphone for in-game voice chat.",
+        "NSCameraUsageDescription": "ClaudeBox can use your camera for in-game video features."
+      }
+    },
+    "dmg": {
+      "title": "ClaudeBox",
+      "icon": "build/icon.icns",
+      "iconSize": 110,
+      "window": {
+        "width": 560,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}
