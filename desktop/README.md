@@ -116,12 +116,15 @@ The server's `/download` page asks `/api/downloads` what is available:
 
 * **Locally** it finds `desktop/dist` on disk and serves the files straight from
   there at `/downloads/<file>`. Build once and the page just works.
-* **In the cloud** there is no `desktop/dist`, so it falls back to
-  `CLAUDEBOX_DOWNLOAD_BASE` — set that Render env var to the base URL of a
-  GitHub Release (e.g. `https://github.com/AttackStudios/claudebox-app/releases/download/v1.0.0`)
-  that holds the four files under exactly those names.
-* With neither, the page degrades to "Builds coming soon" and still links to the
-  browser version.
+* **In the cloud** there is no `desktop/dist`, so it falls back to the GitHub
+  Release — by default
+  `https://github.com/AttackStudios/claudebox-app/releases/latest/download`,
+  which always resolves to the newest release. No env var needed. Set
+  `CLAUDEBOX_DOWNLOAD_BASE` only to point somewhere else.
+* The filenames are derived from the `version` in this `package.json`, so
+  cutting a new release means: bump that version, `npm run dist`, then
+  `gh release create vX.Y.Z --repo AttackStudios/claudebox-app` and
+  `gh release upload vX.Y.Z dist/ClaudeBox-*.dmg dist/ClaudeBox-*.zip`.
 
 ### Signing
 
