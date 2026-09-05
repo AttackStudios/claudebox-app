@@ -2,10 +2,11 @@
 // van seats, bear kills, spray, deaths/respawns. Movement is client-reported
 // (except while seated in a van — the van's driver streams the van).
 
-import { state, genId, save, publicPlayer, publicVan, clock01 } from './state.js';
+import { state, genId, save, publicPlayer, publicVan, clock01, profileOf, publicProfile } from './state.js';
 import { sprayAt } from './bears.js';
 import { botItems } from './bots.js';
-import { WORLD, height, lavaAt } from '../../shared/bp/worldgen.js';
+import { WORLD, height, lavaAt, waterAt } from '../../shared/bp/worldgen.js';
+import { rollCatch, FISH_BY_ID, BITE_MIN_MS, BITE_MAX_MS, REACT_MS, CAST_COOLDOWN_MS } from '../../shared/bp/fish.js';
 import { ensurePlatformUser, BP_MAINTENANCE, checkAccess, isBanned } from '../hub.js';
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[ -]/g, '').trim().slice(0, max);
@@ -27,7 +28,17 @@ export function makeBroadcaster(getClients) {
   };
 }
 
+// a pending bite must not fire at a player who has left, died or recast
+export function clearFishTimer(p) {
+  if (p.fishTimer) { clearTimeout(p.fishTimer); p.fishTimer = null; }
+}
+
 export function killPlayer(p, cause, broadcast) {
+  if (p.fishing) {
+    clearFishTimer(p);
+    p.fishing = null;
+    try { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify({ t: 'fish.miss', reason: 'You lost the rod!' })); } catch {}
+  }
   if (p.dead) return;
   p.dead = true;
   p.diedAt = Date.now();
@@ -138,6 +149,85 @@ export function handleMessage(p, msg, ctx) {
       broadcast({ t: 'spray.fx', id: p.id, x: p.pos.x, z: p.pos.z, dirX: +msg.dirX || 0, dirZ: +msg.dirZ || 1, scared: scared.length });
       return;
     }
+    // ---- fishing ---------------------------------------------------------
+    // The server decides what is on the hook the moment you cast, and when it
+    // bites; the client only reports that the player reacted. That keeps the
+    // rare fish out of reach of a patched client.
+    case 'fish.cast': {
+      if (!p.joined || p.dead || p.vanId != null) return;
+      const now = Date.now();
+      if (p.fishNextCast && now < p.fishNextCast) return;
+      const x = +msg.x || 0, z = +msg.z || 0;
+      // the bobber must land in water, and within a rod's reach of the player
+      if (Math.hypot(x - p.pos.x, z - p.pos.z) > 26) {
+        send({ t: 'fish.miss', reason: 'Too far — get closer to the water.' });
+        return;
+      }
+      const w = waterAt(x, z);
+      if (!w) { send({ t: 'fish.miss', reason: 'That is not water.' }); return; }
+      if (lavaAt(x, z)) { send({ t: 'fish.miss', reason: 'Nothing lives in lava.' }); return; }
+
+      const pr = profileOf(p.nameLower);
+      const biteIn = BITE_MIN_MS + Math.random() * (BITE_MAX_MS - BITE_MIN_MS);
+      clearFishTimer(p);
+      p.fishing = {
+        catch: rollCatch({ water: w.kind, clock: clock01(), luck: 1 }),
+        biteAt: now + biteIn,
+        expiresAt: 0,          // set when the bite is actually announced
+        x, z,
+      };
+      p.fishNextCast = now + CAST_COOLDOWN_MS;
+      pr.casts++;
+      send({ t: 'fish.cast.ok', x, z });
+      // The server announces the bite rather than the client running a long
+      // timer of its own: a throttled tab or a slow frame would otherwise drift
+      // the client past the reaction window and eat the catch.
+      p.fishTimer = setTimeout(() => {
+        p.fishTimer = null;
+        if (!p.fishing || !p.joined) return;
+        p.fishing.expiresAt = Date.now() + REACT_MS;
+        try { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify({ t: 'fish.bite', reactMs: REACT_MS })); } catch {}
+      }, biteIn);
+      return;
+    }
+    case 'fish.reel': {
+      if (!p.joined || !p.fishing) return;
+      const f = p.fishing;
+      const now = Date.now();
+      p.fishing = null;
+      clearFishTimer(p);
+      if (!f.expiresAt) { send({ t: 'fish.miss', reason: 'Too early — wait for the bite.' }); return; }
+      if (now > f.expiresAt) { send({ t: 'fish.miss', reason: 'Too slow — it got away.' }); return; }
+
+      const fish = FISH_BY_ID[f.catch.id];
+      const pr = profileOf(p.nameLower);
+      pr.caught[f.catch.id] = (pr.caught[f.catch.id] || 0) + 1;
+      const isRecord = f.catch.cm > (pr.records[f.catch.id] || 0);
+      if (isRecord) pr.records[f.catch.id] = f.catch.cm;
+      pr.marshmallows += f.catch.value;
+      save();
+
+      send({
+        t: 'fish.caught',
+        fish: f.catch.id, cm: f.catch.cm, shiny: f.catch.shiny,
+        value: f.catch.value, record: isRecord,
+        marshmallows: pr.marshmallows,
+        first: pr.caught[f.catch.id] === 1,
+      });
+      // a legendary is worth telling the whole server about
+      if (fish && (fish.rarity === 'legendary' || f.catch.shiny) && !fish.junk) {
+        broadcast({
+          t: 'chat', id: 'system', name: 'Camp Radio',
+          text: `${p.name} landed a ${f.catch.shiny ? 'SHINY ' : ''}${fish.name} (${f.catch.cm}cm)!`,
+        });
+      }
+      return;
+    }
+    case 'fish.cancel': {
+      p.fishing = null;
+      clearFishTimer(p);
+      return;
+    }
     case 'pose': {
       // cosmetic broadcast poses: roast / eat / sit / lie / stand
       if (!['roast', 'eat', 'sit', 'lie', 'stand', 'spraypose'].includes(msg.kind)) return;
@@ -182,6 +272,7 @@ function onJoin(p, msg, { send, broadcast }) {
     items: { ...state.saves.items, ...Object.fromEntries(botItems) },
     vans: state.vans.map(publicVan),
     clock: clock01(),
+    profile: publicProfile(profileOf(p.nameLower)),
   });
   broadcast({ t: 'player.join', player: publicPlayer(p) }, p.id);
 }
@@ -207,6 +298,8 @@ export function resetVan(van, broadcast) {
 }
 
 export function onDisconnect(p, ctx) {
+  clearFishTimer(p);
+  p.fishing = null;
   leaveVan(p, ctx.broadcast, true);
   state.players.delete(p.id);
   if (p.joined) ctx.broadcast({ t: 'player.leave', id: p.id });
