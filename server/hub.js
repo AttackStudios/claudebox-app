@@ -14,6 +14,7 @@ import { toObbyCourse, toWibitWorld, toJuniorGuardsWorld } from '../shared/studi
 import { sanitizeLevel } from '../shared/studio/format.js';
 import { CHALLENGES, CHALLENGE_BY_ID, SHOP_BY_ID, CUBE_RATE, CURRENCY, POINTS, AVATAR_SHOP, AVATAR_SHOP_BY_ID } from '../shared/rewards.js';
 import { SKIN_BY_ID, CASE_PRICE, rollCase } from '../shared/rivals/skins.js';
+import { sanitizePfp } from '../shared/pfp.js';
 import * as anim from './anim/store.js';
 
 const DATA_DIR = process.env.CLAUDEBOX_DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -674,7 +675,7 @@ function publicUser(nameLower) {
   const u = getUser(nameLower);
   if (!u) return null;
   ensureWallet(u);
-  return { name: u.name, avatar: u.avatar, status: presenceOf(nameLower), title: u.title, nameColor: u.nameColor, badge: badgeFor(u.name) };
+  return { name: u.name, avatar: u.avatar, pfp: u.pfp || null, status: presenceOf(nameLower), title: u.title, nameColor: u.nameColor, badge: badgeFor(u.name) };
 }
 
 const LEVELS_DIR = path.join(DATA_DIR, 'levels');
@@ -898,7 +899,7 @@ export function hubRouter() {
       if (!dev.names.includes(nl)) { if (dev.names.length < 30) dev.names.push(nl); save(); }
     }
     lastHubSeen.set(name.toLowerCase(), Date.now());
-    res.json({ profile: { name: u.name, avatar: u.avatar, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(name.toLowerCase()) } });
+    res.json({ profile: { name: u.name, avatar: u.avatar, pfp: u.pfp || null, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(name.toLowerCase()) } });
   });
 
   // does an account have a password? (client shows the right login option)
@@ -919,7 +920,7 @@ export function hubRouter() {
     if (!u || !u.pwHash) return res.status(403).json({ error: 'No password is set for that account. Log in with the invite code once, then set a password in Settings.' });
     if (!verifyPw(u, pw)) return res.status(403).json({ error: 'Wrong password.' });
     lastHubSeen.set(nl, Date.now());
-    res.json({ profile: { name: u.name, avatar: u.avatar, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(nl) }, code: ACCESS_CODE });
+    res.json({ profile: { name: u.name, avatar: u.avatar, pfp: u.pfp || null, friends: u.friends, recentGames: u.recentGames, wallet: walletOf(u), likedGames: likedGamesOf(nl) }, code: ACCESS_CODE });
   });
 
   // set / change your password (you're already logged in via code or password)
@@ -948,6 +949,18 @@ export function hubRouter() {
     u.avatar = av;
     save();
     res.json({ ok: true, avatar: u.avatar });
+  });
+
+  // profile picture: presets, colours, shapes, or an imported image. The image
+  // arrives already downscaled to 256x256 by the browser; sanitizePfp is the
+  // same function the client ran, so anything hand-crafted is rejected here too.
+  r.post('/pfp', (req, res) => {
+    const name = clean(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const u = ensureUser(name);
+    u.pfp = sanitizePfp(req.body?.pfp);
+    save();
+    res.json({ ok: true, pfp: u.pfp });
   });
 
   // buy an avatar cosmetic with Bits → add to inventory + auto-equip it
@@ -1470,7 +1483,7 @@ export function hubRouter() {
     for (const [key, u] of Object.entries(platform.users)) {
       if (key === nameLower || me.friends.includes(key) || inSet.has(key) || u.isBot) continue;
       const status = presenceOf(key);
-      if (status !== 'offline') online.push({ name: u.name, avatar: u.avatar, status, badge: badgeFor(u.name) });
+      if (status !== 'offline') online.push({ name: u.name, avatar: u.avatar, pfp: u.pfp || null, status, badge: badgeFor(u.name) });
     }
     res.json({
       me: { name: me.name, avatar: me.avatar, recentGames: me.recentGames, wallet: walletOf(me), likedGames: likedGamesOf(nameLower) },
@@ -1513,6 +1526,7 @@ export function hubRouter() {
     res.json({
       name: display,
       avatar: avatarForName(nameLower),
+      pfp: u?.pfp || null,
       badge: badgeFor(display),
       title: u?.title || '', nameColor: u?.nameColor || '',
       status: presenceOf(nameLower),
