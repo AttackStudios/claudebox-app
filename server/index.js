@@ -104,7 +104,17 @@ app.get('/games/playground', (req, res) => res.sendFile(path.join(ROOT, 'public'
 // repo: a cloud deployment points CLAUDEBOX_DOWNLOAD_BASE at a GitHub Release
 // (or any static host) instead, while a local server just serves them off disk.
 const DESKTOP_DIST = path.join(ROOT, 'desktop', 'dist');
-const DOWNLOAD_BASE = (process.env.CLAUDEBOX_DOWNLOAD_BASE || '').replace(/\/$/, '');
+// With no desktop/dist on disk (i.e. the cloud), fall back to the GitHub
+// Release. "releases/latest/download" always resolves to the newest release, so
+// a version bump only needs desktop/package.json updating.
+const DEFAULT_DOWNLOAD_BASE = 'https://github.com/AttackStudios/claudebox-app/releases/latest/download';
+const DOWNLOAD_BASE = (process.env.CLAUDEBOX_DOWNLOAD_BASE || DEFAULT_DOWNLOAD_BASE).replace(/\/$/, '');
+
+function desktopVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, 'desktop', 'package.json'), 'utf8')).version || '1.0.0';
+  } catch { return '1.0.0'; }
+}
 const ARTIFACT_RE = /^ClaudeBox-.*\.(dmg|zip)$/;
 
 function localArtifacts() {
@@ -123,7 +133,8 @@ app.get('/api/downloads', (req, res) => {
   if (local.length) return res.json({ source: 'local', artifacts: local });
   if (DOWNLOAD_BASE) {
     // mirror the same filenames off the release host
-    const names = ['ClaudeBox-1.0.0-arm64.dmg', 'ClaudeBox-1.0.0-arm64.zip', 'ClaudeBox-1.0.0-x64.dmg', 'ClaudeBox-1.0.0-x64.zip'];
+    const v = desktopVersion();
+    const names = [`ClaudeBox-${v}-arm64.dmg`, `ClaudeBox-${v}-arm64.zip`, `ClaudeBox-${v}-x64.dmg`, `ClaudeBox-${v}-x64.zip`];
     return res.json({ source: 'remote', base: DOWNLOAD_BASE, artifacts: names.map((f) => ({ file: f, size: 0, url: DOWNLOAD_BASE + '/' + f })) });
   }
   res.json({ source: 'none', artifacts: [] });
