@@ -77,13 +77,25 @@ export function buildSky(scene, quality = 'high') {
   scene.fog = new THREE.Fog('#d8e9f2', 200, 1300);   // dreamier distance blend
   scene.add(group);
 
+  // Clouds drift east and wrap around a centre that MOVES with the bird, so the
+  // cloud field is a band that travels with you instead of a fixed patch above
+  // the island. Wrapping against the origin would strand every cloud behind you
+  // the moment you flew past the old map edge.
   const SP = WORLD.half + 200;
+  group.userData.center = { x: 0, z: 0 };
   group.userData.tick = (time, dt) => {
+    const c = group.userData.center;
     for (const cloud of clouds) {
       cloud.position.x += cloud.userData.speed * dt;
-      if (cloud.position.x > SP) cloud.position.x = -SP;
+      if (cloud.position.x - c.x > SP) cloud.position.x -= SP * 2;
+      else if (c.x - cloud.position.x > SP) cloud.position.x += SP * 2;
+      if (cloud.position.z - c.z > SP) cloud.position.z -= SP * 2;
+      else if (c.z - cloud.position.z > SP) cloud.position.z += SP * 2;
     }
   };
 
-  return { group, sunLight };
+  // The dome, the sun and the clouds are scenery, not places. Handing them back
+  // lets main.js keep them centred on the bird, which is what makes an
+  // unbounded world possible: fly any distance and the sky never runs out.
+  return { group, sunLight, dome, sun, clouds };
 }

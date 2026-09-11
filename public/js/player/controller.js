@@ -170,10 +170,20 @@ export class PlayerController {
       }
     }
 
-    // keep inside the world
-    const m = 1000;
-    this.pos.x = Math.max(-m, Math.min(m, this.pos.x));
-    this.pos.z = Math.max(-m, Math.min(m, this.pos.z));
+    // No world border. The old +/-1000 box was an invisible wall you hit while
+    // still over the island — the continent reaches ~1560 and its beaches ~1880,
+    // so birds were stopped short of their own coastline. Height, water and
+    // colour are all procedural functions of (x, z), so there is nothing to
+    // clamp against: the ocean and sky follow you instead (see main.js), and you
+    // can fly out as far as you like.
+    //
+    // Kept only as a sanity rail, far past anything reachable in play, so a NaN
+    // or a runaway velocity cannot throw a bird to infinity and corrupt the save.
+    const SANE = 1e6;
+    if (!Number.isFinite(this.pos.x)) this.pos.x = 0;
+    if (!Number.isFinite(this.pos.z)) this.pos.z = 0;
+    this.pos.x = Math.max(-SANE, Math.min(SANE, this.pos.x));
+    this.pos.z = Math.max(-SANE, Math.min(SANE, this.pos.z));
 
     this.jumpQueued = false;
   }

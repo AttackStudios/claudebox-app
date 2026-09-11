@@ -36,6 +36,10 @@ export function buildWater() {
   const ocean = new THREE.Mesh(new THREE.PlaneGeometry(WORLD.size * 4, WORLD.size * 4, 16, 16), oceanMat);
   ocean.rotation.x = -Math.PI / 2;
   ocean.position.y = WORLD.seaLevel - 0.05;
+  // Named so main.js can keep it under the bird. Big as it is, a fixed plane
+  // still ends somewhere, and the world no longer does.
+  ocean.name = 'ocean';
+  group.userData.ocean = ocean;
   group.add(ocean);
 
   const lakeMeshes = [];

@@ -102,6 +102,8 @@ const props = buildProps(game.settings.quality);
 scene.add(props);
 game.trunks = props.userData.trunks || [];
 const sky = buildSky(scene, game.settings.quality);
+// debug handle, in the same spirit as the other games' __rivals / __key
+window.__ff = { water, sky, terrain, WORLD, game, get player() { return player; } };
 const fx = new FxSystem(scene);
 game.fx = fx;
 
@@ -1298,6 +1300,37 @@ function frame() {
   // ---- world ----
   water.userData.tick(nowS);
   sky.group.userData.tick(nowS, dt);
+
+  // ---- an unbounded world ----
+  // Nothing clamps the bird any more, so the scenery has to travel with it.
+  // The ocean, the sky dome, the sun disc and the clouds are all backdrop: they
+  // describe a direction, not a location. Recentring them on the bird each frame
+  // means you can fly out forever and the horizon always looks the same, with no
+  // edge to reach and no void to fall into.
+  //
+  // Only the horizontal position follows. Height stays put, or the sea would
+  // climb with you and the sun would never rise.
+  const px = player.pos.x, pz = player.pos.z;
+  const oc = water.userData.ocean;
+  if (oc) { oc.position.x = px; oc.position.z = pz; }
+  if (sky.dome) { sky.dome.position.x = px; sky.dome.position.z = pz; }
+  if (sky.sun) { sky.sun.position.x = 500 + px; sky.sun.position.z = -600 + pz; }
+  // Clouds drift on their own, so wrap them around the bird rather than pinning
+  // them: a cloud that falls too far behind reappears ahead, which keeps the sky
+  // populated at any distance without spawning more of them.
+  if (sky.clouds) {
+    // The sky's own drift tick wraps clouds around this centre. Folding by
+    // modulo as well means a teleport (realm warp, nest spawn) catches up in one
+    // frame instead of one span per frame.
+    const c = sky.group.userData.center;
+    if (c) { c.x = px; c.z = pz; }
+    const SPAN = WORLD.half + 200, WRAP = SPAN * 2;
+    const fold = (v, at) => v - Math.round((v - at) / WRAP) * WRAP;
+    for (const cl of sky.clouds) {
+      cl.position.x = fold(cl.position.x, px);
+      cl.position.z = fold(cl.position.z, pz);
+    }
+  }
 
   // keep the sun's shadow box centered on the player so shadows stay crisp
   const sl = sky.sunLight;
