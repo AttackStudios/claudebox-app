@@ -141,6 +141,15 @@ app.get('/api/downloads', (req, res) => {
 });
 app.use('/downloads', express.static(DESKTOP_DIST, { maxAge: '1h', fallthrough: false }));
 
+// PVPTraining friends service: a separate product that shares this host. Isolated router with its
+// own data file (data/pvpt-social.json, mirrored like the rest of data/). Loaded defensively:
+// a failure here must never stop ClaudeBox from starting.
+try {
+  const { createSocial } = await import('./pvpt-social.js');
+  app.use('/pvpt', createSocial({ dataDir: process.env.CLAUDEBOX_DATA_DIR || path.join(ROOT, 'data'), log: console.log }));
+} catch (e) {
+  console.error('pvpt-social disabled:', e.message);
+}
 app.use('/api', hubRouter());
 
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
